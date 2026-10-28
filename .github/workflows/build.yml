@@ -31,13 +31,29 @@ jobs:
       - name: Test
         run: npm test
 
+      # Every build has its own version, shown in the ⋯ menu, in Settings >
+      # About and in the file names: 1.0.<run number>, or the tag's version
+      # for a release (v1.2.0 -> 1.2.0).
+      - name: Version this build
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+          else
+            base="$(node -p "require('./package.json').version.split('.').slice(0, 2).join('.')")"
+            version="$base.$GITHUB_RUN_NUMBER"
+          fi
+          npm version "$version" --no-git-tag-version --allow-same-version
+          echo "NOOR_VERSION=$version" >> "$GITHUB_ENV"
+          echo "Building Noor $version"
+
       - name: Build the .exe
         run: npm run dist
 
       - name: Keep the .exe
         uses: actions/upload-artifact@v4
         with:
-          name: Noor-windows
+          name: Noor-windows-${{ env.NOOR_VERSION }}
           path: dist/*.exe
           if-no-files-found: error
 

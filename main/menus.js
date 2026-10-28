@@ -1,5 +1,5 @@
 "use strict";
-const { Menu, dialog, clipboard, shell } = require("electron");
+const { app, Menu, dialog, clipboard, shell } = require("electron");
 const { KINDS } = require("./fingerprint");
 const { Shields } = require("./shields");
 const { SETTINGS_URL, LIBRARY_URL, isWebPage } = require("./address");
@@ -36,6 +36,8 @@ class Menus {
       { type: "separator" },
       { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => browser.newTab({ url: SETTINGS_URL }) },
       { label: "New Session…", click: () => this.confirmNewSession() },
+      { type: "separator" },
+      { label: `Noor ${app.getVersion()}`, enabled: false },
     ]);
   }
 
