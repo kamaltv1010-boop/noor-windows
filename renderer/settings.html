@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="page">
+  <h1 style="text-align:center">Settings</h1>
+
+  <h3>Profiles</h3>
+  <div class="card" id="profiles"></div>
+  <div class="card">
+    <div class="row">
+      <input type="text" id="newprofilename" placeholder="Name" style="flex:1">
+      <button class="button" id="newprofile">New Profile</button>
+    </div>
+    <div class="row" id="deleteallrow" hidden>
+      <div class="label">Delete all profiles<small>Every profile except the first, with its cookies, website data, history and tabs.</small></div>
+      <button class="button danger small" id="deleteall">Delete All</button>
+    </div>
+  </div>
+  <p class="footer">Each profile has its own cookies, website data, history, tabs and fingerprints, so accounts stay apart. Bookmarks and settings are shared. The profiles are also in the ⋯ menu and on the start page.</p>
+
+  <h3>Shields</h3>
+  <div class="card">
+    <div class="row"><div class="label">Block trackers<small>Third-party files from Meta, Google Analytics, TikTok and other trackers never load.</small></div><input type="checkbox" data-setting="blockTrackers"></div>
+    <div class="row"><div class="label">Upgrade to HTTPS<small>http:// pages open over https://, and go back to http:// if the site doesn't support it.</small></div><input type="checkbox" data-setting="httpsUpgrade"></div>
+    <div class="row"><div class="label">Clean links<small>Tracking codes such as fbclid, gclid and utm_* are removed from the addresses you open.</small></div><input type="checkbox" data-setting="cleanLinks"></div>
+  </div>
+  <div class="card" id="downsites"></div>
+  <p class="footer" id="downsitesfooter">Shields are up on every site. Turn them off for one site from the 🛡 button in the address bar.</p>
+
+  <h3>Fingerprint Protection</h3>
+  <div class="card" id="protections"></div>
+  <div class="card">
+    <div class="row"><div class="label">Change all fingerprints<small>New values for every protection, in this profile.</small></div><button class="button secondary small" id="changeall">Change All</button></div>
+  </div>
+  <div class="card" id="values"></div>
+  <p class="footer">Websites see noisy canvas, WebGL and audio values and shifted ClientRects that differ from this PC's but stay the same on a site, another common PC's screen size, processor and memory, and Google Chrome on Windows. Sign-in sites of Meta, Google, Apple and Microsoft see this PC's real screen and hardware.</p>
+
+  <h3>General</h3>
+  <div class="card">
+    <div class="row"><div class="label">Search engine</div><select id="searchengine"></select></div>
+    <div class="row"><div class="label">Night mode<small>Pages shown with dark colors.</small></div><input type="checkbox" data-setting="nightMode"></div>
+    <div class="row"><div class="label">Clear everything on quit<small>Cookies, website data and history stay only in memory, and every launch starts fresh with new fingerprints. Takes effect from the next launch.</small></div><input type="checkbox" data-setting="clearOnQuit"></div>
+  </div>
+  <div class="card">
+    <div class="row"><div class="label">New session<small>Deletes the cookies, website data and history of the profile in use, closes its tabs and changes all its fingerprints.</small></div><button class="button danger small" id="newsession">New Session</button></div>
+    <div class="row"><div class="label">Reset privacy stats</div><button class="button secondary small" id="resetstats">Reset</button></div>
+  </div>
+
+  <h3>About</h3>
+  <div class="card">
+    <div class="row"><div class="label">Noor for Windows</div><div class="value" id="version"></div></div>
+    <div class="row"><div class="label">Chromium</div><div class="value" id="chromium"></div></div>
+    <div class="row"><div class="label">Source code</div><div class="value"><a href="https://github.com/kamaltv1010-boop/noor-windows">github.com/kamaltv1010-boop/noor-windows</a></div></div>
+  </div>
+</div>
+<script src="settings.js"></script>
+</body>
+</html>

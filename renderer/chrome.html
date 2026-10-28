@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Noor</title>
+<link rel="stylesheet" href="chrome.css">
+</head>
+<body>
+<div id="tabstrip">
+  <div id="tabs"></div>
+  <button id="newtab" title="New Tab (Ctrl+T)">+</button>
+</div>
+<div id="toolbar">
+  <button class="icon" id="back" title="Back (Alt+Left)">‹</button>
+  <button class="icon" id="forward" title="Forward (Alt+Right)">›</button>
+  <button class="icon" id="reload" title="Reload (Ctrl+R)">↻</button>
+  <div id="addressbox">
+    <button id="shields" title="Shields"><span>🛡</span><span id="shieldcount"></span></button>
+    <input id="address" placeholder="Search or enter address" spellcheck="false" autocomplete="off">
+  </div>
+  <button class="icon" id="bookmark" title="Bookmark (Ctrl+D)">☆</button>
+  <button id="profile" title="Profile"><span>👤</span><span id="profilename"></span><span>▾</span></button>
+  <button class="icon" id="more" title="More">⋯</button>
+</div>
+<div class="band" id="findbar" hidden>
+  <input id="findtext" placeholder="Find on page" spellcheck="false">
+  <span id="findcount"></span>
+  <button id="findprev" title="Previous">▲</button>
+  <button id="findnext" title="Next">▼</button>
+  <button id="findclose" title="Close (Esc)">✕</button>
+</div>
+<form class="band" id="prompt" hidden>
+  <span id="prompttitle"></span>
+  <input id="promptinput" spellcheck="false" autocomplete="off">
+  <button type="submit" class="primary" id="promptok">Create</button>
+  <button type="button" id="promptcancel">Cancel</button>
+</form>
+<div id="toast" hidden></div>
+<script src="chrome.js"></script>
+</body>
+</html>

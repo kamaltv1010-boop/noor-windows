@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Page not loaded</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="page" style="text-align:center;padding-top:80px">
+  <div style="font-size:48px">⚠️</div>
+  <h2>This page couldn't load</h2>
+  <p class="hint" id="url"></p>
+  <p class="hint" id="message"></p>
+  <button class="button" id="retry">Try Again</button>
+</div>
+<script>
+  (() => {
+    const params = new URLSearchParams(location.search);
+    const url = params.get("url") || "";
+    document.getElementById("url").textContent = url;
+    document.getElementById("message").textContent = (params.get("message") || "") + (params.get("code") ? ` (${params.get("code")})` : "");
+    document.getElementById("retry").addEventListener("click", () => noor.invoke("nav:go", url));
+  })();
+</script>
+</body>
+</html>

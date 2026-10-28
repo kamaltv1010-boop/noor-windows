@@ -1,0 +1,72 @@
+# Noor لـ Windows 🛡️
+
+متصفح خاص لـ Windows، بنفس الفكرة ديال [تطبيق Noor ديال iPhone](https://github.com/kamaltv1010-boop/Amir): **بروفايلات** كل واحد ببصماته والبيانات ديالو، **حماية ضد البصمات** (Canvas، WebGL، الصوت، ClientRects، الشاشة، البروسيسور)، **حجب المتتبعين**، **HTTPS**، **روابط نقية**، و**جلسة جديدة** بضغطة. مبني بـ Electron (Chromium)، وكيتبنى `.exe` أوتوماتيكياً فـ GitHub Actions.
+
+## التحميل ⬇️
+
+- **Releases**: كل إصدار فيه `Noor-<version>-windows-x64.exe` (portable، بلا تنصيب) و`Noor Setup <version>.exe` (installer).
+- **Actions**: كل push كيبني الملفين وكيحطهم فـ artifact سميتو `Noor-windows` (خاصك تكون مسجّل فـ GitHub باش تحمّلو).
+
+الـ `.exe` ماشي موقّع (code signing)، فـ Windows SmartScreen غادي يسوّل أول مرة: **More info** ← **Run anyway**.
+
+## شنو فيه ✨
+
+- **الملفات الشخصية (Profiles) 👤**: زر «👤 Personal ▾» فالشريط وفصفحة البداية، وقسم فالإعدادات. كل بروفايل عندو الـ cookies والبيانات ديال المواقع ديالو (partition ديال Chromium بوحدو)، السجل ديالو، الـ onglets ديالو، والبصمات ديالو. **ملف شخصي جديد** كيصاوب واحد ويحلو، **Delete** كتمسحو مع كل البيانات ديالو، و**Delete All** كتمسح كلشي ما عدا الأول بضغطة وحدة. المفضلة والإعدادات مشتركين.
+- **الحماية ضد البصمات 🎨**: الصفحات كتشوف Canvas وWebGL وصوت فيهم ضجيج صغير (نفس الطريقة والكود ديال نسخة iPhone: `scripts/protect.js` كيتولّد من `FingerprintProtection.swift`)، قياسات ClientRects مزحزحة شوية، وشاشة وعدد cores ديال PC عادي آخر (دائماً أكبر أو يساوي الشاشة الحقيقية). القيم كتبقى ثابتة فنفس الموقع فنفس البروفايل، وكتتبدل من موقع لآخر. **New** حدا كل حماية كيعطي قيم جديدة، و**Change All** كيبدّل الكل.
+- **Google Chrome 🪟**: المواقع كتشوف Chrome على Windows بنفس الإصدار ديال Chromium اللي فالتطبيق، بلا أثر ديال Electron: الـ user agent، الـ brands ديال `navigator.userAgentData` وديال headers `Sec-CH-UA` (مع Google Chrome)، `chrome.app/csi/loadTimes`، و`navigator.webdriver = false`.
+- **الدروع (Shields) 🛡️**: حجب الملفات ديال المتتبعين من طرف ثالث (Meta، Google Analytics، TikTok…، نفس القائمة ديال iPhone فـ `rules/trackers.json`)، فتح `http://` على `https://` (والرجوع لـ `http://` إلا الموقع ما كيدعمش)، وحذف `fbclid`/`gclid`/`utm_*` من الروابط. الزر 🛡 فشريط العنوان كيبيّن شحال من متتبع تحجب، وكيخليك تطفي الدروع لموقع واحد.
+- **مواقع تسجيل الدخول**: Meta (Instagram، Facebook…)، Google، Apple وMicrosoft كيشوفو الشاشة والـ hardware الحقيقيين (مع الضجيج ديال Canvas/WebGL/الصوت)، بحال نسخة iPhone.
+- **جلسة جديدة 🔥**: كتمسح الـ cookies والبيانات والسجل ديال البروفايل المحلول، كتسد الـ onglets ديالو، وكتعطيه بصمات جديدة. **مسح كل شيء عند الخروج** فالإعدادات: البيانات كتبقى غير فالذاكرة، وكل تشغيل كيبدا بجلسة جديدة.
+- **Onglets خاصة 🕶️**: `Ctrl+Shift+N`. ما كيتسجلوش فالسجل، والبيانات ديالهم كتمشي ملي تسد آخر onglet خاص.
+- **المفضلة والسجل 📚**: ☆ فالشريط، صفحة البداية كتبيّن المفضلة، و`Ctrl+H` كيحل المكتبة.
+- **الوضع الليلي 🌙**، **Zoom**، **بحث فالصفحة** `Ctrl+F`، **Developer Tools** `F12`.
+- **الأذونات**: الكاميرا، الميكرو، الموقع والإشعارات مرفوضين تلقائياً.
+
+## كيفاش خدام ⚙️
+
+- **Electron + Chromium**: نافذة وحدة (`BaseWindow`) فيها شريط (`renderer/chrome.html`) وonglet لكل صفحة (`WebContentsView`).
+- **الحماية**: `scripts/preload.js` كيخدم فكل frame قبل أي script ديال الصفحة (sandboxed، فنفس العالم ديال الصفحة). كيسوّل الـ main process على الإعدادات ديال الصفحة (`noor:page-config`): البذور (seeds) ديال البروفايل، الشاشة، الـ hardware، والـ brands، وكيطبّق `protectPage(window, config)`. الصفحات ديال التطبيق نفسو (`noor://app/…`) كياخدو `window.noor` باش يهضرو مع الـ main process.
+- **البروفايلات**: كل بروفايل عندو partition `persist:noor-<id>` (ملف `settings.json` كيحفظ القائمة، البذور، والـ onglets المفتوحة بمفاتيح `profile.<id>.…`)، وملف سجل بوحدو. الحذف كيمسح البيانات بـ `clearStorageData` وكيحيّد المجلد ديال الـ partition فالتشغيل الجاي.
+- **الدروع**: `session.webRequest.onBeforeRequest` كيحجب الملفات ديال المتتبعين، و`onBeforeSendHeaders` كيصلّح `Sec-CH-UA`. الـ HTTPS والروابط النقية كيتطبقو قبل كل تنقل.
+
+## الفرق مع نسخة iPhone 📱
+
+- ما كاينش «وضع iPad» ولا user agent عشوائي: على PC، المواقع كتشوف Chrome على Windows (أحسن تمويه هو اللي كيشبه أغلب الناس).
+- زادت حماية **Processor & Memory** (`hardwareConcurrency`/`deviceMemory`)، اللي Safari ما كيعطيهاش على iPhone.
+- بلا امتدادات (extensions) وبلا استيراد cookies فهاد النسخة.
+
+## الملفات 📁
+
+| الملف | شنو كيدير |
+|---|---|
+| `main/main.js` | التشغيل: الـ sessions، الـ protocol `noor://`، حجب المتتبعين، الـ headers، الـ IPC |
+| `main/tabs.js` | النافذة، الـ onglets، البروفايلات، الجلسة الجديدة، حالة الشريط |
+| `main/fingerprint.js` | أنواع الحماية، البذور لكل بروفايل، الشاشات والـ hardware |
+| `main/shields.js` | الدروع لكل موقع، قواعد المتتبعين، HTTPS، الروابط النقية، الإحصائيات |
+| `main/useragent.js` | الـ user agent ديال Chrome والـ brands |
+| `main/profiles.js`, `main/history.js`, `main/bookmarks.js`, `main/store.js` | البروفايلات، السجل، المفضلة، الإعدادات |
+| `main/menus.js`, `main/address.js` | القوائم والاختصارات، وشنو كيتحل ملي تكتب فشريط العنوان |
+| `scripts/preload.js`, `scripts/protect.js` | الحماية المحقونة فالصفحات (مولّدين من `FingerprintProtection.swift` ديال iPhone بـ `tools/extract_from_ios.py`) |
+| `scripts/parts/chrome.js` | الجزء الخاص بـ Chromium: `userAgentData` و`chrome.app/csi/loadTimes` |
+| `renderer/` | الشريط، صفحة البداية، الإعدادات، المكتبة، صفحة الخطأ |
+| `rules/trackers.json` | المتتبعين المحجوبين (نفس قائمة iPhone) |
+| `test/` | tests ديال Node (`npm test`) |
+| `tools/smoke-electron.js` | كيشغّل التطبيق بصح وكيتأكد من الأساسيات (Playwright) |
+| `.github/workflows/build.yml` | البناء ديال `.exe` على Windows |
+
+## التطوير 🛠️
+
+```
+npm install
+npm start          # كيشغّل التطبيق
+npm test           # tests
+npm run dist       # كيبني .exe فـ dist/ (على Windows)
+```
+
+باش تجدّد الحماية من كود iPhone:
+
+```
+python3 tools/extract_from_ios.py ../Amir/AmirBrowser/FingerprintProtection.swift
+```
+
+باش تدير إصدار: `git tag v1.0.1 && git push --tags`، والـ workflow كيبني وكيعلّق الـ `.exe` فالـ Release.

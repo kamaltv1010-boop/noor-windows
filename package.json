@@ -1,0 +1,58 @@
+{
+  "name": "noor-browser",
+  "productName": "Noor",
+  "version": "1.0.0",
+  "description": "A private browser for Windows: profiles with their own fingerprints and data, tracker blocking and HTTPS upgrades, like the Noor app for iPhone.",
+  "main": "main/main.js",
+  "license": "MIT",
+  "author": "kamaltv1010-boop",
+  "repository": "github:kamaltv1010-boop/noor-windows",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test \"test/*.test.js\"",
+    "dist": "electron-builder --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "ma.noor.browser",
+    "productName": "Noor",
+    "artifactName": "Noor-${version}-windows-${arch}.${ext}",
+    "files": [
+      "main/**/*",
+      "renderer/**/*",
+      "scripts/**/*",
+      "rules/**/*",
+      "build/icon.*",
+      "package.json"
+    ],
+    "directories": {
+      "buildResources": "build"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Noor"
+    }
+  }
+}
