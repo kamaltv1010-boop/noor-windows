@@ -95,6 +95,10 @@ self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.reques
     csi: typeof chrome !== "undefined" && chrome.csi ? Object.keys(chrome.csi()).join(",") + " " + Function.prototype.toString.call(chrome.csi) : "-",
     cookie: document.cookie, title: document.title,
     toStr: Function.prototype.toString.call(HTMLCanvasElement.prototype.toDataURL),
+    wrongThis: (() => { try { HTMLCanvasElement.prototype.toDataURL.call({}); return "no throw"; } catch (e) { return e.message; } })(),
+    stackThroughWrapper: (() => { try { HTMLCanvasElement.prototype.toDataURL.call({}); } catch (e) { return String(e.stack).split("\\n").length + " frames, preload=" + /preload/.test(e.stack); } })(),
+    stackPlain: (() => { try { null.x; } catch (e) { return String(e.stack).split("\\n").length + " frames"; } })(),
+    getterWrongThis: (() => { try { Object.getOwnPropertyDescriptor(Screen.prototype, "width").get.call({}); return "no throw"; } catch (e) { return e.message; } })(),
     trackerLoaded: document.getElementById("t").naturalWidth > 0,
   }))()`);
   results.headers = { ua: lastHeaders["user-agent"], secChUa: lastHeaders["sec-ch-ua"], platform: lastHeaders["sec-ch-ua-platform"] };
