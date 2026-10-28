@@ -4,7 +4,7 @@
 
 ## التحميل ⬇️
 
-- **Releases**: كل إصدار فيه `Noor-<version>-windows-x64.exe` (portable، بلا تنصيب) و`Noor Setup <version>.exe` (installer).
+- **Releases**: كل إصدار فيه `Noor-<version>-windows-x64-portable.exe` (portable، بلا تنصيب) و`Noor-Setup-<version>-windows-x64.exe` (installer).
 - **Actions**: كل push كيبني الملفين وكيحطهم فـ artifact سميتو `Noor-windows` (خاصك تكون مسجّل فـ GitHub باش تحمّلو).
 
 الـ `.exe` ماشي موقّع (code signing)، فـ Windows SmartScreen غادي يسوّل أول مرة: **More info** ← **Run anyway**.

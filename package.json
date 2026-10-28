@@ -19,7 +19,6 @@
   "build": {
     "appId": "ma.noor.browser",
     "productName": "Noor",
-    "artifactName": "Noor-${version}-windows-${arch}.${ext}",
     "files": [
       "main/**/*",
       "renderer/**/*",
@@ -52,7 +51,11 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Noor"
+      "shortcutName": "Noor",
+      "artifactName": "Noor-Setup-${version}-windows-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Noor-${version}-windows-${arch}-portable.${ext}"
     }
   }
 }
