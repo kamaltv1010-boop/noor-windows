@@ -36,9 +36,12 @@ class Fingerprint {
     return this.profiles.key(`seed.${kind}`);
   }
 
+  /// Every protection is on at first but audio: on a PC the audio
+  /// fingerprint is nearly the same for everyone with the same Chrome, so
+  /// noise there would single this browser out rather than hide it.
   isEnabled(kind) {
     const value = this.store.get(this.enabledKey(kind));
-    return typeof value === "boolean" ? value : true;
+    return typeof value === "boolean" ? value : kind !== "audio";
   }
 
   setEnabled(kind, isOn) {

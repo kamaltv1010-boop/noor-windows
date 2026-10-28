@@ -53,6 +53,38 @@ class Tab {
     this.view.setBackgroundColor("#ffffff");
     this.webContents = this.view.webContents;
     this.watch();
+    this.guardWorkers();
+  }
+
+  /// A page's dedicated workers start without the preload, so a page could
+  /// read the real hardware (or Chromium's brands) there and compare with
+  /// its own window. Each worker of this tab is held before its first line,
+  /// given the protection, and let go. (Service workers get theirs from a
+  /// preload of their own, see main.js; shared workers can't be reached.)
+  guardWorkers() {
+    const wc = this.webContents;
+    try {
+      wc.debugger.attach("1.3");
+    } catch (error) {
+      return;
+    }
+    wc.debugger.on("message", (event, method, params) => {
+      if (method !== "Target.attachedToTarget" || !params || !params.targetInfo) {
+        return;
+      }
+      // Everything attached waits for this; only dedicated workers get the
+      // script, the rest (frames in other processes, service workers…)
+      // just goes on.
+      const session = params.sessionId;
+      const resume = () => wc.debugger.sendCommand("Runtime.runIfWaitingForDebugger", {}, session).catch(() => {});
+      const script = params.targetInfo.type === "worker" && this.browser.workerScript ? this.browser.workerScript(this) : null;
+      if (!script) {
+        resume();
+        return;
+      }
+      wc.debugger.sendCommand("Runtime.evaluate", { expression: script, silent: true }, session).then(resume, resume);
+    });
+    wc.debugger.sendCommand("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }).catch(() => {});
   }
 
   watch() {

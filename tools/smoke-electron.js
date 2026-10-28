@@ -23,7 +23,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 <script>navigator.serviceWorker.register("/sw.js").then((r) => r.update()).catch((e) => { document.title = "SW failed " + e; });</script></body></html>`;
   const CANONICAL_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>Canon</title><link rel="canonical" href="/canonical-clean"></head><body>canon</body></html>`;
 const SW = `self.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
-self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.request)); });`;
+self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.request)); });
+self.addEventListener("message", (event) => { event.ports[0].postMessage({ cores: navigator.hardwareConcurrency, memory: navigator.deviceMemory, brands: navigator.userAgentData ? navigator.userAgentData.brands.map((b) => b.brand).join(",") : "-", toStr: Function.prototype.toString.call(Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, "hardwareConcurrency").get), stack: (() => { try { Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, "hardwareConcurrency").get.call({}); return "no throw"; } catch (e) { return e.message + " | foreign=" + /protect|preload|anonymous/.test(String(e.stack).split("\\n").slice(1).join("\\n")); } })() }); });`;
   const server = http.createServer((req, res) => {
     lastHeaders = req.headers;
     if (req.url.startsWith("/pixel.png")) {
@@ -100,6 +101,13 @@ self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.reques
     stackPlain: (() => { try { null.x; } catch (e) { return String(e.stack).split("\\n").length + " frames"; } })(),
     getterWrongThis: (() => { try { Object.getOwnPropertyDescriptor(Screen.prototype, "width").get.call({}); return "no throw"; } catch (e) { return e.message; } })(),
     trackerLoaded: document.getElementById("t").naturalWidth > 0,
+    worker: await new Promise((resolve) => {
+      const code = "postMessage({ cores: navigator.hardwareConcurrency, memory: navigator.deviceMemory, brands: navigator.userAgentData ? navigator.userAgentData.brands.map((b) => b.brand).join(',') : '-', toStr: Function.prototype.toString.call(Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, 'hardwareConcurrency').get), illegal: (() => { try { Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, 'hardwareConcurrency').get.call({}); return 'no throw'; } catch (e) { return e.message; } })() })";
+      const worker = new Worker(URL.createObjectURL(new Blob([code], { type: "text/javascript" })));
+      const timer = setTimeout(() => resolve("timeout"), 5000);
+      worker.onmessage = (event) => { clearTimeout(timer); resolve(event.data); };
+      worker.onerror = (event) => { clearTimeout(timer); resolve("error " + event.message); };
+    }),
   }))()`);
   results.headers = { ua: lastHeaders["user-agent"], secChUa: lastHeaders["sec-ch-ua"], platform: lastHeaders["sec-ch-ua-platform"] };
   results.tab = await main(() => {
@@ -134,7 +142,14 @@ self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.reques
   await waitLoaded();
   await sleep(500);
   results.serviceWorker = {
-    ...(await inTab(`(async () => ({ title: document.title, controlled: Boolean(navigator.serviceWorker.controller), imageLoaded: document.getElementById("i").naturalWidth > 0 }))()`)),
+    ...(await inTab(`(async () => ({ title: document.title, controlled: Boolean(navigator.serviceWorker.controller), imageLoaded: document.getElementById("i").naturalWidth > 0,
+      pageCores: navigator.hardwareConcurrency,
+      worker: await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve("timeout"), 5000);
+        const channel = new MessageChannel();
+        channel.port1.onmessage = (event) => { clearTimeout(timer); resolve(event.data); };
+        navigator.serviceWorker.controller.postMessage("values", [channel.port2]);
+      }) }))()`)),
     trackersBlocked: await main(() => global.noorTest.browser.selected.trackersBlocked),
   };
 

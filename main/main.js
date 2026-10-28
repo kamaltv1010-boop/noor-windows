@@ -14,6 +14,7 @@ const { ENGINES, APP_ORIGIN, isAppPage, isWebPage } = require("./address");
 const { userAgent, chromeVersion, brands, parseBrands, formatBrands } = require("./useragent");
 
 const RENDERER = path.join(__dirname, "..", "renderer");
+const SCRIPTS = path.join(__dirname, "..", "scripts");
 /// What pages may ask for without a question. The rest (camera,
 /// microphone, location, notifications…) is refused.
 const ALLOWED_PERMISSIONS = new Set(["fullscreen", "pointerLock", "clipboard-sanitized-write", "window-management"]);
@@ -99,6 +100,7 @@ const setUpSession = (ses) => {
   ses.protocol.handle("noor", serveAppPage);
   ses.setPermissionRequestHandler((webContents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
   ses.setPermissionCheckHandler((webContents, permission) => ALLOWED_PERMISSIONS.has(permission));
+  guardServiceWorkers(ses);
   ses.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {
     if (details.resourceType === "mainFrame" || !context) {
       return callback({});
@@ -145,16 +147,9 @@ const fullVersionList = () => brandList.map((b) => ({
   version: /^Not/.test(b.brand) ? `${b.version}.0.0.0` : process.versions.chrome,
 }));
 
-/// What a page's script gets: the fingerprint for the page, and Chrome's
-/// brands.
-const pageConfig = (event) => {
-  const tab = browser ? browser.tabFor(event.sender) : null;
-  let top = "";
-  try {
-    top = (event.senderFrame && event.senderFrame.top && event.senderFrame.top.url) || event.sender.getURL();
-  } catch (error) {
-    top = event.sender.getURL();
-  }
+/// What a page's script gets for the page at `top`: the fingerprint for
+/// it, and Chrome's brands.
+const configFor = (top) => {
   const protections = context.shields.areUp(top);
   const realDevice = Shields.isSignInSite(top);
   const config = context.fingerprint.config({ protections, realDevice });
@@ -163,8 +158,88 @@ const pageConfig = (event) => {
     fullVersionList: fullVersionList(),
     fullVersion: process.versions.chrome,
   };
+  return config;
+};
+
+const pageConfig = (event) => {
+  const tab = browser ? browser.tabFor(event.sender) : null;
+  let top = "";
+  try {
+    top = (event.senderFrame && event.senderFrame.top && event.senderFrame.top.url) || event.sender.getURL();
+  } catch (error) {
+    top = event.sender.getURL();
+  }
+  const config = configFor(top);
   config.tabId = tab ? tab.id : null;
   return config;
+};
+
+/// The config for a worker of the page at `url` (a dedicated worker's
+/// page, or a service worker's own address): the page's, with its host,
+/// since a worker held before its first line has no location yet (and
+/// reading it ends the renderer), and the name its script goes by, the
+/// file the protection comes from, as the frames' preload is named, so its
+/// frames in an error's stack are known and taken out.
+const workerConfig = (url) => {
+  if (!context || !isWebPage(url)) {
+    return null;
+  }
+  const config = configFor(url);
+  try {
+    config.host = new URL(url).hostname;
+  } catch (error) {
+    config.host = "";
+  }
+  config.scriptName = path.join(SCRIPTS, "protect.js");
+  return config;
+};
+
+/// The protection as a script for a dedicated worker of a tab: protect.js
+/// with the worker's global as the window, and the tab's page config.
+let protectSource = null;
+const workerScript = (tab) => {
+  if (protectSource === null) {
+    try {
+      protectSource = fs.readFileSync(path.join(SCRIPTS, "protect.js"), "utf8").replace("module.exports = protectPage;", "");
+    } catch (error) {
+      protectSource = "";
+    }
+  }
+  const config = protectSource ? workerConfig(tab.webContents.isDestroyed() ? "" : tab.webContents.getURL()) : null;
+  if (!config) {
+    return null;
+  }
+  return `(() => {\n${protectSource}\ntry { protectPage(self, ${JSON.stringify(config)}); } catch (e) {}\n})();\n//# sourceURL=${config.scriptName}`;
+};
+
+/// A session's service workers get the protection from their preload (see
+/// scripts/parts/sw-preload-glue.js), which asks each worker's own channel
+/// for its config as the worker starts; the channel is answered from here.
+const guardedWorkers = new WeakSet();
+const guardServiceWorkers = (ses) => {
+  try {
+    ses.registerPreloadScript({ type: "service-worker", filePath: path.join(SCRIPTS, "sw-preload.js") });
+  } catch (error) {
+    return;
+  }
+  ses.serviceWorkers.on("running-status-changed", ({ versionId, runningStatus }) => {
+    if (runningStatus !== "starting") {
+      return;
+    }
+    let worker = null;
+    try {
+      worker = ses.serviceWorkers.getWorkerFromVersionID(versionId);
+    } catch (error) {
+      return;
+    }
+    if (!worker || guardedWorkers.has(worker)) {
+      return;
+    }
+    guardedWorkers.add(worker);
+    worker.ipc.on("noor:sw-config", (event, url) => {
+      event.returnValue = workerConfig(typeof url === "string" ? url : "");
+    });
+  });
 };
 
 const trusted = (event) => {
@@ -333,6 +408,7 @@ app.whenReady().then(() => {
   app.on("session-created", setUpSession);
   setUpSession(session.defaultSession);
 
+  Browser.prototype.workerScript = workerScript;
   browser = new Browser(context);
   browser.menus = new Menus(browser);
   browser.toggleBookmark = () => {

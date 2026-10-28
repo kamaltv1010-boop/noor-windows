@@ -56,14 +56,16 @@ const protectPage = (window, config) => {
     })();
     const isOwnFrame = (line) => ownLocation ? line.includes(ownLocation) : /^[^@]*@$/.test(line.trim());
     // Only the innermost frames can be this script's: those just after the
-    // message (V8 shows no frame for the native function itself; WebKit
-    // shows it as "[native code]", kept).
+    // message and the frames of the native function itself, when the engine
+    // shows one (V8 shows a built-in as "at Function.toString (<anonymous>)",
+    // with no line; WebKit as "toString@[native code]").
+    const isNativeFrame = (line) => /\[native code\]/.test(line) || /\(<anonymous>\)\s*$/.test(line) || /^\s+at <anonymous>\s*$/.test(line);
     const scrubbed = (error) => {
       try {
         if (error && typeof error === "object" && typeof error.stack === "string") {
           const lines = error.stack.split("\n");
           let first = 1;
-          while (first < lines.length && /\[native code\]/.test(lines[first])) first++;
+          while (first < lines.length && isNativeFrame(lines[first])) first++;
           let last = first;
           while (last < lines.length && isOwnFrame(lines[last])) last++;
           if (last > first) {
@@ -241,15 +243,33 @@ const protect = (window) => {
     // has no "arguments" or "caller" of its own; it belongs to this window
     // like the built-in, and gets the built-in's own properties (name and
     // length), in the same order, and its toString().
+    // Runs a replacement's `impl` as `self` with `args`: an error it throws
+    // loses this script's frames (see scrubbed), and since the engine keeps
+    // a stack only to its limit, the limit is raised by this script's three
+    // frames for the call, so a deep stack keeps as many of the page's
+    // frames as in a plain browser. A page's own limit is kept.
+    const Err = window.Error;
+    const OWN_FRAMES = 3;
+    const run = (impl, self, args) => {
+      let limit;
+      try {
+        limit = Err.stackTraceLimit;
+        if (typeof limit === "number" && limit > 0 && limit < Infinity) Err.stackTraceLimit = limit + OWN_FRAMES; else limit = undefined;
+      } catch (e) { limit = undefined; }
+      try {
+        return impl.apply(self, args);
+      } catch (error) {
+        throw scrubbed(error);
+      } finally {
+        if (limit !== undefined) { try { if (Err.stackTraceLimit === limit + OWN_FRAMES) Err.stackTraceLimit = limit; } catch (e) {} }
+      }
+    };
+
     const lookalike = (original, impl) => {
       const replacement = {
         [original.name]() {
           "use strict"; /* noor lookalike */
-          try {
-            return impl.apply(this, arguments);
-          } catch (error) {
-            throw scrubbed(error);
-          }
+          return run(impl, this, arguments);
         },
       }[original.name];
       setPrototypeOf(replacement, window.Function.prototype);
@@ -278,11 +298,7 @@ const protect = (window) => {
       const fn = {
         [name]() {
           "use strict"; /* noor lookalike */
-          try {
-            return impl.apply(this, arguments);
-          } catch (error) {
-            throw scrubbed(error);
-          }
+          return run(impl, this, arguments);
         },
       }[name];
       setPrototypeOf(fn, window.Function.prototype);
@@ -318,16 +334,16 @@ const protect = (window) => {
     // Replaces a native property's getter, keeping the enumerability and
     // making the getter look like the native one: it still refuses a wrong
     // `this` ("Illegal invocation") as the native getter does, since a site
-    // calls getters on the wrong object to find replaced ones. A property
-    // the browser doesn't have is left missing.
+    // calls getters on the wrong object to find replaced ones, and `get`
+    // is given the native value. A property the browser doesn't have is
+    // left missing.
     const defineGetter = (object, name, get) => {
       const descriptor = getOwnPropertyDescriptor(object, name);
       if (!descriptor || !descriptor.get) return;
       const original = descriptor.get;
       defineProperty(object, name, {
         get: lookalike(original, function () {
-          original.call(this);
-          return get.call(this);
+          return get.call(this, original.call(this));
         }),
         set: descriptor.set,
         configurable: true,
@@ -341,7 +357,7 @@ const protect = (window) => {
     // on every site, so it can't follow a visitor from one to the next. A
     // cross-origin frame reads the top page's origin from ancestorOrigins,
     // or failing that its host from the referrer; last comes its own host.
-    const host = (() => {
+    const host = config.host != null ? String(config.host) : (() => {
       try { if (window.top.location.hostname) return window.top.location.hostname; } catch (e) {}
       try {
         const origins = window.location.ancestorOrigins;
@@ -662,21 +678,26 @@ if (config.seeds.audio != null) { try {
 } catch (e) {} }
 if (config.seeds.clientRects != null) { try {
         // ClientRects: the edges of the boxes getBoundingClientRect() and
-        // getClientRects() report move by 0.00001 to 0.00002 pixels, far below
-        // anything visible, but it changes the hashes fingerprinting scripts
-        // take of these sizes. An edge is moved by its own value, so measuring
-        // twice, or an edge two boxes share, still agrees; zero stays zero, so
-        // hidden elements still measure 0. The browser returns new rects on
-        // every call, so they are changed in place and keep their types.
+        // getClientRects() report move by 0.000015 to 0.00006 pixels, far
+        // below anything visible, but it changes the hashes fingerprinting
+        // scripts take of these sizes. An edge is moved by its own value, so
+        // measuring twice, or an edge two boxes share, still agrees; zero
+        // stays zero, so hidden elements still measure 0. The move is a
+        // multiple of 1/65536 of a pixel, exact in binary like the layout's
+        // own 1/64 steps, so right - left is still width to the last bit, as
+        // a site checks; a value that isn't a layout step (a rotated box)
+        // is left as it is, since such boxes are checked against known
+        // sizes. The browser returns new rects on every call, so they are
+        // changed in place and keep their types.
         {
           const rectsSeed = forSite(config.seeds.clientRects);
           const bits = new Float64Array(1);
           const words = new Uint32Array(bits.buffer);
           const shift = (value) => {
-            if (value === 0 || !isFinite(value)) return value;
+            if (value === 0 || !isFinite(value) || (value * 64) % 1 !== 0) return value;
             bits[0] = value;
             const h = mix(mix(rectsSeed ^ words[1]) ^ words[0]);
-            return value + (h & 1 ? 1e-5 : -1e-5) * (1 + (h >>> 1) / 2147483648);
+            return value + (h & 1 ? 1 : -1) * (1 + ((h >>> 1) & 3)) / 65536;
           };
           const shiftRect = (rect) => {
             const left = shift(rect.left);
@@ -712,14 +733,76 @@ if (config.screen) { try {
           for (const name of ["width", "availWidth"]) defineGetter(window.Screen.prototype, name, () => width);
           defineGetter(window.Screen.prototype, "height", () => height);
           defineGetter(window.Screen.prototype, "availHeight", () => height - 48);
+
+          // Media queries about the screen (device-width, device-height,
+          // device-aspect-ratio, and the pixel density when it is changed)
+          // are answered for the screen pages see, as a site compares them
+          // with screen.width. Each such feature is replaced in the query
+          // by one that is always true or never, and the list still shows
+          // the query as written.
+          const written = new WeakMap();
+          const FEATURE = /\(\s*(min-|max-)?(device-width|device-height|device-aspect-ratio|resolution|-webkit-(?:min-|max-)?device-pixel-ratio)\s*:\s*([^()]*?)\s*\)/gi;
+          const number = (text, feature) => {
+            const value = String(text).trim();
+            let m;
+            if ((m = value.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/))) return Number(m[1]) / Number(m[2]);
+            if ((m = value.match(/^(\d+(?:\.\d+)?)\s*(px|dppx|x|dpi|dpcm)?$/i))) {
+              const n = Number(m[1]);
+              const unit = (m[2] || "").toLowerCase();
+              return unit === "dpi" ? n / 96 : unit === "dpcm" ? n / 37.8 : n;
+            }
+            return NaN;
+          };
+          const dprIsChanged = () => {
+            const descriptor = getOwnPropertyDescriptor(window, "devicePixelRatio");
+            return Boolean(descriptor && descriptor.get && originals.has(descriptor.get));
+          };
+          const answer = (range, feature, text) => {
+            const name = feature.toLowerCase();
+            let actual;
+            let prefix = (range || "").toLowerCase();
+            if (name === "device-width") actual = width;
+            else if (name === "device-height") actual = height;
+            else if (name === "device-aspect-ratio") actual = width / height;
+            else {
+              if (!dprIsChanged()) return null;
+              actual = window.devicePixelRatio;
+              if (name.indexOf("min-") !== -1) prefix = "min-";
+              else if (name.indexOf("max-") !== -1) prefix = "max-";
+            }
+            const wanted = number(text, name);
+            if (!isFinite(wanted)) return null;
+            if (prefix === "min-") return actual >= wanted;
+            if (prefix === "max-") return actual <= wanted;
+            return name === "device-aspect-ratio" ? Math.abs(actual - wanted) < 1e-6 : actual === wanted;
+          };
+          const rewrite = (query) => String(query).replace(FEATURE, (whole, range, feature, text) => {
+            const result = answer(range, feature, text);
+            return result === null ? whole : result ? "(min-width: 0px)" : "(min-width: 99999px)";
+          });
+          define(window, "matchMedia", (original) => function (query) {
+            const text = arguments.length ? String(query) : "";
+            const rewritten = rewrite(text);
+            const list = original.call(this, rewritten);
+            if (rewritten !== text) {
+              try { written.set(list, text); } catch (e) {}
+            }
+            return list;
+          });
+          if (window.MediaQueryList) {
+            defineGetter(window.MediaQueryList.prototype, "media", function (value) {
+              return written.get(this) || value;
+            });
+          }
         }
 
 } catch (e) {} }
 if (config.hardware) { try {
 // Hardware: pages see a common PC's core count and memory instead of
-// this one's.
-defineGetter(window.Navigator.prototype, "hardwareConcurrency", () => config.hardware.cores);
-defineGetter(window.Navigator.prototype, "deviceMemory", () => config.hardware.memory);
+// this one's, in workers too.
+const navigatorProto = (window.Navigator || window.WorkerNavigator).prototype;
+defineGetter(navigatorProto, "hardwareConcurrency", () => config.hardware.cores);
+defineGetter(navigatorProto, "deviceMemory", () => config.hardware.memory);
 } catch (e) {} }
 if (config.chrome) { try {
 // Chrome: pages see Google Chrome's brands in navigator.userAgentData, as
@@ -796,6 +879,61 @@ if (config.chrome) { try {
     });
   }
 }
+
+// Notifications: pages see the permission as not asked yet, as in a fresh
+// Chrome (the app refuses them, which pages would see as a user who said
+// no to every site), and asking leaves it so.
+{
+  const Notification = window.Notification;
+  if (Notification) {
+    defineGetter(Notification, "permission", () => "default");
+    define(Notification, "requestPermission", (original) => function (callback) {
+      if (typeof callback === "function") {
+        try { callback("default"); } catch (e) {}
+      }
+      return window.Promise.resolve("default");
+    });
+  }
+  const status = window.PermissionStatus && window.PermissionStatus.prototype;
+  if (status) {
+    defineGetter(status, "state", function (value) {
+      return this.name === "notifications" ? "prompt" : value;
+    });
+  }
+}
+
+// Web Share, which Chrome on Windows has: nothing here to share with, so a
+// share is refused as a user who closed the dialog.
+{
+  const proto = window.Navigator && window.Navigator.prototype;
+  if (proto && !("share" in proto) && window.DOMException) {
+    const checkThis = (self) => {
+      if (!(self instanceof window.Navigator)) throw new window.TypeError("Illegal invocation");
+    };
+    const shareable = (data) => Boolean(data && typeof data === "object" && (
+      typeof data.title === "string" || typeof data.text === "string" || data.url !== undefined || (data.files && data.files.length)));
+    const add = (name, fn) => defineProperty(proto, name, { value: fn, writable: true, enumerable: true, configurable: true });
+    add("canShare", method("canShare", 0, function (data) {
+      checkThis(this);
+      if (!shareable(data)) return false;
+      if (data.url !== undefined) {
+        try { new window.URL(String(data.url), window.location.href); } catch (e) { return false; }
+      }
+      return true;
+    }));
+    add("share", method("share", 0, function (data) {
+      checkThis(this);
+      if (!shareable(data)) {
+        return window.Promise.reject(new window.TypeError("Failed to execute 'share' on 'Navigator': Must specify at least one of title, text, url, or files"));
+      }
+      const active = window.navigator.userActivation && window.navigator.userActivation.isActive;
+      if (!active) {
+        return window.Promise.reject(new window.DOMException("Failed to execute 'share' on 'Navigator': Must be handling a user gesture to perform a share request.", "NotAllowedError"));
+      }
+      return window.Promise.reject(new window.DOMException("Share canceled", "AbortError"));
+    }));
+  }
+}
 } catch (e) {} }
 try {
     // WebKit runs this script in every frame that loads a page, but not in
@@ -804,9 +942,10 @@ try {
     // untouched built-ins, and could read the real fingerprint through them,
     // or compare them with its own and notice the protection. Such windows
     // are protected from here: when the page reaches a frame's through
-    // contentWindow or contentDocument, soon after a frame is added to the
-    // document, and when window.open returns one. Windows that load a page
-    // get the script from WebKit, and one protected before is left as it is.
+    // contentWindow or contentDocument, as a frame is added to the document
+    // (and soon after, for the ways not caught), and when window.open
+    // returns one. Windows that load a page get the script from WebKit, and
+    // one protected before is left as it is.
     {
       const protectWindow = (other) => {
         try {
@@ -850,6 +989,63 @@ try {
       }
       if (owners.length) {
         const names = ["iframe", "frame", "object"];
+        // A frame a page adds and reaches at once through window[index]
+        // (as a fingerprinting script does, around the getters above) would
+        // be untouched until the observer below runs, so the ways a page
+        // adds nodes protect the frames they add before they return.
+        const selector = names.join(",");
+        const framesIn = (node) => {
+          const found = [];
+          try {
+            if (!node || (node.nodeType !== 1 && node.nodeType !== 11)) return found;
+            if (node.nodeType === 1 && names.indexOf(node.localName) !== -1) found.push(node);
+            if (node.firstElementChild) {
+              const list = node.querySelectorAll(selector);
+              for (let i = 0; i < list.length; i++) found.push(list[i]);
+            }
+          } catch (e) {}
+          return found;
+        };
+        const hookInsert = (proto, name, pick) => {
+          if (!proto) return;
+          define(proto, name, (original) => function () {
+            const pending = [];
+            try {
+              for (const node of pick(arguments)) for (const frame of framesIn(node)) pending.push(frame);
+            } catch (e) {}
+            const result = original.apply(this, arguments);
+            for (const frame of pending) protectFrame(frame);
+            return result;
+          });
+        };
+        const hookHTML = (proto, name) => {
+          const descriptor = proto && getOwnPropertyDescriptor(proto, name);
+          if (!descriptor || !descriptor.set) return;
+          defineProperty(proto, name, {
+            get: descriptor.get,
+            set: lookalike(descriptor.set, function (value) {
+              descriptor.set.call(this, value);
+              for (const frame of framesIn(this)) protectFrame(frame);
+            }),
+            configurable: true,
+            enumerable: descriptor.enumerable,
+          });
+        };
+        const first = (args) => [args[0]];
+        const all = (args) => args;
+        for (const name of ["appendChild", "insertBefore", "replaceChild"]) hookInsert(window.Node.prototype, name, first);
+        for (const proto of [window.Element.prototype, window.Document.prototype, window.DocumentFragment.prototype]) {
+          for (const name of ["append", "prepend", "replaceChildren"]) hookInsert(proto, name, all);
+        }
+        for (const name of ["before", "after", "replaceWith"]) hookInsert(window.Element.prototype, name, all);
+        hookInsert(window.Element.prototype, "insertAdjacentElement", (args) => [args[1]]);
+        define(window.Element.prototype, "insertAdjacentHTML", (original) => function () {
+          const result = original.apply(this, arguments);
+          for (const frame of framesIn(this.parentNode || this)) protectFrame(frame);
+          return result;
+        });
+        hookHTML(window.Element.prototype, "innerHTML");
+        hookHTML(window.ShadowRoot && window.ShadowRoot.prototype, "innerHTML");
         try {
           new window.MutationObserver((records) => {
             for (const record of records) {

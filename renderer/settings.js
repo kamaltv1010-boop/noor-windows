@@ -3,7 +3,7 @@
   const KIND_TITLES = {
     canvas: ["Canvas", "Drawings get noise a site can't tell from the real thing."],
     webGL: ["WebGL", "3D drawings get the same noise."],
-    audio: ["Audio", "Sound processing gets noise."],
+    audio: ["Audio", "Sound processing gets noise. Off at first: on a PC this value is nearly the same for everyone with the same Chrome, so noise would stand out."],
     clientRects: ["ClientRects", "Measured sizes of elements shift slightly."],
     screen: ["Screen Size", "Sites see another common PC screen."],
     hardware: ["Processor & Memory", "Sites see another common core count."],

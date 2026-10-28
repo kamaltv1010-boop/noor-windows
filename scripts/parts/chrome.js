@@ -72,3 +72,58 @@
     });
   }
 }
+
+// Notifications: pages see the permission as not asked yet, as in a fresh
+// Chrome (the app refuses them, which pages would see as a user who said
+// no to every site), and asking leaves it so.
+{
+  const Notification = window.Notification;
+  if (Notification) {
+    defineGetter(Notification, "permission", () => "default");
+    define(Notification, "requestPermission", (original) => function (callback) {
+      if (typeof callback === "function") {
+        try { callback("default"); } catch (e) {}
+      }
+      return window.Promise.resolve("default");
+    });
+  }
+  const status = window.PermissionStatus && window.PermissionStatus.prototype;
+  if (status) {
+    defineGetter(status, "state", function (value) {
+      return this.name === "notifications" ? "prompt" : value;
+    });
+  }
+}
+
+// Web Share, which Chrome on Windows has: nothing here to share with, so a
+// share is refused as a user who closed the dialog.
+{
+  const proto = window.Navigator && window.Navigator.prototype;
+  if (proto && !("share" in proto) && window.DOMException) {
+    const checkThis = (self) => {
+      if (!(self instanceof window.Navigator)) throw new window.TypeError("Illegal invocation");
+    };
+    const shareable = (data) => Boolean(data && typeof data === "object" && (
+      typeof data.title === "string" || typeof data.text === "string" || data.url !== undefined || (data.files && data.files.length)));
+    const add = (name, fn) => defineProperty(proto, name, { value: fn, writable: true, enumerable: true, configurable: true });
+    add("canShare", method("canShare", 0, function (data) {
+      checkThis(this);
+      if (!shareable(data)) return false;
+      if (data.url !== undefined) {
+        try { new window.URL(String(data.url), window.location.href); } catch (e) { return false; }
+      }
+      return true;
+    }));
+    add("share", method("share", 0, function (data) {
+      checkThis(this);
+      if (!shareable(data)) {
+        return window.Promise.reject(new window.TypeError("Failed to execute 'share' on 'Navigator': Must specify at least one of title, text, url, or files"));
+      }
+      const active = window.navigator.userActivation && window.navigator.userActivation.isActive;
+      if (!active) {
+        return window.Promise.reject(new window.DOMException("Failed to execute 'share' on 'Navigator': Must be handling a user gesture to perform a share request.", "NotAllowedError"));
+      }
+      return window.Promise.reject(new window.DOMException("Share canceled", "AbortError"));
+    }));
+  }
+}
