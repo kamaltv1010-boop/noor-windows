@@ -19,6 +19,13 @@ const NIGHT_CSS = `
 
 let nextTabId = 1;
 
+/// Whether two addresses are on the same site (host, "www." aside).
+const sameSite = (a, b) => {
+  const hostA = (hostOf(a) || "").replace(/^www\./, "");
+  const hostB = (hostOf(b) || "").replace(/^www\./, "");
+  return Boolean(hostA) && (hostA === hostB || hostA.endsWith("." + hostB) || hostB.endsWith("." + hostA));
+};
+
 /// A tab: a web view in its profile's partition (or the private one), and
 /// what the toolbar shows of it.
 class Tab {
@@ -38,6 +45,9 @@ class Tab {
     this.upgradedHosts = new Set();
     /// Set when settings changed while the tab wasn't shown.
     this.needsReload = false;
+    /// The address the page gives itself (its canonical link), if on the
+    /// same site: what a bookmark of it keeps.
+    this.canonicalURL = null;
     this.nightKey = null;
     this.view = new WebContentsView({ webPreferences: webPreferences || browser.webPreferences(partition) });
     this.view.setBackgroundColor("#ffffff");
@@ -61,6 +71,7 @@ class Tab {
       if (main && !same) {
         this.url = details.url || url;
         this.title = "";
+        this.canonicalURL = null;
         this.trackersBlocked = 0;
         this.changed();
       }
@@ -97,7 +108,10 @@ class Tab {
       }
     });
     wc.on("did-fail-load", (event, code, description, url, isMainFrame) => this.failed(code, description, url, isMainFrame));
-    wc.on("dom-ready", () => this.browser.applyNightMode(this));
+    wc.on("dom-ready", () => {
+      this.browser.applyNightMode(this);
+      this.readCanonical();
+    });
     wc.on("context-menu", (event, params) => this.browser.menus.page(this, params));
     wc.on("enter-html-full-screen", () => this.browser.setFullScreen(true));
     wc.on("leave-html-full-screen", () => this.browser.setFullScreen(false));
@@ -111,6 +125,29 @@ class Tab {
 
   changed() {
     this.browser.pushState();
+  }
+
+  /// Reads the page's canonical link, when it points to the same site.
+  readCanonical() {
+    if (!isWebPage(this.url) || this.webContents.isDestroyed()) {
+      this.canonicalURL = null;
+      return;
+    }
+    const code = "(() => { const link = document.querySelector('link[rel=\"canonical\"]'); return link && link.href ? String(link.href) : \"\"; })()";
+    this.webContents.executeJavaScript(code, true).then((href) => {
+      this.canonicalURL = isWebPage(href) && sameSite(href, this.url) ? href : null;
+      this.changed();
+    }).catch(() => {
+      this.canonicalURL = null;
+    });
+  }
+
+  /// What a bookmark of this page keeps: the page's own canonical
+  /// address, or the address without tracking codes. The address of the
+  /// moment (a sign-up flow's, a campaign's) would bring the page back to
+  /// that moment, and tell the site where the visit came from.
+  get bookmarkURL() {
+    return this.canonicalURL || this.browser.shields.clean(this.url) || this.url;
   }
 
   visited(url) {
@@ -774,7 +811,7 @@ class Browser {
       site,
       shieldsUp: site ? this.shields.areUp(url) : true,
       trackersBlocked: active ? active.trackersBlocked : 0,
-      bookmarked: Boolean(url && this.bookmarks.contains(url)),
+      bookmarked: Boolean(url && (this.bookmarks.contains(url) || this.bookmarks.contains(active.bookmarkURL))),
       profile: { id: this.profile.id, name: this.profile.name },
       profiles: this.profiles.all(),
       stats: this.stats.toJSON(),

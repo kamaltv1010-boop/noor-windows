@@ -21,7 +21,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
   const SW_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>SW</title></head><body><img id="i" src="/pixel.png?1">
 <script>navigator.serviceWorker.register("/sw.js").then((r) => r.update()).catch((e) => { document.title = "SW failed " + e; });</script></body></html>`;
-  const SW = `self.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+  const CANONICAL_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>Canon</title><link rel="canonical" href="/canonical-clean"></head><body>canon</body></html>`;
+const SW = `self.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.request)); });`;
   const server = http.createServer((req, res) => {
     lastHeaders = req.headers;
@@ -37,7 +38,7 @@ self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.reques
     }
     res.setHeader("content-type", "text/html");
     res.setHeader("cache-control", "no-store");
-    res.end(req.url.startsWith("/sw") ? SW_PAGE : req.url.startsWith("/quiet") ? QUIET : PAGE);
+    res.end(req.url.startsWith("/canonical") ? CANONICAL_PAGE : req.url.startsWith("/sw") ? SW_PAGE : req.url.startsWith("/quiet") ? QUIET : PAGE);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}/`;
@@ -132,6 +133,18 @@ self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.reques
     ...(await inTab(`(async () => ({ title: document.title, controlled: Boolean(navigator.serviceWorker.controller), imageLoaded: document.getElementById("i").naturalWidth > 0 }))()`)),
     trackersBlocked: await main(() => global.noorTest.browser.selected.trackersBlocked),
   };
+
+  // A bookmark keeps the page's canonical address, not the moment's.
+  await open(base + "canonical?reg_splash=1&fbclid=abc");
+  await sleep(500);
+  results.bookmark = await main(() => {
+    const browser = global.noorTest.browser;
+    const saved = browser.toggleBookmark();
+    const list = global.noorTest.context.bookmarks.all().map((b) => b.url);
+    const state = browser.state();
+    browser.toggleBookmark();
+    return { saved, list, starOn: state.bookmarked, left: global.noorTest.context.bookmarks.all().length };
+  });
 
   // A favorite opened from the start page lands in the same tab.
   await main((electron, url) => { global.noorTest.context.bookmarks.add("Quiet", url); }, base + "quiet-fav");

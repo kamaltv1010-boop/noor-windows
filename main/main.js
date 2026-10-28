@@ -340,7 +340,10 @@ app.whenReady().then(() => {
     if (!tab || !isWebPage(tab.url)) {
       return false;
     }
-    const saved = bookmarks.toggle(tab.title, tab.url);
+    const url = tab.bookmarkURL;
+    const saved = bookmarks.contains(tab.url) && url !== tab.url
+      ? (bookmarks.remove(tab.url), false)
+      : bookmarks.toggle(tab.title, url);
     browser.toast(saved ? "Bookmark added" : "Bookmark removed");
     browser.pushState();
     return saved;
