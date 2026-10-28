@@ -4,7 +4,7 @@
     canvas: ["Canvas", "Drawings get noise a site can't tell from the real thing."],
     webGL: ["WebGL", "3D drawings get the same noise."],
     audio: ["Audio", "Sound processing gets noise. Off at first: on a PC this value is nearly the same for everyone with the same Chrome, so noise would stand out."],
-    clientRects: ["ClientRects", "Measured sizes of elements shift slightly."],
+    clientRects: ["ClientRects", "Measured sizes of elements shift slightly. Off at first: on a PC these sizes are the same for everyone with the same Windows and fonts, so a shift would stand out."],
     screen: ["Screen Size", "Sites see another common PC screen."],
     hardware: ["Processor & Memory", "Sites see another common core count."],
   };
@@ -109,6 +109,11 @@
       sites.append(row(site, "Shields down", button("Turn On", "secondary", () => noor.invoke("shields:allow", site).then(apply))));
     }
 
+    $("timezonehint").textContent = settings.timezoneFromIP
+      ? (settings.timezone
+        ? `Pages see ${settings.timezone}, the time zone where your connection is (a VPN's, when one is on), as a visitor from there would.`
+        : "Pages see the time zone where your connection is (a VPN's, when one is on). It couldn't be found yet; pages see this PC's for now.")
+      : "Pages see this PC's time zone. On, they see the one where your connection is (a VPN's, when one is on).";
     $("version").textContent = settings.version;
     $("chromium").textContent = `${settings.chromium} (Electron ${settings.electron})`;
   };

@@ -51,11 +51,15 @@ test("seeds are per profile", () => {
   assert.equal(fingerprint.seed("canvas"), first);
 });
 
-test("config: everything with shields up (audio off at first), nothing with shields down, real device on sign-in sites", () => {
+test("config: everything with shields up (audio and ClientRects off at first), nothing with shields down, real device on sign-in sites", () => {
   const { fingerprint } = make();
   assert.equal(fingerprint.isEnabled("audio"), false);
+  assert.equal(fingerprint.isEnabled("clientRects"), false);
+  assert.equal(fingerprint.isEnabled("canvas"), true);
   assert.equal(fingerprint.config().seeds.audio, null);
+  assert.equal(fingerprint.config().seeds.clientRects, null);
   fingerprint.setEnabled("audio", true);
+  fingerprint.setEnabled("clientRects", true);
   const full = fingerprint.config();
   for (const kind of ["canvas", "webGL", "audio", "clientRects"]) {
     assert.ok(Number.isInteger(full.seeds[kind]));

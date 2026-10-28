@@ -8,6 +8,7 @@ const { Profiles } = require("./profiles");
 const { Fingerprint, KINDS } = require("./fingerprint");
 const { Shields, Stats } = require("./shields");
 const { Bookmarks } = require("./bookmarks");
+const { Timezone } = require("./timezone");
 const { Browser } = require("./tabs");
 const { Menus } = require("./menus");
 const { ENGINES, APP_ORIGIN, isAppPage, isWebPage } = require("./address");
@@ -269,6 +270,8 @@ const settingsSnapshot = () => ({
   cleanLinks: context.shields.cleanLinksEnabled(),
   clearOnQuit: browser.clearOnQuit(),
   nightMode: browser.nightMode,
+  timezoneFromIP: context.timezone.enabled(),
+  timezone: context.timezone.current,
   protections: Object.fromEntries(KINDS.map((kind) => [kind, context.fingerprint.isEnabled(kind)])),
   values: {
     screen: context.fingerprint.screen(),
@@ -328,6 +331,8 @@ const registerIPC = () => {
       context.store.set(key, key === "searchEngine" ? String(value) : Boolean(value));
     } else if (key === "nightMode") {
       browser.setNightMode(Boolean(value));
+    } else if (key === "timezoneFromIP") {
+      context.timezone.setEnabled(Boolean(value));
     } else if (key.startsWith("protection.") && KINDS.includes(key.slice("protection.".length))) {
       context.fingerprint.setEnabled(key.slice("protection.".length), Boolean(value));
     } else {
@@ -359,7 +364,7 @@ const registerIPC = () => {
   handle("stats:reset", () => { context.stats.reset(); browser.pushState(); return context.stats.toJSON(); });
 };
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const userData = app.getPath("userData");
   const store = new Store(path.join(userData, "settings.json"));
 
@@ -391,7 +396,8 @@ app.whenReady().then(() => {
   const shields = new Shields(store, rules);
   const stats = new Stats(store);
   const bookmarks = new Bookmarks(path.join(userData, "bookmarks.json"));
-  context = { store, profiles, fingerprint, shields, stats, bookmarks, userData };
+  const timezone = new Timezone(store, { forced: process.env.NOOR_TEST_TIMEZONE || null });
+  context = { store, profiles, fingerprint, shields, stats, bookmarks, timezone, userData };
 
   if (store.get("clearOnQuit", false)) {
     // Every launch is a new session: new fingerprints, and nothing left of
@@ -408,6 +414,13 @@ app.whenReady().then(() => {
   // (the default one is first touched below).
   app.on("session-created", setUpSession);
   setUpSession(session.defaultSession);
+
+  // The address's time zone is asked for now; with none known yet (a
+  // first launch), the first pages wait a moment for it.
+  timezone.start();
+  if (!timezone.current && timezone.enabled()) {
+    await timezone.ready();
+  }
 
   Browser.prototype.workerScript = workerScript;
   browser = new Browser(context);

@@ -24,7 +24,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const CANONICAL_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>Canon</title><link rel="canonical" href="/canonical-clean"></head><body>canon</body></html>`;
 const SW = `self.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
 self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.request)); });
-self.addEventListener("message", (event) => { event.ports[0].postMessage({ cores: navigator.hardwareConcurrency, memory: navigator.deviceMemory, brands: navigator.userAgentData ? navigator.userAgentData.brands.map((b) => b.brand).join(",") : "-", toStr: Function.prototype.toString.call(Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, "hardwareConcurrency").get), stack: (() => { try { Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, "hardwareConcurrency").get.call({}); return "no throw"; } catch (e) { return e.message + " | foreign=" + /protect|preload|anonymous/.test(String(e.stack).split("\\n").slice(1).join("\\n")); } })() }); });`;
+self.addEventListener("message", (event) => { event.ports[0].postMessage({ zone: Intl.DateTimeFormat().resolvedOptions().timeZone, cores: navigator.hardwareConcurrency, memory: navigator.deviceMemory, brands: navigator.userAgentData ? navigator.userAgentData.brands.map((b) => b.brand).join(",") : "-", toStr: Function.prototype.toString.call(Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, "hardwareConcurrency").get), stack: (() => { try { Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, "hardwareConcurrency").get.call({}); return "no throw"; } catch (e) { return e.message + " | foreign=" + /protect|preload|anonymous/.test(String(e.stack).split("\\n").slice(1).join("\\n")); } })() }); });`;
   const server = http.createServer((req, res) => {
     lastHeaders = req.headers;
     if (req.url.startsWith("/pixel.png")) {
@@ -54,6 +54,7 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ cores
       // The test server counts as a tracker everywhere but on its own pages,
       // like Meta's domains: a request of its service worker must still pass.
       NOOR_TEST_RULES: JSON.stringify([{ domain: "127.0.0.1", allowedOn: ["127.0.0.1"] }]),
+      NOOR_TEST_TIMEZONE: "America/New_York",
     },
   });
   app.process().stderr.on("data", (data) => process.stderr.write("[electron] " + data));
@@ -101,8 +102,10 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ cores
     stackPlain: (() => { try { null.x; } catch (e) { return String(e.stack).split("\\n").length + " frames"; } })(),
     getterWrongThis: (() => { try { Object.getOwnPropertyDescriptor(Screen.prototype, "width").get.call({}); return "no throw"; } catch (e) { return e.message; } })(),
     trackerLoaded: document.getElementById("t").naturalWidth > 0,
+    zone: Intl.DateTimeFormat().resolvedOptions().timeZone + " " + new Date(2026, 0, 15).getTimezoneOffset() + " " + new Date(2026, 6, 15).getTimezoneOffset(),
+    frameZone: (() => { const f = document.createElement("iframe"); document.body.appendChild(f); const z = f.contentWindow.Intl.DateTimeFormat().resolvedOptions().timeZone; f.remove(); return z; })(),
     worker: await new Promise((resolve) => {
-      const code = "postMessage({ cores: navigator.hardwareConcurrency, memory: navigator.deviceMemory, brands: navigator.userAgentData ? navigator.userAgentData.brands.map((b) => b.brand).join(',') : '-', toStr: Function.prototype.toString.call(Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, 'hardwareConcurrency').get), illegal: (() => { try { Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, 'hardwareConcurrency').get.call({}); return 'no throw'; } catch (e) { return e.message; } })() })";
+      const code = "postMessage({ zone: Intl.DateTimeFormat().resolvedOptions().timeZone, cores: navigator.hardwareConcurrency, memory: navigator.deviceMemory, brands: navigator.userAgentData ? navigator.userAgentData.brands.map((b) => b.brand).join(',') : '-', toStr: Function.prototype.toString.call(Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, 'hardwareConcurrency').get), illegal: (() => { try { Object.getOwnPropertyDescriptor(WorkerNavigator.prototype, 'hardwareConcurrency').get.call({}); return 'no throw'; } catch (e) { return e.message; } })() })";
       const worker = new Worker(URL.createObjectURL(new Blob([code], { type: "text/javascript" })));
       const timer = setTimeout(() => resolve("timeout"), 5000);
       worker.onmessage = (event) => { clearTimeout(timer); resolve(event.data); };
@@ -144,6 +147,7 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ cores
   results.serviceWorker = {
     ...(await inTab(`(async () => ({ title: document.title, controlled: Boolean(navigator.serviceWorker.controller), imageLoaded: document.getElementById("i").naturalWidth > 0,
       pageCores: navigator.hardwareConcurrency,
+      pageZone: Intl.DateTimeFormat().resolvedOptions().timeZone + " " + new Date(2026, 0, 15).getTimezoneOffset(),
       worker: await new Promise((resolve) => {
         const timer = setTimeout(() => resolve("timeout"), 5000);
         const channel = new MessageChannel();

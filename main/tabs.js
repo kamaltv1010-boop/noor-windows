@@ -54,6 +54,23 @@ class Tab {
     this.webContents = this.view.webContents;
     this.watch();
     this.guardWorkers();
+    this.setTimezone(browser.timezone ? browser.timezone.current : null);
+  }
+
+  /// The time zone this tab's pages see (see main/timezone.js), or null
+  /// for the system's: set through the debugging protocol, which reaches
+  /// the page's process, its workers included, and holds through
+  /// navigations.
+  setTimezone(zone) {
+    this.timezone = zone || "";
+    this.sendTimezone();
+  }
+
+  sendTimezone(session) {
+    if (!this.debugging) {
+      return;
+    }
+    this.webContents.debugger.sendCommand("Emulation.setTimezoneOverride", { timezoneId: this.timezone || "" }, session).catch(() => {});
   }
 
   /// A page's dedicated workers start without the preload, so a page could
@@ -68,16 +85,25 @@ class Tab {
     } catch (error) {
       return;
     }
+    this.debugging = true;
+    wc.debugger.on("detach", () => {
+      this.debugging = false;
+    });
     wc.debugger.on("message", (event, method, params) => {
       if (method !== "Target.attachedToTarget" || !params || !params.targetInfo) {
         return;
       }
       // Everything attached waits for this; only dedicated workers get the
       // script, the rest (frames in other processes, service workers…)
-      // just goes on.
+      // just goes on. A frame in another process gets the time zone first.
       const session = params.sessionId;
+      const type = params.targetInfo.type;
       const resume = () => wc.debugger.sendCommand("Runtime.runIfWaitingForDebugger", {}, session).catch(() => {});
-      const script = params.targetInfo.type === "worker" && this.browser.workerScript ? this.browser.workerScript(this) : null;
+      if (type === "iframe" && this.timezone) {
+        wc.debugger.sendCommand("Emulation.setTimezoneOverride", { timezoneId: this.timezone }, session).then(resume, resume);
+        return;
+      }
+      const script = type === "worker" && this.browser.workerScript ? this.browser.workerScript(this) : null;
       if (!script) {
         resume();
         return;
@@ -316,6 +342,16 @@ class Browser {
     this.makeWindow();
     this.restoreTabs();
     this.applyPrivacySettings();
+    if (this.timezone) {
+      this.timezone.onChange((zone) => this.applyTimezone(zone));
+    }
+  }
+
+  /// Every tab's pages see `zone` (null: the system's) from now on.
+  applyTimezone(zone) {
+    for (const tab of this.allTabs) {
+      tab.setTimezone(zone);
+    }
   }
 
   // MARK: - Settings
