@@ -42,4 +42,24 @@ const parseBrands = (header) => {
 
 const formatBrands = (list) => list.map((b) => `"${b.brand}";v="${b.version}"`).join(", ");
 
-module.exports = { chromeVersion, userAgent, brands, parseBrands, formatBrands };
+/// The languages a page is told of, as Chrome lists them for a user
+/// whose system is in `locale`: the locale, its language alone, then
+/// English ("fr-FR,fr,en-US,en"; "en-US,en"). Chromium alone lists only
+/// the locale, which a site that knows Chrome's lists would notice.
+const acceptLanguages = (locale) => {
+  const tag = String(locale || "en-US").replace(/_/g, "-");
+  const language = tag.split("-")[0].toLowerCase();
+  const list = [];
+  if (tag !== language) {
+    list.push(tag);
+  }
+  if (language !== "en") {
+    list.push(language, "en-US", "en");
+  } else {
+    if (!list.length) list.push("en-US");
+    list.push("en");
+  }
+  return list.filter((item, index) => list.indexOf(item) === index).join(",");
+};
+
+module.exports = { chromeVersion, userAgent, brands, parseBrands, formatBrands, acceptLanguages };

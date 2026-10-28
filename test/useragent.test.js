@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { userAgent, brands, parseBrands, formatBrands, chromeVersion } = require("../main/useragent");
+const { acceptLanguages, userAgent, brands, parseBrands, formatBrands, chromeVersion } = require("../main/useragent");
 
 test("the user agent is Chrome on Windows, without Electron", () => {
   const agent = userAgent();
@@ -26,4 +26,15 @@ test("Sec-CH-UA parsing and formatting", () => {
   assert.equal(formatBrands(parsed), header);
   assert.deepEqual(parseBrands(""), []);
   assert.match(chromeVersion(), /^\d+$/);
+});
+
+test("accept languages read as Chrome's for a system language", () => {
+  assert.equal(acceptLanguages("en-US"), "en-US,en");
+  assert.equal(acceptLanguages("en"), "en-US,en");
+  assert.equal(acceptLanguages("en-GB"), "en-GB,en");
+  assert.equal(acceptLanguages("fr-FR"), "fr-FR,fr,en-US,en");
+  assert.equal(acceptLanguages("fr"), "fr,en-US,en");
+  assert.equal(acceptLanguages("ar-MA"), "ar-MA,ar,en-US,en");
+  assert.equal(acceptLanguages("pt_BR"), "pt-BR,pt,en-US,en");
+  assert.equal(acceptLanguages(""), "en-US,en");
 });

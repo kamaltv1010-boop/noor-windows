@@ -65,6 +65,7 @@ parts = [
     )),
     # Chromium-only, written by hand for this app (not in the Swift file).
     ("config.chrome", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "chrome.js").read_text(encoding="utf-8")),
+    ("config.languages", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "languages.js").read_text(encoding="utf-8")),
 ]
 assert "\\#(" not in shared + helpers + frames, "unreplaced interpolation"
 

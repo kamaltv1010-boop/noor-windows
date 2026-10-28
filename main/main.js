@@ -11,7 +11,7 @@ const { Bookmarks } = require("./bookmarks");
 const { Browser } = require("./tabs");
 const { Menus } = require("./menus");
 const { ENGINES, APP_ORIGIN, isAppPage, isWebPage } = require("./address");
-const { userAgent, chromeVersion, brands, parseBrands, formatBrands } = require("./useragent");
+const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages } = require("./useragent");
 
 const RENDERER = path.join(__dirname, "..", "renderer");
 const SCRIPTS = path.join(__dirname, "..", "scripts");
@@ -96,7 +96,7 @@ const setUpSession = (ses) => {
     return;
   }
   setUpSessions.add(ses);
-  ses.setUserAgent(userAgent());
+  ses.setUserAgent(userAgent(), acceptLanguages(app.getLocale()));
   ses.protocol.handle("noor", serveAppPage);
   ses.setPermissionRequestHandler((webContents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
   ses.setPermissionCheckHandler((webContents, permission) => ALLOWED_PERMISSIONS.has(permission));
@@ -158,6 +158,7 @@ const configFor = (top) => {
     fullVersionList: fullVersionList(),
     fullVersion: process.versions.chrome,
   };
+  config.languages = acceptLanguages(app.getLocale()).split(",");
   return config;
 };
 
