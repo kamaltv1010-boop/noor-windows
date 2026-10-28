@@ -34,9 +34,11 @@
     grid.textContent = "";
     $("nofavs").hidden = state.bookmarks.length > 0;
     for (const bookmark of state.bookmarks.slice(0, 24)) {
-      const fav = document.createElement("button");
+      const fav = document.createElement("div");
       fav.className = "fav";
       fav.title = bookmark.url;
+      fav.tabIndex = 0;
+      fav.setAttribute("role", "button");
       const icon = document.createElement("span");
       icon.className = "icon";
       icon.textContent = letter(bookmark.url);
@@ -53,6 +55,12 @@
       });
       fav.append(icon, name, remove);
       fav.addEventListener("click", () => noor.invoke("nav:go", bookmark.url));
+      fav.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          noor.invoke("nav:go", bookmark.url);
+        }
+      });
       grid.append(fav);
     }
   };

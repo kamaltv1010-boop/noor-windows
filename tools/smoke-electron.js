@@ -18,10 +18,26 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 (async () => {
   let lastHeaders = {};
+  const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  const SW_PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>SW</title></head><body><img id="i" src="/pixel.png?1">
+<script>navigator.serviceWorker.register("/sw.js").then((r) => r.update()).catch((e) => { document.title = "SW failed " + e; });</script></body></html>`;
+  const SW = `self.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+self.addEventListener("fetch", (event) => { event.respondWith(fetch(event.request)); });`;
   const server = http.createServer((req, res) => {
     lastHeaders = req.headers;
+    if (req.url.startsWith("/pixel.png")) {
+      res.setHeader("content-type", "image/png");
+      res.setHeader("cache-control", "no-store");
+      return res.end(PIXEL);
+    }
+    if (req.url === "/sw.js") {
+      res.setHeader("content-type", "text/javascript");
+      res.setHeader("cache-control", "no-store");
+      return res.end(SW);
+    }
     res.setHeader("content-type", "text/html");
-    res.end(req.url.startsWith("/quiet") ? QUIET : PAGE);
+    res.setHeader("cache-control", "no-store");
+    res.end(req.url.startsWith("/sw") ? SW_PAGE : req.url.startsWith("/quiet") ? QUIET : PAGE);
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${server.address().port}/`;
@@ -29,7 +45,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const app = await electron.launch({
     executablePath: require(path.join(root, "node_modules", "electron")),
     args: [root, "--no-sandbox"],
-    env: { ...process.env, NOOR_TEST: "1", NOOR_USER_DATA: userData },
+    env: {
+      ...process.env,
+      NOOR_TEST: "1",
+      NOOR_USER_DATA: userData,
+      // The test server counts as a tracker everywhere but on its own pages,
+      // like Meta's domains: a request of its service worker must still pass.
+      NOOR_TEST_RULES: JSON.stringify([{ domain: "127.0.0.1", allowedOn: ["127.0.0.1"] }]),
+    },
   });
   app.process().stderr.on("data", (data) => process.stderr.write("[electron] " + data));
   app.process().stdout.on("data", (data) => process.stdout.write("[electron] " + data));
@@ -97,6 +120,27 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   results.settingsPage = await inTab(`noor.invoke("settings:get").then((s) => ({ version: s.version, profiles: s.profiles.map((p) => p.name).join(","), screen: s.values.screen.width + "x" + s.values.screen.height, rows: document.querySelectorAll(".row").length }))`);
   await open("noor://app/start.html");
   results.startPage = await inTab(`new Promise((r) => setTimeout(() => r({ title: document.getElementById("title").textContent, profile: document.getElementById("profilename").textContent, trackers: document.getElementById("trackers").textContent }), 500))`);
+
+  // A page served through its service worker: its own files aren't blocked
+  // although the worker's requests come from no tab.
+  await open(base + "sw");
+  await sleep(1500);
+  await main(() => global.noorTest.browser.selected.reload());
+  await waitLoaded();
+  await sleep(500);
+  results.serviceWorker = {
+    ...(await inTab(`(async () => ({ title: document.title, controlled: Boolean(navigator.serviceWorker.controller), imageLoaded: document.getElementById("i").naturalWidth > 0 }))()`)),
+    trackersBlocked: await main(() => global.noorTest.browser.selected.trackersBlocked),
+  };
+
+  // A favorite opened from the start page lands in the same tab.
+  await main((electron, url) => { global.noorTest.context.bookmarks.add("Quiet", url); }, base + "quiet-fav");
+  await open("noor://app/start.html");
+  await sleep(500);
+  await inTab(`noor.invoke("nav:go", ${JSON.stringify(base + "quiet-fav")})`);
+  await sleep(1500);
+  await waitLoaded();
+  results.favorite = await main(() => ({ url: global.noorTest.browser.selected.url, title: global.noorTest.browser.selected.title, tabs: global.noorTest.browser.tabs.length }));
 
   // A new session: new seeds, one tab.
   const before = await main(() => global.noorTest.context.fingerprint.signature());

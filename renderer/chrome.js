@@ -30,6 +30,9 @@
         const img = document.createElement("img");
         img.src = tab.favicon;
         img.alt = "";
+        img.addEventListener("error", () => {
+          icon.textContent = "○";
+        });
         icon.append(img);
       } else {
         icon.textContent = tab.isBlank ? "✦" : "○";

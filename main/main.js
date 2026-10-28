@@ -63,19 +63,27 @@ const serveAppPage = (request) => {
   return net.fetch(pathToFileURL(full).toString());
 };
 
-/// The page a request comes from: the top frame's address.
+/// The page a request comes from: the top frame's address, or the tab's,
+/// or for a request a service worker makes (no frame, no tab) the
+/// referrer. Empty when it can't be told.
 const pageURLOf = (details) => {
+  const candidates = [];
   try {
-    if (details.frame && details.frame.top && details.frame.top.url) {
-      return details.frame.top.url;
+    if (details.frame && details.frame.top) {
+      candidates.push(details.frame.top.url);
     }
   } catch (error) {
     // The frame may be gone.
   }
-  if (details.webContents && !details.webContents.isDestroyed()) {
-    return details.webContents.getURL();
+  try {
+    if (details.webContents && !details.webContents.isDestroyed()) {
+      candidates.push(details.webContents.getURL());
+    }
+  } catch (error) {
+    // The tab may be gone.
   }
-  return details.referrer || "";
+  candidates.push(details.referrer);
+  return candidates.find((url) => typeof url === "string" && /^(https?|noor):/i.test(url)) || "";
 };
 
 /// Every session (each profile's partition, the private ones, the
@@ -96,6 +104,12 @@ const setUpSession = (ses) => {
       return callback({});
     }
     const page = pageURLOf(details);
+    // A request that can't be put to a page (a service worker's, say) and
+    // the app's own pages (a tab's favicon in the toolbar) aren't blocked:
+    // a tracker is a third party on a page.
+    if (!isWebPage(page)) {
+      return callback({});
+    }
     if (context.shields.trackersEnabled() && context.shields.areUp(page) && context.shields.isTracker(details.url, page)) {
       if (browser) {
         browser.trackerBlocked(details.webContents);
@@ -293,6 +307,10 @@ app.whenReady().then(() => {
     rules = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "rules", "trackers.json"), "utf8"));
   } catch (error) {
     rules = [];
+  }
+  if (process.env.NOOR_TEST_RULES) {
+    // Tests add a rule for their own server.
+    rules = rules.concat(JSON.parse(process.env.NOOR_TEST_RULES));
   }
   const shields = new Shields(store, rules);
   const stats = new Stats(store);
