@@ -195,6 +195,26 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ zone:
   });
   results.afterDelete = await main(() => global.noorTest.context.profiles.all().map((p) => p.name).join(","));
 
+  // A window a site opens with features (a sign-in popup): the page gets it
+  // back, it is a tab of its own with the protection, and Noor throws nothing.
+  await main(() => {
+    global.__mainErrors = [];
+    process.on("uncaughtException", (error) => global.__mainErrors.push(String((error && error.message) || error)));
+  });
+  await open(base);
+  const popupOpened = await inTab(`Boolean(window.open(${JSON.stringify(base + "popup")}, "signin", "width=480,height=600"))`);
+  await sleep(2000);
+  results.popup = await main(async (electron, target) => {
+    const tab = global.noorTest.browser.tabs.find((t) => !t.webContents.isDestroyed() && t.webContents.getURL() === target);
+    const page = tab ? await tab.webContents.executeJavaScript("({ opener: Boolean(window.opener), protected: Function.prototype.toString.call(function () { /* noor lookalike */ }).includes('native code') })", true) : null;
+    return { tab: Boolean(tab), page, errors: global.__mainErrors };
+  }, base + "popup");
+  results.popup.opened = popupOpened;
+  if (!(popupOpened && results.popup.tab && results.popup.page && results.popup.page.opener && results.popup.page.protected && results.popup.errors.length === 0)) {
+    console.error("POPUP FAILED", JSON.stringify(results.popup));
+    process.exitCode = 1;
+  }
+
   // What the window looks like.
   const shots = await main(async () => {
     const browser = global.noorTest.browser;

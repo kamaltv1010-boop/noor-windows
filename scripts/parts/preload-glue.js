@@ -39,11 +39,13 @@
   // with an address it never loads, so it stays the empty document it
   // starts as: one with no address, or about:blank, loads about:blank at
   // once and takes the page's token. The protection is compiled there
-  // through webFrame (no eval, so a page's CSP doesn't stop it), from this
-  // script's own copy. null if any of that fails: then it runs here, as
-  // before.
+  // through webFrame (no eval, so a page's CSP doesn't stop it), from the
+  // text of it this script carries: the page's toString can't be asked for
+  // it (in a window a protected page opened, whose window it keeps as it
+  // loads a page of its site, the opener's protection has replaced it).
+  // null if any of that fails: then it runs here, as before.
   const KEY = "noorProtect";
-  const source = () => "(() => {\nconst plainFunction = " + plainFunction + ";\nwindow." + KEY + " = " + protectPage + ";\n})();\nvoid 0;\n";
+  const source = () => "(() => {\n" + protectSource + "\nwindow." + KEY + " = protectPage;\n})();\nvoid 0;\n";
   const hiddenProtect = () => {
     let frame = null;
     let parent = null;

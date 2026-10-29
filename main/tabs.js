@@ -30,9 +30,10 @@ const sameSite = (a, b) => {
 };
 
 /// A tab: a web view in its profile's partition (or the private one), and
-/// what the toolbar shows of it.
+/// what the toolbar shows of it. `webContents`: the page a site opened as a
+/// window (see Browser.openWindow), shown in this tab.
 class Tab {
-  constructor(browser, { isPrivate = false, partition = null, webPreferences = null, opener = null } = {}) {
+  constructor(browser, { isPrivate = false, partition = null, webPreferences = null, opener = null, webContents = null } = {}) {
     this.browser = browser;
     this.id = nextTabId++;
     this.isPrivate = isPrivate;
@@ -52,7 +53,9 @@ class Tab {
     /// same site: what a bookmark of it keeps.
     this.canonicalURL = null;
     this.nightKey = null;
-    this.view = new WebContentsView({ webPreferences: webPreferences || browser.webPreferences(partition) });
+    // A page given (one a site opened) is given the tab's settings too: as
+    // it comes, Electron runs no preload in it (the protection).
+    this.view = new WebContentsView(Object.assign({ webPreferences: webPreferences || browser.webPreferences(partition) }, webContents ? { webContents } : {}));
     this.view.setBackgroundColor("#ffffff");
     this.webContents = this.view.webContents;
     this.watch();
@@ -121,7 +124,15 @@ class Tab {
       }
       this.injectWorker(session).then(resume, resume);
     });
-    wc.debugger.sendCommand("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }).catch(() => {});
+    // A window the page opens is a tab of its own, with its own debugger:
+    // held by this one too, it would wait, paused, for it as it starts
+    // (where the protection is made).
+    wc.debugger.sendCommand("Target.setAutoAttach", {
+      autoAttach: true,
+      waitForDebuggerOnStart: true,
+      flatten: true,
+      filter: [{ type: "page", exclude: true }, {}],
+    }).catch(() => {});
   }
 
   /// Runs the protection in a held worker before its first line. Given as
@@ -165,6 +176,13 @@ class Tab {
 
   watch() {
     const wc = this.webContents;
+    // A page that closes itself (a window a site opened, its work done):
+    // its tab goes too. Not as the app closes it, or closes them all.
+    wc.once("destroyed", () => {
+      if (!this.closing && !this.browser.closing) {
+        this.browser.close(this);
+      }
+    });
     wc.on("did-start-loading", () => {
       this.loading = true;
       this.changed();
@@ -350,6 +368,7 @@ class Tab {
   }
 
   close() {
+    this.closing = true;
     if (!this.webContents.isDestroyed()) {
       this.webContents.close();
     }
@@ -471,7 +490,11 @@ class Browser {
     for (const event of ["resize", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "restore"]) {
       this.win.on(event, () => this.layout());
     }
-    this.win.on("close", () => this.saveTabs());
+    this.win.on("close", () => {
+      this.saveTabs();
+      // What closes with the window isn't closed by its pages.
+      this.closing = true;
+    });
     this.layout();
   }
 
@@ -573,25 +596,41 @@ class Browser {
     list.splice(index > 0 ? index : list.length, 0, tab);
   }
 
-  /// A window a page opens (window.open) becomes a tab that keeps its
-  /// opener; a link to a new tab becomes a tab of our own.
+  /// A window a page opens (window.open, a link to a new tab) becomes a
+  /// tab, as in Chrome: the page Electron makes for it (in the opener's
+  /// session, with the protection) is shown in the new tab, so the opener
+  /// gets the window back (a sign-in popup talks to it, and the opener
+  /// sees it close) and it keeps its opener, unless the page asked for
+  /// none (noopener), when the tab loads the address itself. It outlives
+  /// its opener, as in Chrome.
   openWindow(opener, details) {
     const { url, disposition } = details;
-    if (disposition === "new-window") {
-      return {
-        action: "allow",
-        createWindow: (options) => {
-          const webPreferences = Object.assign({}, options.webPreferences, this.webPreferences(this.partitionFor(opener.isPrivate)));
-          const tab = new Tab(this, { isPrivate: opener.isPrivate, webPreferences, opener });
-          this.insert(tab, opener);
-          this.select(tab);
-          this.pushState();
-          return tab.webContents;
-        },
-      };
+    if (disposition !== "new-window" && disposition !== "foreground-tab" && disposition !== "background-tab") {
+      return { action: "deny" };
     }
-    this.newTab({ isPrivate: opener.isPrivate, url, after: opener, select: disposition !== "background-tab" });
-    return { action: "deny" };
+    // The page's session is the opener's.
+    const webPreferences = this.webPreferences(this.partitionFor(opener.isPrivate));
+    delete webPreferences.partition;
+    return {
+      action: "allow",
+      outlivesOpener: true,
+      overrideBrowserWindowOptions: { webPreferences },
+      createWindow: (options) => {
+        if (!options.webContents) {
+          // No page made for it: a tab of our own loads the address.
+          setImmediate(() => this.newTab({ isPrivate: opener.isPrivate, url, after: opener, select: disposition !== "background-tab" }));
+          return undefined;
+        }
+        const tab = new Tab(this, { isPrivate: opener.isPrivate, opener, webContents: options.webContents, webPreferences });
+        this.insert(tab, opener);
+        if (disposition !== "background-tab" || !this.selected) {
+          this.select(tab);
+        }
+        this.pushState();
+        this.saveTabs();
+        return tab.webContents;
+      },
+    };
   }
 
   select(tab) {
