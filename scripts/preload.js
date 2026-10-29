@@ -956,7 +956,8 @@ if (config.seeds.audio != null) { try {
                 (arguments[1] == null || typeof arguments[1] === "function") && (arguments[2] == null || typeof arguments[2] === "function");
               if (typeof success === "function") {
                 const decoded = function (buffer) { return success.call(this, mark(buffer)); };
-                arguments[1] = viaPage ? outside.callback(decoded) : decoded;
+                // The browser calls it on the context, as it does the page's own.
+                arguments[1] = viaPage ? outside.callback(decoded, this) : decoded;
               }
               if (!viaPage) return thenMark(original.apply(this, arguments));
               // A refusal made at once, from the page's realm, would carry
@@ -1864,8 +1865,8 @@ if (!isProtected(window)) protect(window);
   const outside = {
     apply: (fn, self, args) => reflectApply(fn, self, args),
     construct: (Type, args) => reflectConstruct(Type, args),
-    // A function of this realm that calls `fn` with no frame of its own.
-    callback: (fn) => reflectApply(bindMethod, callMethod, [fn, undefined]),
+    // A function of this realm that calls `fn` on `self` with no frame of its own.
+    callback: (fn, self) => reflectApply(bindMethod, callMethod, [fn, self]),
   };
 
   const hidden = hiddenProtect();

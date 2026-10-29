@@ -90,8 +90,8 @@
   const outside = {
     apply: (fn, self, args) => reflectApply(fn, self, args),
     construct: (Type, args) => reflectConstruct(Type, args),
-    // A function of this realm that calls `fn` with no frame of its own.
-    callback: (fn) => reflectApply(bindMethod, callMethod, [fn, undefined]),
+    // A function of this realm that calls `fn` on `self` with no frame of its own.
+    callback: (fn, self) => reflectApply(bindMethod, callMethod, [fn, self]),
   };
 
   const hidden = hiddenProtect();
