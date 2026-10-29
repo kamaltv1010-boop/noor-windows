@@ -9,7 +9,9 @@ const { Fingerprint, KINDS } = require("./fingerprint");
 const { Shields, Stats } = require("./shields");
 const { Bookmarks } = require("./bookmarks");
 const { Timezone } = require("./timezone");
-const { Browser } = require("./tabs");
+const { Browser, CHROME_PARTITION } = require("./tabs");
+const { Extensions, STORE_URL } = require("./extensions");
+const { storeExtensionID, storeTitle } = require("./crx");
 const { Menus } = require("./menus");
 const { ENGINES, APP_ORIGIN, ERROR_URL, isAppPage, isWebPage } = require("./address");
 const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages, userAgentMetadata } = require("./useragent");
@@ -22,8 +24,12 @@ const ALLOWED_PERMISSIONS = new Set(["fullscreen", "pointerLock", "clipboard-san
 
 // The app's own pages (noor://app/…) are a proper origin, with fetch and
 // storage, and no other origin can read them.
+// One list for every scheme (a later call replaces an earlier one): the
+// app's pages, and crx:, the extensions' icons in the toolbar
+// (electron-chrome-extensions registers it alone when it is loaded).
 protocol.registerSchemesAsPrivileged([
   { scheme: "noor", privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false } },
+  { scheme: "crx", privileges: { bypassCSP: true } },
 ]);
 
 app.userAgentFallback = userAgent();
@@ -42,6 +48,7 @@ if (!app.requestSingleInstanceLock()) {
 
 let browser = null;
 let context = null;
+let extensions = null;
 /// Chromium's own "Not A Brand" entry, from its first request, so the
 /// brands pages see match the headers.
 let greasey = null;
@@ -91,6 +98,16 @@ const pageURLOf = (details) => {
 /// Every session (each profile's partition, the private ones, the
 /// toolbar's) blocks trackers, serves the app's pages, refuses
 /// permissions and shows Chrome's brands.
+/// Whether `ses` is the toolbar's (the app's own pages'), by its folder,
+/// without creating it.
+const isChromeSession = (ses) => {
+  try {
+    return path.basename(String(ses.storagePath || "")) === CHROME_PARTITION.replace(/^persist:/, "");
+  } catch (error) {
+    return false;
+  }
+};
+
 const setUpSessions = new WeakSet();
 const setUpSession = (ses) => {
   if (setUpSessions.has(ses)) {
@@ -102,6 +119,11 @@ const setUpSession = (ses) => {
   ses.setPermissionRequestHandler((webContents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
   ses.setPermissionCheckHandler((webContents, permission) => ALLOWED_PERMISSIONS.has(permission));
   guardServiceWorkers(ses);
+  // A profile's session (not the app's own pages', nor the default one)
+  // runs the extensions.
+  if (extensions && ses !== session.defaultSession && !isChromeSession(ses)) {
+    extensions.attach(ses);
+  }
   ses.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {
     if (details.resourceType === "mainFrame" || !context) {
       return callback({});
@@ -330,6 +352,10 @@ const pageConfig = (event) => {
   } catch (error) {
     top = event.sender.getURL();
   }
+  // An extension's own pages (its options, its popups) are left alone.
+  if (/^chrome-extension:/i.test(top)) {
+    return null;
+  }
   const config = configFor(top);
   config.tabId = tab ? tab.id : null;
   return config;
@@ -431,6 +457,7 @@ const settingsSnapshot = () => ({
   nightMode: browser.nightMode,
   timezoneFromIP: context.timezone.enabled(),
   timezone: context.timezone.current,
+  extensions: extensions ? extensions.list() : [],
   protections: Object.fromEntries(KINDS.map((kind) => [kind, context.fingerprint.isEnabled(kind)])),
   values: {
     screen: context.fingerprint.screen(),
@@ -500,6 +527,49 @@ const registerIPC = () => {
     browser.applyPrivacySettings();
     return settingsSnapshot();
   });
+  handle("extensions:store", () => { browser.newTab({ url: STORE_URL }); return settingsSnapshot(); });
+  // The toolbar's "Add to Noor", on a store page.
+  handle("extensions:addFromStore", async () => {
+    const tab = browser.selected;
+    const id = tab ? storeExtensionID(tab.url) : null;
+    if (!id) {
+      return false;
+    }
+    try {
+      const name = await extensions.installFromStore(id, storeTitle(tab.title));
+      if (name) {
+        browser.toast(`"${name}" added`);
+      }
+    } catch (error) {
+      dialog.showMessageBox(browser.win, { type: "error", message: "The extension wasn't added", detail: String(error.message || error) });
+    }
+    browser.pushState();
+    return true;
+  });
+  handle("extensions:options", (event, url) => {
+    if (/^chrome-extension:\/\/[a-p]{32}\//.test(String(url))) {
+      browser.newTab({ url: String(url) });
+    }
+    return settingsSnapshot();
+  });
+  handle("extensions:enable", (event, id, isOn) => { extensions.setEnabled(String(id), Boolean(isOn)); return settingsSnapshot(); });
+  handle("extensions:remove", async (event, id) => { await extensions.remove(String(id)); return settingsSnapshot(); });
+  handle("extensions:install", async (event, kind) => {
+    const folder = kind === "folder";
+    const { canceled, filePaths } = await dialog.showOpenDialog(browser.win, {
+      title: folder ? "A folder with a manifest.json" : "A .crx or .zip file",
+      properties: [folder ? "openDirectory" : "openFile"],
+      filters: folder ? [] : [{ name: "Extensions", extensions: ["crx", "zip"] }],
+    });
+    if (!canceled && filePaths[0]) {
+      try {
+        await extensions.installFile(filePaths[0]);
+      } catch (error) {
+        dialog.showMessageBox(browser.win, { type: "error", message: "The extension wasn't installed", detail: String(error.message || error) });
+      }
+    }
+    return settingsSnapshot();
+  });
   handle("fingerprint:new", (event, kinds) => {
     const wanted = Array.isArray(kinds) ? kinds.filter((k) => KINDS.includes(k)) : KINDS;
     browser.newFingerprint(wanted);
@@ -557,6 +627,7 @@ app.whenReady().then(async () => {
   const bookmarks = new Bookmarks(path.join(userData, "bookmarks.json"));
   const timezone = new Timezone(store, { forced: process.env.NOOR_TEST_TIMEZONE || null });
   context = { store, profiles, fingerprint, shields, stats, bookmarks, timezone, userData };
+  extensions = new Extensions({ store, userData });
 
   if (store.get("clearOnQuit", false)) {
     // Every launch is a new session: new fingerprints, and nothing left of
@@ -573,6 +644,9 @@ app.whenReady().then(async () => {
   // (the default one is first touched below).
   app.on("session-created", setUpSession);
   setUpSession(session.defaultSession);
+  // The toolbar's session (set up as it is created, just above) shows the
+  // extensions' icons.
+  extensions.showIconsIn(session.fromPartition(CHROME_PARTITION));
 
   // The address's time zone is asked for now; with none known yet (a
   // first launch), the first pages wait a moment for it.
@@ -590,7 +664,9 @@ app.whenReady().then(async () => {
   context.userAgentOverride = userAgentOverride(highEntropy || store.get("highEntropy", null));
 
   Browser.prototype.workerScript = workerScript;
+  Browser.prototype.extensions = extensions;
   browser = new Browser(context);
+  extensions.browser = browser;
   browser.menus = new Menus(browser);
   browser.toggleBookmark = () => {
     const tab = browser.selected;
@@ -612,7 +688,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(browser.menus.application());
   registerIPC();
   if (process.env.NOOR_TEST) {
-    global.noorTest = { browser, context };
+    global.noorTest = { browser, context, extensions };
   }
 
   app.on("second-instance", (event, argv) => {

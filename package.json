@@ -57,5 +57,9 @@
     "portable": {
       "artifactName": "Noor-${version}-windows-${arch}-portable.${ext}"
     }
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16",
+    "electron-chrome-extensions": "^4.10.0"
   }
 }

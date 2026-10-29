@@ -6,8 +6,11 @@ const { History } = require("./history");
 const { KINDS } = require("./fingerprint");
 const { DEFAULT_ID } = require("./profiles");
 const { START_URL, ERROR_URL, isStartPage, isAppPage, isErrorPage, isWebPage, displayURL, hostOf } = require("./address");
+const { storeExtensionID } = require("./crx");
 
 const PRELOAD = path.join(__dirname, "..", "scripts", "preload.js");
+const CHROME_PRELOAD = path.join(__dirname, "..", "scripts", "chrome-preload.js");
+const CHROME_PARTITION = "persist:noor-chrome";
 const CHROME_URL = "noor://app/chrome.html";
 /// The tab strip and the toolbar, in CSS pixels.
 const CHROME_HEIGHT = 86;
@@ -55,6 +58,9 @@ class Tab {
     this.watch();
     this.guardWorkers();
     this.setTimezone(browser.timezone ? browser.timezone.current : null);
+    if (browser.extensions) {
+      browser.extensions.tabCreated(this);
+    }
   }
 
   /// The time zone this tab's pages see (see main/timezone.js), or null
@@ -410,7 +416,10 @@ class Browser {
       icon: path.join(__dirname, "..", "build", "icon.ico"),
     });
     this.win.setMenuBarVisibility(false);
-    this.chrome = new WebContentsView({ webPreferences: this.webPreferences("persist:noor-chrome") });
+    // The toolbar: the app's own page, with a preload of its own that
+    // brings the extensions' buttons (which needs Node's require, so no
+    // sandbox; the page is the app's).
+    this.chrome = new WebContentsView({ webPreferences: { preload: CHROME_PRELOAD, sandbox: false, contextIsolation: false, nodeIntegration: false, partition: CHROME_PARTITION, spellcheck: false } });
     this.chrome.setBackgroundColor("#f6f5f1");
     this.win.contentView.addChildView(this.chrome);
     this.chrome.webContents.loadURL(CHROME_URL);
@@ -420,6 +429,7 @@ class Browser {
     });
     this.chrome.webContents.on("did-finish-load", () => this.pushState());
     this.chrome.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    this.chrome.webContents.on("will-navigate", (event) => event.preventDefault());
     for (const event of ["resize", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "restore"]) {
       this.win.on(event, () => this.layout());
     }
@@ -561,6 +571,9 @@ class Browser {
     this.layout();
     tab.loadIfNeeded();
     tab.webContents.focus();
+    if (this.extensions) {
+      this.extensions.tabSelected(tab);
+    }
     this.pushState();
     this.saveTabs();
   }
@@ -890,6 +903,16 @@ class Browser {
       profiles: this.profiles.all(),
       stats: this.stats.toJSON(),
       nightMode: this.nightMode,
+      // For the extensions' buttons: the session they are in, the tab they
+      // show, and whether extensions run there (not where nothing is kept
+      // on disk). On a store page, the extension it shows.
+      partition: this.partitionFor(Boolean(active && active.isPrivate)),
+      activeWebContentsId: active && !active.webContents.isDestroyed() ? active.webContents.id : null,
+      extensionsHere: Boolean(this.extensions && active && !active.webContents.isDestroyed() && active.webContents.session.isPersistent()),
+      storeExtension: (() => {
+        const id = this.extensions && active ? storeExtensionID(active.url) : null;
+        return id ? { id, installed: this.extensions.isInstalled(id), installing: this.extensions.isInstalling(id) } : null;
+      })(),
     };
   }
 
@@ -906,4 +929,4 @@ class Browser {
   }
 }
 
-module.exports = { Browser, Tab, CHROME_HEIGHT, PRELOAD };
+module.exports = { Browser, Tab, CHROME_HEIGHT, PRELOAD, CHROME_PARTITION };

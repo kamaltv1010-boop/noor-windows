@@ -49,3 +49,12 @@ button.icon:disabled { opacity: 0.35; cursor: default; background: none; }
 #promptinput { flex: 1; max-width: 320px; }
 #prompttitle { font-weight: 600; margin-right: 6px; }
 #toast { position: fixed; left: 50%; bottom: 6px; transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 6px 14px; border-radius: 10px; font-weight: 600; pointer-events: none; z-index: 10; }
+
+/* The extensions' buttons (a web component of electron-chrome-extensions). */
+#actions { display: flex; align-items: center; gap: 2px; margin: 0 2px; }
+#actions::part(action) { width: 28px; height: 28px; border-radius: 8px; }
+#actions::part(action):hover { background: var(--hover); }
+#actions[hidden] { display: none; }
+#addextension { display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; margin: 0 4px; flex: none; }
+#addextension[hidden] { display: none; }
+#addextension:disabled { background: var(--hover); color: var(--muted); cursor: default; }

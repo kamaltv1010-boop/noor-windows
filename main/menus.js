@@ -34,6 +34,7 @@ class Menus {
       { label: `Profile: ${browser.profile.name}`, submenu: this.profileItems() },
       { label: "Fingerprint", submenu: this.fingerprintItems() },
       { type: "separator" },
+      { label: "Extensions", click: () => browser.newTab({ url: SETTINGS_URL + "#extensions" }) },
       { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => browser.newTab({ url: SETTINGS_URL }) },
       { label: "New Session…", click: () => this.confirmNewSession() },
       { type: "separator" },
@@ -188,6 +189,12 @@ class Menus {
   page(tab, params) {
     const browser = this.browser;
     const items = [];
+    if (browser.extensions) {
+      const own = browser.extensions.contextMenuItems(tab, params);
+      if (own.length) {
+        items.push(...own, { type: "separator" });
+      }
+    }
     if (params.linkURL) {
       items.push(
         { label: "Open Link in New Tab", click: () => browser.newTab({ isPrivate: tab.isPrivate, url: params.linkURL, after: tab, select: false }) },

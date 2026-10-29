@@ -80,7 +80,23 @@
     $("bookmark").classList.toggle("on", state.bookmarked);
     $("bookmark").disabled = !state.url;
     $("profilename").textContent = state.profile.name;
+    const actions = $("actions");
+    if (actions) {
+      actions.hidden = !state.extensionsHere;
+      if (state.extensionsHere) {
+        actions.setAttribute("partition", state.partition || "");
+        actions.setAttribute("tab", state.activeWebContentsId === null || state.activeWebContentsId === undefined ? "" : String(state.activeWebContentsId));
+      }
+    }
+    const add = $("addextension");
+    const store = state.storeExtension;
+    add.hidden = !store;
+    if (store) {
+      add.disabled = store.installed || store.installing;
+      $("addextensionlabel").textContent = store.installed ? "Added to Noor" : store.installing ? "Adding…" : "Add to Noor";
+    }
   };
+  $("addextension").addEventListener("click", () => noor.invoke("extensions:addFromStore"));
 
   noor.on("state", (next) => {
     state = next;

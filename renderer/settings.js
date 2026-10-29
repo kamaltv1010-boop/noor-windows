@@ -101,6 +101,43 @@
     values.append(row("User agent", "", value(settings.values.userAgent)));
     values.append(row("Brands", "", value(settings.values.brands.map((b) => `${b.brand} ${b.version}`).join(" · "))));
 
+    const extensions = $("extensionlist");
+    extensions.textContent = "";
+    for (const extension of settings.extensions || []) {
+      const controls = document.createElement("div");
+      controls.style.display = "flex";
+      controls.style.alignItems = "center";
+      controls.style.gap = "8px";
+      if (extension.optionsURL) {
+        controls.append(button("Options", "secondary", () => noor.invoke("extensions:options", extension.optionsURL).then(apply)));
+      }
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = Boolean(extension.enabled);
+      box.title = extension.enabled ? "On" : "Off";
+      box.addEventListener("change", () => noor.invoke("extensions:enable", extension.id, box.checked).then(apply));
+      controls.append(box, button("Remove", "danger", () => noor.invoke("extensions:remove", extension.id).then(apply)));
+      const element = row(extension.name, [extension.version, extension.description].filter(Boolean).join(" · ").slice(0, 140), controls);
+      if (extension.icon) {
+        const icon = document.createElement("img");
+        icon.src = extension.icon;
+        icon.width = 24;
+        icon.height = 24;
+        icon.style.borderRadius = "6px";
+        icon.style.marginRight = "10px";
+        icon.style.flex = "none";
+        icon.alt = "";
+        element.prepend(icon);
+      }
+      extensions.append(element);
+    }
+    if (!(settings.extensions || []).length) {
+      extensions.append(row("No extensions yet", "Add one from the Chrome Web Store, or from a file or folder.", document.createElement("span")));
+    }
+    if (settings.clearOnQuit) {
+      extensions.append(row("Extensions are off", "While \"Clear everything on quit\" is on, tabs keep nothing on disk, and Chromium can't run extensions there.", document.createElement("span")));
+    }
+
     const sites = $("downsites");
     sites.textContent = "";
     sites.hidden = settings.shieldsDownSites.length === 0;
@@ -121,7 +158,17 @@
   for (const box of document.querySelectorAll("input[data-setting]")) {
     box.addEventListener("change", () => noor.invoke("settings:set", box.dataset.setting, box.checked).then(apply));
   }
+  // Opened from the ⋯ menu's "Extensions": that part, once it is filled.
+  const scrollToHash = () => {
+    const target = location.hash && document.getElementById(location.hash.slice(1));
+    if (target) {
+      target.scrollIntoView();
+    }
+  };
   $("searchengine").addEventListener("change", () => noor.invoke("settings:set", "searchEngine", $("searchengine").value).then(apply));
+  $("extstore").addEventListener("click", () => noor.invoke("extensions:store").then(apply));
+  $("extfile").addEventListener("click", () => noor.invoke("extensions:install", "file").then(apply));
+  $("extfolder").addEventListener("click", () => noor.invoke("extensions:install", "folder").then(apply));
   $("newprofile").addEventListener("click", () => {
     const name = $("newprofilename").value.trim() || $("newprofilename").placeholder;
     $("newprofilename").value = "";
@@ -139,5 +186,5 @@
 
   const refresh = () => noor.invoke("settings:get").then(apply).catch(() => {});
   window.addEventListener("focus", refresh);
-  refresh();
+  refresh().then(scrollToHash);
 })();

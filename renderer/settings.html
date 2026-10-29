@@ -23,6 +23,14 @@
   </div>
   <p class="footer">Each profile has its own cookies, website data, history, tabs and fingerprints, so accounts stay apart. Bookmarks and settings are shared. The profiles are also in the ⋯ menu and on the start page.</p>
 
+  <h3 id="extensions">Extensions</h3>
+  <div class="card" id="extensionlist"></div>
+  <div class="card">
+    <div class="row"><div class="label">Chrome Web Store<small>Open an extension's page in the store, then press "Add to Noor" in the toolbar.</small></div><button class="button small" id="extstore">Open Store</button></div>
+    <div class="row"><div class="label">From a file or folder<small>A .crx or .zip file, or a folder with a manifest.json.</small></div><div style="display:flex;gap:6px"><button class="button secondary small" id="extfile">File…</button><button class="button secondary small" id="extfolder">Folder…</button></div></div>
+  </div>
+  <p class="footer" id="extensionsfooter">Chrome web extensions run in every profile's normal tabs and can see and change the pages you open; the store's ones are kept up to date. Private tabs go without them, as Chrome's Incognito windows do. Extensions that block ads or change how pages look usually work; some Chrome-only features don't.</p>
+
   <h3>Shields</h3>
   <div class="card">
     <div class="row"><div class="label">Block trackers<small>Third-party files from Meta, Google Analytics, TikTok and other trackers never load.</small></div><input type="checkbox" data-setting="blockTrackers"></div>

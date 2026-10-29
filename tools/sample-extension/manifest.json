@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Noor Sample",
+  "version": "1.2.3",
+  "description": "A sample extension the smoke test installs: marks every page, has a button with a popup, an options page and a background worker.",
+  "action": { "default_popup": "popup.html", "default_title": "Noor Sample" },
+  "options_page": "options.html",
+  "background": { "service_worker": "background.js" },
+  "permissions": ["storage"],
+  "content_scripts": [{ "matches": ["http://*/*", "https://*/*"], "js": ["content.js"], "run_at": "document_start" }],
+  "icons": { "32": "icon.png", "128": "icon.png" }
+}
