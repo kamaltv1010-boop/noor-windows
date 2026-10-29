@@ -18,9 +18,19 @@ const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLangu
 
 const RENDERER = path.join(__dirname, "..", "renderer");
 const SCRIPTS = path.join(__dirname, "..", "scripts");
-/// What pages may ask for without a question. The rest (camera,
-/// microphone, location, notifications…) is refused.
-const ALLOWED_PERMISSIONS = new Set(["fullscreen", "pointerLock", "clipboard-sanitized-write", "window-management"]);
+/// What pages may have without a question: what Chrome grants without
+/// asking (fullscreen, copying, sensors, background sync and fetch,
+/// payment handlers, keeping the screen on, keyboard and pointer lock) and
+/// storage access in the page itself. The rest (camera, microphone,
+/// location, notifications, all screens…) is refused, as by a user who
+/// says no to every site; pages see those as not asked yet (see
+/// scripts/parts/chrome.js).
+const ALLOWED_PERMISSIONS = new Set([
+  "fullscreen", "pointerLock", "keyboardLock", "clipboard-sanitized-write", "sensors", "background-sync",
+  "background-fetch", "payment-handler", "screen-wake-lock",
+]);
+const isAllowed = (permission, details) =>
+  ALLOWED_PERMISSIONS.has(permission) || (permission === "storage-access" && Boolean(details && details.isMainFrame));
 
 // The app's own pages (noor://app/…) are a proper origin, with fetch and
 // storage, and no other origin can read them.
@@ -116,8 +126,8 @@ const setUpSession = (ses) => {
   setUpSessions.add(ses);
   ses.setUserAgent(userAgent(), acceptLanguages(app.getLocale()));
   ses.protocol.handle("noor", serveAppPage);
-  ses.setPermissionRequestHandler((webContents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
-  ses.setPermissionCheckHandler((webContents, permission) => ALLOWED_PERMISSIONS.has(permission));
+  ses.setPermissionRequestHandler((webContents, permission, callback, details) => callback(isAllowed(permission, details)));
+  ses.setPermissionCheckHandler((webContents, permission, origin, details) => isAllowed(permission, details));
   guardServiceWorkers(ses);
   // A profile's session (not the app's own pages', nor the default one)
   // runs the extensions.
