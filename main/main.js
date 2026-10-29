@@ -1,6 +1,7 @@
 "use strict";
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const { app, protocol, session, screen, ipcMain, net, Menu, dialog, WebContentsView } = require("electron");
 const { pathToFileURL } = require("url");
 const { Store } = require("./store");
@@ -160,6 +161,12 @@ const setUpSession = (ses) => {
     callback({});
   });
   ses.webRequest.onBeforeSendHeaders({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {
+    // An extension's service worker asking the app for its API: the
+    // profile it runs in is told (see main/extension-bridge.js).
+    const bridged = extensions ? extensions.bridgeHeaders(ses, details) : null;
+    if (bridged) {
+      return callback({ requestHeaders: bridged });
+    }
     const headers = withClientHints(details);
     for (const name of Object.keys(headers)) {
       const lower = name.toLowerCase();
@@ -371,12 +378,15 @@ const pageConfig = (event) => {
   return config;
 };
 
+/// The name the protection's script goes by in a worker, where a stack can
+/// show its frames: one of its own for each run of the app, with nothing of
+/// the app or the user in it (the file's path holds the user's name).
+const WORKER_SCRIPT_NAME = crypto.randomBytes(6).toString("hex") + ".js";
+
 /// The config for a worker of the page at `url` (a dedicated worker's
 /// page, or a service worker's own address): the page's, with its host,
 /// since a worker held before its first line has no location yet (and
-/// reading it ends the renderer), and the name its script goes by, the
-/// file the protection comes from, as the frames' preload is named, so its
-/// frames in an error's stack are known and taken out.
+/// reading it ends the renderer), and the name its script goes by.
 const workerConfig = (url) => {
   if (!context || !isWebPage(url)) {
     return null;
@@ -387,14 +397,16 @@ const workerConfig = (url) => {
   } catch (error) {
     config.host = "";
   }
-  config.scriptName = path.join(SCRIPTS, "protect.js");
+  config.scriptName = WORKER_SCRIPT_NAME;
   return config;
 };
 
 /// The protection as a script for a dedicated worker of a tab: protect.js
 /// with the worker's global as the window, and the tab's page config.
+/// `hidden` when the script will run as the inspector's own code, whose
+/// frames no stack shows (see Tab.injectWorker).
 let protectSource = null;
-const workerScript = (tab) => {
+const workerScript = (tab, hidden) => {
   if (protectSource === null) {
     try {
       protectSource = fs.readFileSync(path.join(SCRIPTS, "protect.js"), "utf8").replace("module.exports = protectPage;", "");
@@ -405,6 +417,9 @@ const workerScript = (tab) => {
   const config = protectSource ? workerConfig(tab.webContents.isDestroyed() ? "" : tab.webContents.getURL()) : null;
   if (!config) {
     return null;
+  }
+  if (hidden) {
+    config.framesHidden = true;
   }
   return `(() => {\n${protectSource}\ntry { protectPage(self, ${JSON.stringify(config)}); } catch (e) {}\n})();\n//# sourceURL=${config.scriptName}`;
 };

@@ -11,7 +11,7 @@
     defineGetter(navigatorProto, "languages", function () {
       let list = lists.get(this);
       if (!list) {
-        list = freeze(languages.slice());
+        list = freeze(setPrototypeOf(languages.slice(), window.Array.prototype));
         lists.set(this, list);
       }
       return list;

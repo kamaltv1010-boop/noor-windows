@@ -20,9 +20,9 @@
     return;
   }
   try {
-    // Made as a function so it can be given to the worker's world, named
-    // as the frames' preload is, so its frames in an error's stack are
-    // known and taken out.
+    // Made as a function so it can be given to the worker's world, under
+    // the name the app gives it for this run (see WORKER_SCRIPT_NAME in
+    // main/main.js), so a stack that shows its frames shows no path.
     const run = new Function("config", protectSource + "\ntry { protectPage(self, config); } catch (e) {}\n//# sourceURL=" + String(config.scriptName || "protect.js").replace(/\s/g, ""));
     contextBridge.executeInMainWorld({ func: run, args: [config] });
   } catch (error) {

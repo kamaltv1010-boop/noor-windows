@@ -115,14 +115,52 @@ class Tab {
         wc.debugger.sendCommand("Emulation.setTimezoneOverride", { timezoneId: this.timezone }, session).then(resume, resume);
         return;
       }
-      const script = type === "worker" && this.browser.workerScript ? this.browser.workerScript(this) : null;
-      if (!script) {
+      if (type !== "worker" || !this.browser.workerScript) {
         resume();
         return;
       }
-      wc.debugger.sendCommand("Runtime.evaluate", { expression: script, silent: true }, session).then(resume, resume);
+      this.injectWorker(session).then(resume, resume);
     });
     wc.debugger.sendCommand("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }).catch(() => {});
+  }
+
+  /// Runs the protection in a held worker before its first line. Given as
+  /// the argument of a call, as text, it is compiled as the inspector's own
+  /// code (Runtime.callFunctionOn compiles such an argument that way), which
+  /// V8 leaves out of stack traces and shows as built-in: nothing of it shows
+  /// in a stack the worker's code reads, as nothing of the browser's own
+  /// built-ins does. Failing that, it is run as a script, as before.
+  async injectWorker(session) {
+    const send = (method, params) => this.webContents.debugger.sendCommand(method, params, session);
+    const hidden = this.browser.workerScript(this, true);
+    if (!hidden) {
+      return;
+    }
+    try {
+      const global = await send("Runtime.evaluate", { expression: "globalThis", silent: true });
+      const objectId = global && global.result && global.result.objectId;
+      if (!objectId) {
+        throw new Error("No global");
+      }
+      try {
+        const done = await send("Runtime.callFunctionOn", {
+          objectId,
+          functionDeclaration: "function () {}",
+          arguments: [{ unserializableValue: hidden }],
+          silent: true,
+        });
+        if (done && done.exceptionDetails) {
+          throw new Error("Not run");
+        }
+      } finally {
+        send("Runtime.releaseObject", { objectId }).catch(() => {});
+      }
+    } catch (error) {
+      const plain = this.browser.workerScript(this, false);
+      if (plain) {
+        await send("Runtime.evaluate", { expression: plain, silent: true }).catch(() => {});
+      }
+    }
   }
 
   watch() {

@@ -5,6 +5,7 @@ const path = require("path");
 const { app, dialog, nativeImage, net, screen } = require("electron");
 const AdmZip = require("adm-zip");
 const { ElectronChromeExtensions } = require("electron-chrome-extensions");
+const { ExtensionBridge } = require("./extension-bridge");
 const {
   STORE_URL, downloadURL, updateCheckURL, parseUpdateResponse, compareVersions, parseCrx,
   localized, localeFolders, permissionSummary,
@@ -15,6 +16,21 @@ const {
 /// extension's worker (the library runs it in every service worker, and
 /// a site's own worker would see an "electron" object no Chrome has).
 const SERVICE_WORKER_PRELOAD = path.join(__dirname, "..", "scripts", "extension-sw-preload.js");
+/// What gives extensions' service workers the API their pages have (see
+/// main/extension-bridge.js).
+const bridge = new ExtensionBridge();
+
+/// Loads the extension in `dir` into `ses`, its service worker given the
+/// bridge first.
+const loadInto = async (ses, dir) => {
+  try {
+    await bridge.prepare(dir);
+  } catch (error) {
+    // Its worker runs as it is, then.
+  }
+  return ses.extensions.loadExtension(dir);
+};
+
 /// How often the store's extensions are checked for new versions.
 const UPDATE_EVERY = 5 * 60 * 60 * 1000;
 /// The biggest extension downloaded (Chrome's own limit is about this).
@@ -123,13 +139,14 @@ class Extensions {
       // Not there: nothing to replace.
     }
     ses.registerPreloadScript({ id: "noor-crx-mv3-preload", type: "service-worker", filePath: SERVICE_WORKER_PRELOAD });
+    bridge.attach(ses, manager);
     manager.on("browser-action-popup-created", (popup) => keepOnScreen(popup));
     this.managers.set(ses, manager);
     ses.extensions.on("extension-loaded", () => this.changed());
     ses.extensions.on("extension-unloaded", () => this.changed());
     for (const entry of this.installed()) {
       if (entry.enabled) {
-        ses.extensions.loadExtension(entry.path).catch(() => {});
+        loadInto(ses, entry.path).catch(() => {});
       }
     }
     if (!this.updater) {
@@ -142,6 +159,12 @@ class Extensions {
         first.unref();
       }
     }
+  }
+
+  /// The headers a request of `ses` to the extensions' bridge goes out
+  /// with (it names the profile), or null for any other request.
+  bridgeHeaders(ses, details) {
+    return bridge.tag(ses, details);
   }
 
   /// The toolbar's session shows the extensions' icons (crx://).
@@ -157,7 +180,7 @@ class Extensions {
   async loadEverywhere(dir) {
     let id = null;
     for (const ses of this.sessions()) {
-      const extension = await ses.extensions.loadExtension(dir);
+      const extension = await loadInto(ses, dir);
       id = id || extension.id;
     }
     return id;
@@ -328,7 +351,7 @@ class Extensions {
     if (isOn) {
       for (const ses of this.sessions()) {
         if (!ses.extensions.getExtension(id)) {
-          ses.extensions.loadExtension(entry.path).catch(() => {});
+          loadInto(ses, entry.path).catch(() => {});
         }
       }
     } else {
@@ -420,7 +443,17 @@ class Extensions {
         manager.addTab(tab.webContents, tab.browser.win);
       } catch (error) {
         // The tab works without extensions knowing of it.
+        return;
       }
+      // The library takes every tab it is given for the active one; a tab
+      // opened behind the one in front isn't, so the one in front is told
+      // again (once the new one would have been selected).
+      setImmediate(() => {
+        const selected = tab.browser.selected;
+        if (selected && selected !== tab && !selected.webContents.isDestroyed()) {
+          this.tabSelected(selected);
+        }
+      });
     }
   }
 

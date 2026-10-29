@@ -1,3 +1,68 @@
+// The objects, lists and functions made here are given the page's own
+// prototypes: this script may run from a realm of its own (see `hosted`),
+// whose objects a page would tell from its own (instanceof, constructor).
+const own = (value) => setPrototypeOf(value, Array.isArray(value) ? window.Array.prototype : window.Object.prototype);
+const ownPlainFunction = (impl) => {
+  const fn = plainFunction(impl);
+  setPrototypeOf(fn, window.Function.prototype);
+  own(fn.prototype);
+  return fn;
+};
+// What a page gives is read once, as the browser reads it (WebIDL: a
+// string through ToString, a sequence through its iterator, a dictionary's
+// members in alphabetical order), and what is made here is made from that.
+const readText = (value) => `${value}`;
+const readSequence = (value, read) => {
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+    throw new TypeError("The provided value cannot be converted to a sequence.");
+  }
+  const iterator = value[Symbol.iterator];
+  if (typeof iterator !== "function") {
+    throw new TypeError("The object must have a callable @@iterator property.");
+  }
+  const list = [];
+  for (const item of { [Symbol.iterator]: () => iterator.call(value) }) list.push(read(item));
+  return list;
+};
+const readDictionary = (value, type, members) => {
+  const out = {};
+  if (value === undefined || value === null) return out;
+  if (typeof value !== "object" && typeof value !== "function") {
+    throw new TypeError("The provided value is not of type '" + type + "'.");
+  }
+  for (const [name, read] of members) {
+    const member = value[name];
+    if (member !== undefined) out[name] = read(member);
+  }
+  return out;
+};
+const navigatorUserAgentGet = window.Navigator ? getOwnPropertyDescriptor(window.Navigator.prototype, "userAgent").get : null;
+const isNavigator = (self) => Boolean(navigatorUserAgentGet) && isA(navigatorUserAgentGet, self);
+
+// A callback the browser would call once its answer came, called the same
+// way: after the call that asked returns, with no `this`, and an error it
+// throws reported as the page's own uncaught errors are. The promises are
+// the page's, made and followed with the functions as they were before the
+// page's first script, as the browser makes its own without asking the
+// page's (a page that replaced Promise.resolve or then sees no call).
+const reflectApply = Reflect.apply;
+const PagePromise = window.Promise;
+const promiseResolve = PagePromise.resolve;
+const promiseReject = PagePromise.reject;
+const promiseThen = PagePromise.prototype.then;
+const resolved = (value) => reflectApply(promiseResolve, PagePromise, [value]);
+const rejected = (error) => reflectApply(promiseReject, PagePromise, [error]);
+const report = typeof window.reportError === "function" ? window.reportError : null;
+const callLater = (callback, value) => {
+  reflectApply(promiseThen, resolved(value), [(answer) => {
+    try {
+      reflectApply(callback, undefined, [answer]);
+    } catch (error) {
+      if (report) reflectApply(report, window, [error]);
+    }
+  }]);
+};
+
 // Chrome: pages see Google Chrome's brands in navigator.userAgentData, as
 // the user agent and the request headers say, not Chromium's own.
 {
@@ -14,7 +79,7 @@
   };
   if (data && chrome && chrome.brands && !saysChrome(data.brands)) {
     const proto = getPrototypeOf(data);
-    const copy = (list) => list.map((b) => ({ brand: b.brand, version: b.version }));
+    const copy = (list) => own(list.map((b) => own({ brand: b.brand, version: b.version })));
     defineGetter(proto, "brands", () => copy(chrome.brands));
     define(proto, "getHighEntropyValues", (original) => function (hints) {
       return original.call(this, hints).then((values) => {
@@ -47,7 +112,7 @@
     };
     const seconds = (value) => (value ? value / 1000 : 0);
     const add = (object, name, value) => defineProperty(object, name, { value, writable: true, enumerable: true, configurable: true });
-    add(chromeObject, "loadTimes", plainFunction(() => {
+    add(chromeObject, "loadTimes", ownPlainFunction(() => {
       const t = timing();
       const entry = navigation();
       const protocol = (entry && entry.nextHopProtocol) || "";
@@ -57,7 +122,7 @@
         const paint = performance.getEntriesByName("first-paint")[0];
         if (paint) firstPaint = (performance.timeOrigin + paint.startTime) / 1000;
       } catch (e) {}
-      return {
+      return own({
         requestTime: seconds(t.navigationStart),
         startLoadTime: seconds(t.navigationStart),
         commitLoadTime: seconds(t.responseStart),
@@ -71,27 +136,27 @@
         npnNegotiatedProtocol: secure && protocol ? protocol : "unknown",
         wasAlternateProtocolAvailable: false,
         connectionInfo: protocol || "http/1.1",
-      };
+      });
     }));
-    add(chromeObject, "csi", plainFunction(() => {
+    add(chromeObject, "csi", ownPlainFunction(() => {
       const t = timing();
-      return {
+      return own({
         startE: t.navigationStart || now(),
         onloadT: t.loadEventEnd || t.domContentLoadedEventEnd || 0,
         pageT: performance ? performance.now() : 0,
         tran: 15,
-      };
+      });
     }));
-    const app = {};
+    const app = own({});
     add(app, "isInstalled", false);
     add(app, "getDetails", method("getDetails", 0, () => null));
     add(app, "getIsInstalled", method("getIsInstalled", 0, () => false));
     add(app, "installState", method("installState", 0, function (callback) {
-      if (typeof callback === "function") callback("not_installed");
+      if (typeof callback === "function") callLater(callback, "not_installed");
     }));
     add(app, "runningState", method("runningState", 0, () => "cannot_run"));
-    add(app, "InstallState", { DISABLED: "disabled", INSTALLED: "installed", NOT_INSTALLED: "not_installed" });
-    add(app, "RunningState", { CANNOT_RUN: "cannot_run", READY_TO_RUN: "ready_to_run", RUNNING: "running" });
+    add(app, "InstallState", own({ DISABLED: "disabled", INSTALLED: "installed", NOT_INSTALLED: "not_installed" }));
+    add(app, "RunningState", own({ CANNOT_RUN: "cannot_run", READY_TO_RUN: "ready_to_run", RUNNING: "running" }));
     add(chromeObject, "app", app);
   }
 }
@@ -116,10 +181,8 @@
   if (Notification) {
     defineGetter(Notification, "permission", () => "default");
     define(Notification, "requestPermission", (original) => function (callback) {
-      if (typeof callback === "function") {
-        try { callback("default"); } catch (e) {}
-      }
-      return window.Promise.resolve("default");
+      if (typeof callback === "function") callLater(callback, "default");
+      return resolved("default");
     });
   }
   const status = window.PermissionStatus && window.PermissionStatus.prototype;
@@ -257,15 +320,36 @@
       }
       return { config: out, original: config, kept };
     };
+    const REQUIREMENTS = ["required", "optional", "not-allowed"];
+    const readRequirement = (value) => {
+      const text = readText(value);
+      if (REQUIREMENTS.indexOf(text) === -1) {
+        throw new TypeError("The provided value '" + text + "' is not a valid enum value of type MediaKeysRequirement.");
+      }
+      return text;
+    };
+    const readCapabilities = (value) => readSequence(value, (item) => readDictionary(item, "MediaKeySystemMediaCapability", [
+      ["contentType", readText], ["encryptionScheme", (v) => (v === null ? null : readText(v))], ["robustness", readText],
+    ]));
+    const readConfiguration = (value) => readDictionary(value, "MediaKeySystemConfiguration", [
+      ["audioCapabilities", readCapabilities], ["distinctiveIdentifier", readRequirement],
+      ["initDataTypes", (v) => readSequence(v, readText)], ["label", readText], ["persistentState", readRequirement],
+      ["sessionTypes", (v) => readSequence(v, readText)], ["videoCapabilities", readCapabilities],
+    ]);
     define(navigatorProto, "requestMediaKeySystemAccess", (original) => function (keySystem, configs) {
-      if (arguments.length < 2 || String(keySystem) !== WIDEVINE) return original.apply(this, arguments);
-      let list;
-      try { list = Array.from(configs); } catch (e) { return original.apply(this, arguments); }
-      if (!list.length) return original.apply(this, arguments);
+      if (arguments.length < 2 || !isNavigator(this)) return original.apply(this, arguments);
+      let key, list;
+      try {
+        key = readText(keySystem);
+        if (key !== WIDEVINE) return original.call(this, key, configs);
+        list = readSequence(configs, readConfiguration);
+      } catch (error) {
+        return rejected(pageError(error));
+      }
       const mapped = list.map(toClearKey);
       const usable = mapped.filter(Boolean);
-      // Nothing Widevine would take: refused as Chrome refuses it.
-      if (!usable.length) return original.apply(this, arguments);
+      // Asked for nothing, or nothing Widevine would take: refused as Chrome refuses it.
+      if (!usable.length) return original.call(this, key, list);
       return original.call(this, "org.w3.clearkey", usable.map((m) => m.config)).then((access) => {
         const chosen = mapped[Number(access.getConfiguration().label)];
         asked.set(access, chosen);
@@ -302,29 +386,38 @@
   const proto = window.Navigator && window.Navigator.prototype;
   if (proto && !("share" in proto) && window.DOMException) {
     const checkThis = (self) => {
-      if (!(self instanceof window.Navigator)) throw new window.TypeError("Illegal invocation");
+      if (!isNavigator(self)) throw new window.TypeError("Illegal invocation");
     };
-    const shareable = (data) => Boolean(data && typeof data === "object" && (
-      typeof data.title === "string" || typeof data.text === "string" || data.url !== undefined || (data.files && data.files.length)));
+    const readShareData = (value) => readDictionary(value, "ShareData", [
+      ["files", (v) => readSequence(v, (file) => file)], ["text", readText], ["title", readText], ["url", readText],
+    ]);
+    const shareable = (data) => data.title !== undefined || data.text !== undefined || data.url !== undefined || Boolean(data.files && data.files.length);
     const add = (name, fn) => defineProperty(proto, name, { value: fn, writable: true, enumerable: true, configurable: true });
-    add("canShare", method("canShare", 0, function (data) {
+    add("canShare", method("canShare", 0, function (value) {
       checkThis(this);
+      const data = readShareData(value);
       if (!shareable(data)) return false;
       if (data.url !== undefined) {
         try { new window.URL(String(data.url), window.location.href); } catch (e) { return false; }
       }
       return true;
     }));
-    add("share", method("share", 0, function (data) {
-      checkThis(this);
+    add("share", method("share", 0, function (value) {
+      let data;
+      try {
+        checkThis(this);
+        data = readShareData(value);
+      } catch (error) {
+        return rejected(pageError(error));
+      }
       if (!shareable(data)) {
-        return window.Promise.reject(new window.TypeError("Failed to execute 'share' on 'Navigator': Must specify at least one of title, text, url, or files"));
+        return rejected(new window.TypeError("Failed to execute 'share' on 'Navigator': Must specify at least one of title, text, url, or files"));
       }
       const active = window.navigator.userActivation && window.navigator.userActivation.isActive;
       if (!active) {
-        return window.Promise.reject(new window.DOMException("Failed to execute 'share' on 'Navigator': Must be handling a user gesture to perform a share request.", "NotAllowedError"));
+        return rejected(new window.DOMException("Failed to execute 'share' on 'Navigator': Must be handling a user gesture to perform a share request.", "NotAllowedError"));
       }
-      return window.Promise.reject(new window.DOMException("Share canceled", "AbortError"));
+      return rejected(new window.DOMException("Share canceled", "AbortError"));
     }));
   }
 }

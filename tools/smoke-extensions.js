@@ -109,6 +109,11 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     place.keptOnScreen = back.x + back.width <= area.x + area.width && back.x >= area.x;
     return place;
   }, results.anchor);
+  // Its background (a service worker) finds the tab the user is on, as Chrome's would, while the popup has the focus.
+  results.backgroundTab = await main((electron) => {
+    const popup = electron.BrowserWindow.getAllWindows().find((w) => w.webContents.getURL().startsWith("chrome-extension://"));
+    return popup ? popup.webContents.executeJavaScript("new Promise((r) => chrome.runtime.sendMessage('active-tab', r))", true) : null;
+  });
   await main((electron) => { for (const w of electron.BrowserWindow.getAllWindows()) if (w.webContents.getURL().startsWith("chrome-extension://")) w.close(); });
   results.siteServiceWorker = await inTab("new Promise((r) => { const t = setInterval(() => { if (window.swGlobals) { clearInterval(t); r(window.swGlobals); } }, 100); setTimeout(() => r('timeout'), 4000); })");
 
@@ -193,6 +198,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     && results.popup.length === 1 && results.popup[0].endsWith("/popup.html")
     && results.popupPlace && results.popupPlace.rightAtButton && results.popupPlace.belowButton
     && results.popupPlace.insideWindow && results.popupPlace.insideScreen && results.popupPlace.keptOnScreen
+    && results.backgroundTab && results.backgroundTab.url === base + "one" && results.backgroundTab.windows === "object"
     && results.siteServiceWorker === "none"
     && results.privateRuns === "no" && results.privateToolbar.extensionsHere === false && results.privateActionsHidden === true
     && results.optionsTitle === "Sample Options" && results.whenOff === "no" && results.whenOn === "yes"
