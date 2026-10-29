@@ -2,7 +2,7 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { app, dialog, nativeImage, net } = require("electron");
+const { app, dialog, nativeImage, net, screen } = require("electron");
 const AdmZip = require("adm-zip");
 const { ElectronChromeExtensions } = require("electron-chrome-extensions");
 const {
@@ -123,6 +123,7 @@ class Extensions {
       // Not there: nothing to replace.
     }
     ses.registerPreloadScript({ id: "noor-crx-mv3-preload", type: "service-worker", filePath: SERVICE_WORKER_PRELOAD });
+    manager.on("browser-action-popup-created", (popup) => keepOnScreen(popup));
     this.managers.set(ses, manager);
     ses.extensions.on("extension-loaded", () => this.changed());
     ses.extensions.on("extension-unloaded", () => this.changed());
@@ -440,6 +441,27 @@ class Extensions {
     }
   }
 }
+
+/// An extension's popup opens under its button, its right edge at the
+/// button's, as in Chrome; wherever the library puts it, it stays inside
+/// the screen it is on (a big popup near an edge would go past it).
+const keepOnScreen = (popup) => {
+  const fit = () => {
+    const win = popup.browserWindow;
+    if (!win || win.isDestroyed()) {
+      return;
+    }
+    const bounds = win.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    const x = Math.max(area.x, Math.min(bounds.x, area.x + area.width - bounds.width));
+    const y = Math.max(area.y, Math.min(bounds.y, area.y + area.height - bounds.height));
+    if (x !== bounds.x || y !== bounds.y) {
+      win.setBounds({ ...bounds, x, y });
+    }
+  };
+  popup.on("moved", fit);
+  popup.on("resized", fit);
+};
 
 const readJSON = (file) => {
   try {

@@ -76,9 +76,39 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     process.mainModule.require("fs").writeFileSync(file, image.toPNG());
     return file;
   }, path.join(os.tmpdir(), "noor-toolbar-extension.png"));
-  await inChrome("(() => { const list = document.getElementById('actions'); const b = list.shadowRoot && list.shadowRoot.querySelector('button'); if (b) b.click(); })()");
+  await main(() => {
+    for (const manager of global.noorTest.extensions.managers.values()) {
+      manager.on("browser-action-popup-created", (popup) => { global.lastPopup = popup; });
+    }
+  });
+  results.anchor = await inChrome("(() => { const list = document.getElementById('actions'); const b = list.shadowRoot && list.shadowRoot.querySelector('button'); if (!b) return null; const r = b.getBoundingClientRect(); b.click(); return { right: r.right, bottom: r.bottom }; })()");
   await sleep(1500);
   results.popup = await main((electron) => electron.BrowserWindow.getAllWindows().map((w) => w.webContents.getURL()).filter((u) => u.startsWith("chrome-extension://")));
+  // Under its button, its right edge at the button's, inside the window and
+  // the screen, once its page tells its size (Chromium tells it here as it
+  // does on Windows; this display sends none for a hidden window).
+  results.popupPlace = await main((electron, anchor) => {
+    const popup = global.lastPopup;
+    if (!popup || !popup.browserWindow) return null;
+    popup.setSize({ width: 320, height: 240 });
+    popup.updatePosition();
+    const bounds = popup.browserWindow.getBounds();
+    const win = global.noorTest.browser.win.getContentBounds();
+    const area = electron.screen.getDisplayMatching(bounds).workArea;
+    const place = {
+      rightAtButton: Math.abs(bounds.x + bounds.width - (win.x + anchor.right)) <= 2,
+      belowButton: bounds.y >= win.y + anchor.bottom,
+      insideWindow: bounds.x >= win.x && bounds.x + bounds.width <= win.x + win.width,
+      insideScreen: bounds.x >= area.x && bounds.y >= area.y && bounds.x + bounds.width <= area.x + area.width && bounds.y + bounds.height <= area.y + area.height,
+      bounds,
+    };
+    // Put past the screen's edge, it comes back inside.
+    popup.browserWindow.setBounds({ x: area.x + area.width - 40, y: bounds.y, width: 320, height: 240 });
+    popup.emit("moved");
+    const back = popup.browserWindow.getBounds();
+    place.keptOnScreen = back.x + back.width <= area.x + area.width && back.x >= area.x;
+    return place;
+  }, results.anchor);
   await main((electron) => { for (const w of electron.BrowserWindow.getAllWindows()) if (w.webContents.getURL().startsWith("chrome-extension://")) w.close(); });
   results.siteServiceWorker = await inTab("new Promise((r) => { const t = setInterval(() => { if (window.swGlobals) { clearInterval(t); r(window.swGlobals); } }, 100); setTimeout(() => r('timeout'), 4000); })");
 
@@ -161,6 +191,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     && results.toolbar.hidden === false && results.toolbar.buttons === 1 && results.toolbar.noIcon === false
     && results.toolbar.icon.includes(results.folderId) && results.toolbar.iconServed === "200 image/png"
     && results.popup.length === 1 && results.popup[0].endsWith("/popup.html")
+    && results.popupPlace && results.popupPlace.rightAtButton && results.popupPlace.belowButton
+    && results.popupPlace.insideWindow && results.popupPlace.insideScreen && results.popupPlace.keptOnScreen
     && results.siteServiceWorker === "none"
     && results.privateRuns === "no" && results.privateToolbar.extensionsHere === false && results.privateActionsHidden === true
     && results.optionsTitle === "Sample Options" && results.whenOff === "no" && results.whenOn === "yes"
