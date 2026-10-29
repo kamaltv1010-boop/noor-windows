@@ -89,6 +89,12 @@ class Tab {
     wc.debugger.on("detach", () => {
       this.debugging = false;
     });
+    // Before anything loads: the user agent with Chrome's brands and the
+    // system's details, so every request of this tab (a navigation's
+    // too) carries the Sec-CH-UA headers as Chrome's do.
+    if (this.browser.userAgentOverride) {
+      wc.debugger.sendCommand("Network.setUserAgentOverride", this.browser.userAgentOverride).catch(() => {});
+    }
     wc.debugger.on("message", (event, method, params) => {
       if (method !== "Target.attachedToTarget" || !params || !params.targetInfo) {
         return;

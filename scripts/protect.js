@@ -990,7 +990,16 @@ if (config.chrome) { try {
 {
   const data = window.navigator.userAgentData;
   const chrome = config.chrome;
-  if (data && chrome && chrome.brands) {
+  // Already Chrome's (the override set for the tab, see main/tabs.js):
+  // then nothing here is replaced.
+  const saysChrome = (list) => {
+    try {
+      return list.length === chrome.brands.length && list.every((b, i) => b.brand === chrome.brands[i].brand && b.version === chrome.brands[i].version);
+    } catch (e) {
+      return false;
+    }
+  };
+  if (data && chrome && chrome.brands && !saysChrome(data.brands)) {
     const proto = getPrototypeOf(data);
     const copy = (list) => list.map((b) => ({ brand: b.brand, version: b.version }));
     defineGetter(proto, "brands", () => copy(chrome.brands));

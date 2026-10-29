@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { acceptLanguages, userAgent, brands, parseBrands, formatBrands, chromeVersion } = require("../main/useragent");
+const { acceptLanguages, acceptLanguageHeader, userAgentMetadata, userAgent, brands, parseBrands, formatBrands, chromeVersion } = require("../main/useragent");
 
 test("the user agent is Chrome on Windows, without Electron", () => {
   const agent = userAgent();
@@ -37,4 +37,23 @@ test("accept languages read as Chrome's for a system language", () => {
   assert.equal(acceptLanguages("ar-MA"), "ar-MA,ar,en-US,en");
   assert.equal(acceptLanguages("pt_BR"), "pt-BR,pt,en-US,en");
   assert.equal(acceptLanguages(""), "en-US,en");
+});
+
+test("the Accept-Language header reads as Chrome's", () => {
+  assert.equal(acceptLanguageHeader("en-US,en"), "en-US,en;q=0.9");
+  assert.equal(acceptLanguageHeader("fr-FR,fr,en-US,en"), "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7");
+  assert.equal(acceptLanguageHeader("en-US"), "en-US");
+});
+
+test("the override's metadata carries Chrome's brands and the system's details", () => {
+  const list = brands("156");
+  const metadata = userAgentMetadata({ brandList: list, fullVersionList: list.map((b) => ({ brand: b.brand, version: b.version + ".0.0.0" })), highEntropy: { platformVersion: "19.0.0", architecture: "x86", bitness: "64", wow64: false, model: "", formFactors: ["Desktop"] } });
+  assert.equal(metadata.platform, "Windows");
+  assert.equal(metadata.platformVersion, "19.0.0");
+  assert.equal(metadata.mobile, false);
+  assert.deepEqual(metadata.brands.map((b) => b.brand), list.map((b) => b.brand));
+  assert.equal(metadata.fullVersionList[0].version.split(".").length, 4);
+  const fallback = userAgentMetadata({ brandList: list, fullVersionList: list, highEntropy: null });
+  assert.equal(fallback.architecture, "x86");
+  assert.deepEqual(fallback.formFactors, ["Desktop"]);
 });

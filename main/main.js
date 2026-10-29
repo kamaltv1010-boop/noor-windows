@@ -1,7 +1,7 @@
 "use strict";
 const path = require("path");
 const fs = require("fs");
-const { app, protocol, session, screen, ipcMain, net, Menu, dialog } = require("electron");
+const { app, protocol, session, screen, ipcMain, net, Menu, dialog, WebContentsView } = require("electron");
 const { pathToFileURL } = require("url");
 const { Store } = require("./store");
 const { Profiles } = require("./profiles");
@@ -11,8 +11,8 @@ const { Bookmarks } = require("./bookmarks");
 const { Timezone } = require("./timezone");
 const { Browser } = require("./tabs");
 const { Menus } = require("./menus");
-const { ENGINES, APP_ORIGIN, isAppPage, isWebPage } = require("./address");
-const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages } = require("./useragent");
+const { ENGINES, APP_ORIGIN, ERROR_URL, isAppPage, isWebPage } = require("./address");
+const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages, userAgentMetadata } = require("./useragent");
 
 const RENDERER = path.join(__dirname, "..", "renderer");
 const SCRIPTS = path.join(__dirname, "..", "scripts");
@@ -123,10 +123,17 @@ const setUpSession = (ses) => {
     }
     callback({});
   });
+  ses.webRequest.onHeadersReceived({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {
+    rememberAcceptCH(details);
+    callback({});
+  });
   ses.webRequest.onBeforeSendHeaders({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {
-    const headers = details.requestHeaders;
+    const headers = withClientHints(details);
     for (const name of Object.keys(headers)) {
       const lower = name.toLowerCase();
+      // A tab's requests carry Chrome's brands already (the override set
+      // through the debugging protocol, see tabs.js); the rest (a service
+      // worker's, say) still name Chromium and are rewritten.
       if (lower === "sec-ch-ua") {
         if (!greasey) {
           greasey = parseBrands(headers[name]).find((b) => /^Not/.test(b.brand)) || null;
@@ -134,8 +141,10 @@ const setUpSession = (ses) => {
             brandList = brands(chromeVersion(), greasey);
           }
         }
-        headers[name] = formatBrands(brandList);
-      } else if (lower === "sec-ch-ua-full-version-list") {
+        if (headers[name].indexOf("Google Chrome") === -1) {
+          headers[name] = formatBrands(brandList);
+        }
+      } else if (lower === "sec-ch-ua-full-version-list" && headers[name].indexOf("Google Chrome") === -1) {
         headers[name] = formatBrands(fullVersionList());
       }
     }
@@ -143,10 +152,160 @@ const setUpSession = (ses) => {
   });
 };
 
+// MARK: - Client hints
+
+/// Chrome sends the low-entropy client hints (sec-ch-ua, sec-ch-ua-mobile,
+/// sec-ch-ua-platform) with every request to a secure site, and the ones
+/// a site asked for with Accept-CH on a page's response from the next
+/// request on. Electron has no part for the navigation's hints and keeps
+/// no Accept-CH, so a navigation went without, which a site's server
+/// sees. They are added here, in Chrome's places: the low-entropy three
+/// before Upgrade-Insecure-Requests, the asked-for ones after them, in
+/// the order Chrome keeps them.
+const LOW_ENTROPY_HINTS = ["sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform"];
+const HIGH_ENTROPY_HINTS = ["sec-ch-ua-arch", "sec-ch-ua-model", "sec-ch-ua-full-version", "sec-ch-ua-platform-version", "sec-ch-ua-bitness", "sec-ch-ua-full-version-list", "sec-ch-ua-wow64", "sec-ch-ua-form-factors"];
+/// The hints each origin asked for (Chrome keeps these per profile too).
+const acceptCH = new Map();
+
+const isSecureSite = (url) => {
+  try {
+    const { protocol, hostname } = new URL(url);
+    return protocol === "https:" || hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "[::1]";
+  } catch (error) {
+    return false;
+  }
+};
+
+const originOf = (url) => {
+  try {
+    return new URL(url).origin;
+  } catch (error) {
+    return "";
+  }
+};
+
+const rememberAcceptCH = (details) => {
+  if (details.resourceType !== "mainFrame" || !isSecureSite(details.url) || !details.responseHeaders) {
+    return;
+  }
+  const name = Object.keys(details.responseHeaders).find((key) => key.toLowerCase() === "accept-ch");
+  const origin = originOf(details.url);
+  if (!origin) {
+    return;
+  }
+  if (!name) {
+    return;
+  }
+  const asked = new Set();
+  for (const value of [].concat(details.responseHeaders[name])) {
+    for (const token of String(value).split(",")) {
+      const hint = token.trim().toLowerCase();
+      if (HIGH_ENTROPY_HINTS.includes(hint)) {
+        asked.add(hint);
+      }
+    }
+  }
+  acceptCH.set(origin, asked);
+};
+
+const structuredString = (value) => `"${String(value).replace(/["\\]/g, "\\$&")}"`;
+
+/// The hints' values, from what the tabs tell of themselves.
+const hintValues = () => {
+  const metadata = context && context.userAgentOverride && context.userAgentOverride.userAgentMetadata;
+  if (!metadata) {
+    return null;
+  }
+  return {
+    "sec-ch-ua": formatBrands(metadata.brands),
+    "sec-ch-ua-mobile": metadata.mobile ? "?1" : "?0",
+    "sec-ch-ua-platform": structuredString(metadata.platform),
+    "sec-ch-ua-arch": structuredString(metadata.architecture),
+    "sec-ch-ua-model": structuredString(metadata.model),
+    "sec-ch-ua-full-version": structuredString(process.versions.chrome),
+    "sec-ch-ua-platform-version": structuredString(metadata.platformVersion),
+    "sec-ch-ua-bitness": structuredString(metadata.bitness),
+    "sec-ch-ua-full-version-list": formatBrands(metadata.fullVersionList),
+    "sec-ch-ua-wow64": metadata.wow64 ? "?1" : "?0",
+    "sec-ch-ua-form-factors": metadata.formFactors.map(structuredString).join(", "),
+  };
+};
+
+/// A request's headers with the hints Chrome would send, where it puts them.
+const withClientHints = (details) => {
+  const headers = details.requestHeaders;
+  if (!isSecureSite(details.url)) {
+    return headers;
+  }
+  const values = hintValues();
+  if (!values) {
+    return headers;
+  }
+  const isNavigation = details.resourceType === "mainFrame" || details.resourceType === "subFrame";
+  const asked = acceptCH.get(originOf(details.url)) || new Set();
+  const present = new Set(Object.keys(headers).map((name) => name.toLowerCase()));
+  const missing = (names) => names.filter((name) => !present.has(name));
+  const low = isNavigation ? missing(LOW_ENTROPY_HINTS) : [];
+  const high = missing(HIGH_ENTROPY_HINTS.filter((name) => asked.has(name)));
+  if (!low.length && !high.length) {
+    return headers;
+  }
+  const rebuilt = {};
+  let placed = false;
+  const place = () => {
+    for (const name of low) rebuilt[name] = values[name];
+    for (const name of high) rebuilt[name] = values[name];
+    placed = true;
+  };
+  for (const [name, value] of Object.entries(headers)) {
+    const lower = name.toLowerCase();
+    if (!placed && isNavigation && (lower === "upgrade-insecure-requests" || lower === "user-agent")) {
+      place();
+    }
+    rebuilt[name] = value;
+    if (!placed && !isNavigation && lower === "sec-ch-ua-mobile") {
+      place();
+    }
+  }
+  if (!placed) {
+    place();
+  }
+  return rebuilt;
+};
+
 const fullVersionList = () => brandList.map((b) => ({
   brand: b.brand,
   version: /^Not/.test(b.brand) ? `${b.version}.0.0.0` : process.versions.chrome,
 }));
+
+/// The system's details Chromium tells of itself (navigator.userAgentData's
+/// high-entropy values), read from a page of its own, for the override.
+const probeHighEntropy = async () => {
+  const view = new WebContentsView({ webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const stop = new Promise((resolve) => setTimeout(() => resolve(null), 3000));
+  try {
+    // One of the app's own pages: a secure context, which userAgentData needs.
+    await Promise.race([view.webContents.loadURL(ERROR_URL), stop]);
+    return await Promise.race([
+      view.webContents.executeJavaScript("navigator.userAgentData ? navigator.userAgentData.getHighEntropyValues(['platformVersion', 'architecture', 'bitness', 'wow64', 'model', 'formFactors']) : null", true),
+      stop,
+    ]);
+  } catch (error) {
+    return null;
+  } finally {
+    try { view.webContents.close(); } catch (error) {}
+  }
+};
+
+/// What a tab tells of itself, set through the debugging protocol: the
+/// user agent, Chrome's brands and the system's details (so navigations
+/// carry the Sec-CH-UA headers as Chrome's do, which an override of the
+/// user agent alone loses), the languages, and the platform.
+const userAgentOverride = (highEntropy) => ({
+  userAgent: userAgent(),
+  platform: "Win32",
+  userAgentMetadata: userAgentMetadata({ brandList, fullVersionList: fullVersionList(), highEntropy: highEntropy || {} }),
+});
 
 /// What a page's script gets for the page at `top`: the fingerprint for
 /// it, and Chrome's brands.
@@ -421,6 +580,14 @@ app.whenReady().then(async () => {
   if (!timezone.current && timezone.enabled()) {
     await timezone.ready();
   }
+
+  // What Chromium says of the system, kept for the override of every tab
+  // (and from the last launch while it is read again).
+  const highEntropy = await probeHighEntropy();
+  if (highEntropy && typeof highEntropy === "object") {
+    store.set("highEntropy", highEntropy);
+  }
+  context.userAgentOverride = userAgentOverride(highEntropy || store.get("highEntropy", null));
 
   Browser.prototype.workerScript = workerScript;
   browser = new Browser(context);

@@ -62,4 +62,30 @@ const acceptLanguages = (locale) => {
   return list.filter((item, index) => list.indexOf(item) === index).join(",");
 };
 
-module.exports = { chromeVersion, userAgent, brands, parseBrands, formatBrands, acceptLanguages };
+/// The Accept-Language header Chrome sends for a list of languages:
+/// "en-US,en;q=0.9", "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7".
+const acceptLanguageHeader = (list) => String(list || "").split(",").filter(Boolean)
+  .map((tag, index) => (index === 0 ? tag : `${tag};q=${Math.max(1, 10 - index) / 10}`)).join(",");
+
+/// What Chrome tells of itself beside the user agent (navigator.userAgentData
+/// and the Sec-CH-UA headers): its brands, and the system's own details
+/// (`highEntropy`: platformVersion, architecture, bitness, wow64, model,
+/// formFactors, read from Chromium itself), as the debugging protocol's
+/// override takes it, so the headers of a navigation carry it too.
+const userAgentMetadata = ({ brandList, fullVersionList, highEntropy }) => {
+  const known = highEntropy && typeof highEntropy === "object" ? highEntropy : {};
+  return {
+    brands: brandList.map((b) => ({ brand: b.brand, version: b.version })),
+    fullVersionList: fullVersionList.map((b) => ({ brand: b.brand, version: b.version })),
+    platform: "Windows",
+    platformVersion: typeof known.platformVersion === "string" ? known.platformVersion : "15.0.0",
+    architecture: typeof known.architecture === "string" ? known.architecture : "x86",
+    model: typeof known.model === "string" ? known.model : "",
+    mobile: false,
+    bitness: typeof known.bitness === "string" ? known.bitness : "64",
+    wow64: typeof known.wow64 === "boolean" ? known.wow64 : false,
+    formFactors: Array.isArray(known.formFactors) && known.formFactors.length ? known.formFactors : ["Desktop"],
+  };
+};
+
+module.exports = { chromeVersion, userAgent, brands, parseBrands, formatBrands, acceptLanguages, acceptLanguageHeader, userAgentMetadata };
