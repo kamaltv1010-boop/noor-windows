@@ -1088,9 +1088,16 @@ if (config.screen) { try {
         {
           const width = config.screen.width;
           const height = config.screen.height;
-          for (const name of ["width", "availWidth"]) defineGetter(window.Screen.prototype, name, () => width);
-          defineGetter(window.Screen.prototype, "height", () => height);
+          const shown = (name) => {
+            try { return getOwnPropertyDescriptor(window.Screen.prototype, name).get.call(window.screen); } catch (e) { return undefined; }
+          };
+          const byChromium = shown("width") === width && shown("height") === height;
+          if (!byChromium) {
+            for (const name of ["width", "availWidth"]) defineGetter(window.Screen.prototype, name, () => width);
+            defineGetter(window.Screen.prototype, "height", () => height);
+          }
           defineGetter(window.Screen.prototype, "availHeight", () => height - 48);
+          if (!byChromium) {
 
           // Media queries about the screen (device-width, device-height,
           // device-aspect-ratio, and the pixel density when it is changed)
@@ -1156,6 +1163,7 @@ if (config.screen) { try {
             defineGetter(window.MediaQueryList.prototype, "media", function (value) {
               return written.get(this) || value;
             });
+          }
           }
         }
 

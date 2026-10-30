@@ -16,6 +16,7 @@ const { storeExtensionID, storeTitle } = require("./crx");
 const { Menus } = require("./menus");
 const { ENGINES, APP_ORIGIN, ERROR_URL, isAppPage, isWebPage } = require("./address");
 const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages, userAgentMetadata } = require("./useragent");
+const { BrowserDebugger } = require("./browser-debugger");
 
 const RENDERER = path.join(__dirname, "..", "renderer");
 const SCRIPTS = path.join(__dirname, "..", "scripts");
@@ -48,6 +49,13 @@ app.setAppUserModelId("ma.noor.browser");
 // Pages see navigator.webdriver as false, as in Chrome, even under a
 // debugger.
 app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled");
+/// Chromium's own debugging port, for the workers no tab's debugger reaches
+/// (shared workers, and service workers; see main/browser-debugger.js): one
+/// of its own for each run, on this computer only. A port given, as a
+/// developer's debugger has, not one Chromium picks (0), which marks the
+/// browser as automated.
+const DEBUGGING_PORT = 20000 + crypto.randomInt(20000);
+app.commandLine.appendSwitch("remote-debugging-port", String(DEBUGGING_PORT));
 if (process.env.NOOR_USER_DATA) {
   // Tests keep their data apart.
   app.setPath("userData", process.env.NOOR_USER_DATA);
@@ -346,8 +354,15 @@ const userAgentOverride = (highEntropy) => ({
   userAgentMetadata: userAgentMetadata({ brandList, fullVersionList: fullVersionList(), highEntropy: highEntropy || {} }),
 });
 
+/// The mark a replacement's source carries (the iPhone app's "noor
+/// lookalike") and the mark of the frame the protection is made in (see
+/// scripts/parts/preload-glue.js): the app's for this run, so a page can
+/// neither recognize nor imitate them.
+const LOOKALIKE_MARK = crypto.randomBytes(8).toString("hex");
+const REALM_KEY = "_" + crypto.randomBytes(12).toString("hex");
+
 /// What a page's script gets for the page at `top`: the fingerprint for
-/// it, and Chrome's brands.
+/// it, Chrome's brands, and the marks of the run.
 const configFor = (top) => {
   const protections = context.shields.areUp(top);
   const realDevice = Shields.isSignInSite(top);
@@ -358,7 +373,18 @@ const configFor = (top) => {
     fullVersion: process.versions.chrome,
   };
   config.languages = acceptLanguages(app.getLocale()).split(",");
+  config.mark = LOOKALIKE_MARK;
+  config.realmKey = REALM_KEY;
   return config;
+};
+
+/// The screen Chromium itself shows a tab's page at `url` (see
+/// Tab.showScreen), or null for the real one.
+const screenFor = (url) => {
+  if (!context || !isWebPage(url)) {
+    return null;
+  }
+  return configFor(url).screen || null;
 };
 
 const pageConfig = (event) => {
@@ -373,8 +399,19 @@ const pageConfig = (event) => {
   if (/^chrome-extension:/i.test(top)) {
     return null;
   }
+  // A window a page opened is empty (about:blank) before it loads its
+  // address, and an empty window is the site of the page that made it:
+  // the noise is that site's, as in the page itself.
+  if (!isWebPage(top) && tab && tab.opener && !tab.opener.webContents.isDestroyed() && isWebPage(tab.opener.webContents.getURL())) {
+    top = tab.opener.webContents.getURL();
+  }
   const config = configFor(top);
   config.tabId = tab ? tab.id : null;
+  try {
+    if (isWebPage(top)) {
+      config.host = new URL(top).hostname;
+    }
+  } catch (error) {}
   return config;
 };
 
@@ -401,32 +438,52 @@ const workerConfig = (url) => {
   return config;
 };
 
-/// The protection as a script for a dedicated worker of a tab: protect.js
-/// with the worker's global as the window, and the tab's page config.
-/// `hidden` when the script will run as the inspector's own code, whose
-/// frames no stack shows (see Tab.injectWorker).
+/// The protection as a script for a worker: protect.js (with this run's
+/// mark) with the worker's global as the window, and `config`.
 let protectSource = null;
-const workerScript = (tab, hidden) => {
+const workerSource = (config) => {
   if (protectSource === null) {
     try {
-      protectSource = fs.readFileSync(path.join(SCRIPTS, "protect.js"), "utf8").replace("module.exports = protectPage;", "");
+      protectSource = fs.readFileSync(path.join(SCRIPTS, "protect.js"), "utf8").replace("module.exports = protectPage;", "")
+        .split("noor lookalike").join(LOOKALIKE_MARK);
     } catch (error) {
       protectSource = "";
     }
   }
-  const config = protectSource ? workerConfig(tab.webContents.isDestroyed() ? "" : tab.webContents.getURL()) : null;
-  if (!config) {
+  if (!protectSource || !config) {
     return null;
-  }
-  if (hidden) {
-    config.framesHidden = true;
   }
   return `(() => {\n${protectSource}\ntry { protectPage(self, ${JSON.stringify(config)}); } catch (e) {}\n})();\n//# sourceURL=${config.scriptName}`;
 };
 
-/// A session's service workers get the protection from their preload (see
-/// scripts/parts/sw-preload-glue.js), which asks each worker's own channel
-/// for its config as the worker starts; the channel is answered from here.
+/// The protection for a dedicated worker of a tab, with the tab's page
+/// config. `hidden` when the script will run as the inspector's own code,
+/// whose frames no stack shows (see Tab.injectWorker).
+const workerScript = (tab, hidden) => {
+  const config = workerConfig(tab.webContents.isDestroyed() ? "" : tab.webContents.getURL());
+  if (config && hidden) {
+    config.framesHidden = true;
+  }
+  return workerSource(config);
+};
+
+/// Shared and service workers, reached through Chromium's own debugging
+/// target (see main/browser-debugger.js): each gets the protection for its
+/// own address, as the inspector's code.
+let browserDebugger = null;
+const debuggedWorkerScript = (url) => {
+  const config = workerConfig(url);
+  if (config) {
+    config.framesHidden = true;
+  }
+  return workerSource(config);
+};
+
+/// A session's service workers get the protection through Chromium's own
+/// debugging target (see debuggedWorkerScript); if that couldn't be
+/// reached, from their preload (see scripts/parts/sw-preload-glue.js),
+/// which asks each worker's own channel for its config as the worker
+/// starts; the channel is answered from here.
 const guardedWorkers = new WeakSet();
 const guardServiceWorkers = (ses) => {
   try {
@@ -449,7 +506,7 @@ const guardServiceWorkers = (ses) => {
     }
     guardedWorkers.add(worker);
     worker.ipc.on("noor:sw-config", (event, url) => {
-      event.returnValue = workerConfig(typeof url === "string" ? url : "");
+      event.returnValue = browserDebugger && browserDebugger.active ? null : workerConfig(typeof url === "string" ? url : "");
     });
   });
 };
@@ -688,7 +745,12 @@ app.whenReady().then(async () => {
   }
   context.userAgentOverride = userAgentOverride(highEntropy || store.get("highEntropy", null));
 
+  // Shared and service workers are held as they start, from now on.
+  browserDebugger = new BrowserDebugger({ port: DEBUGGING_PORT, scriptFor: debuggedWorkerScript });
+  await browserDebugger.connect(2500).catch(() => false);
+
   Browser.prototype.workerScript = workerScript;
+  Browser.prototype.screenFor = screenFor;
   Browser.prototype.extensions = extensions;
   browser = new Browser(context);
   extensions.browser = browser;
@@ -713,7 +775,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(browser.menus.application());
   registerIPC();
   if (process.env.NOOR_TEST) {
-    global.noorTest = { browser, context, extensions };
+    global.noorTest = { browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK };
   }
 
   app.on("second-instance", (event, argv) => {

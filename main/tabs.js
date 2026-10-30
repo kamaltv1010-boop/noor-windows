@@ -61,6 +61,7 @@ class Tab {
     this.watch();
     this.guardWorkers();
     this.setTimezone(browser.timezone ? browser.timezone.current : null);
+    this.showScreen(webContents ? webContents.getURL() : "");
     if (browser.extensions) {
       browser.extensions.tabCreated(this);
     }
@@ -82,11 +83,38 @@ class Tab {
     this.webContents.debugger.sendCommand("Emulation.setTimezoneOverride", { timezoneId: this.timezone || "" }, session).catch(() => {});
   }
 
+  /// Chromium itself shows the tab's page the profile's screen, so CSS (a
+  /// media query's device-width) agrees with what scripts read, and the
+  /// page's frames of its own site with it; frames of other sites get it
+  /// from the protection. Told again as each page starts loading, for the
+  /// page at `url` (a sign-in site, or one with its shields down, sees the
+  /// real screen; see main.js).
+  showScreen(url) {
+    if (!this.debugging || !this.browser.screenFor) {
+      return;
+    }
+    const screen = this.browser.screenFor(url || "");
+    const shown = screen ? `${screen.width}x${screen.height}` : "";
+    if (shown === (this.shownScreen || "")) {
+      return;
+    }
+    this.shownScreen = shown;
+    const command = screen
+      // A size of 0 and no scale leave the view and the page's layout as
+      // they are: only the screen changes.
+      ? this.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", {
+        width: 0, height: 0, deviceScaleFactor: 0, mobile: false, screenWidth: screen.width, screenHeight: screen.height,
+      })
+      : this.webContents.debugger.sendCommand("Emulation.clearDeviceMetricsOverride", {});
+    command.catch(() => {});
+  }
+
   /// A page's dedicated workers start without the preload, so a page could
   /// read the real hardware (or Chromium's brands) there and compare with
-  /// its own window. Each worker of this tab is held before its first line,
-  /// given the protection, and let go. (Service workers get theirs from a
-  /// preload of their own, see main.js; shared workers can't be reached.)
+  /// its own window. Each worker of this tab, and each worker one of them
+  /// makes, is held before its first line, given the protection, and let
+  /// go. (Shared and service workers are held through Chromium's own
+  /// debugging target, see main/browser-debugger.js.)
   guardWorkers() {
     const wc = this.webContents;
     try {
@@ -122,16 +150,19 @@ class Tab {
         resume();
         return;
       }
+      // The worker's own workers, held as they start too.
+      wc.debugger.sendCommand("Target.setAutoAttach", { autoAttach: true, waitForDebuggerOnStart: true, flatten: true }, session).catch(() => {});
       this.injectWorker(session).then(resume, resume);
     });
-    // A window the page opens is a tab of its own, with its own debugger:
-    // held by this one too, it would wait, paused, for it as it starts
+    // A window the page opens is a tab of its own, with its own debugger,
+    // and service and shared workers are held from Chromium's own target:
+    // held by this one too, each would wait, paused, for it as it starts
     // (where the protection is made).
     wc.debugger.sendCommand("Target.setAutoAttach", {
       autoAttach: true,
       waitForDebuggerOnStart: true,
       flatten: true,
-      filter: [{ type: "page", exclude: true }, {}],
+      filter: [{ type: "page", exclude: true }, { type: "service_worker", exclude: true }, { type: "shared_worker", exclude: true }, {}],
     }).catch(() => {});
   }
 
@@ -196,6 +227,7 @@ class Tab {
       const same = typeof details.isSameDocument === "boolean" ? details.isSameDocument : isInPlace;
       if (main && !same) {
         this.url = details.url || url;
+        this.showScreen(this.url);
         this.title = "";
         this.canonicalURL = null;
         this.trackersBlocked = 0;
@@ -662,6 +694,11 @@ class Browser {
       return;
     }
     list.splice(index, 1);
+    // The window is going (the app quits): nothing is left to show, and
+    // its views can't be touched any more.
+    if (this.closing || !this.win || this.win.isDestroyed()) {
+      return;
+    }
     const wasSelected = this.selected === tab;
     if (!tab.isPrivate && this.tabs.length === 0) {
       // There is always a normal tab.

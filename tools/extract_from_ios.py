@@ -57,10 +57,25 @@ parts = [
     ("config.seeds.audio != null", part("func audioScript", seed="config.seeds.audio")),
     ("config.seeds.clientRects != null", part("func clientRectsScript", seed="config.seeds.clientRects")),
     ("config.screen", part("func screenScript", **{"size.width": "config.screen.width", "size.height": "config.screen.height"})
-        # On Windows the taskbar takes the bottom of the screen, so availHeight is less than height.
-        .replace('for (const name of ["height", "availHeight"]) defineGetter(window.Screen.prototype, name, () => height);',
-                 'defineGetter(window.Screen.prototype, "height", () => height);\n'
-                 '          defineGetter(window.Screen.prototype, "availHeight", () => height - 48);')),
+        # On Windows the taskbar takes the bottom of the screen, so
+        # availHeight is less than height. In a tab's own frames Chromium
+        # itself shows the profile's screen (the app tells it, see
+        # Tab.showScreen), to CSS as to scripts, so only availHeight is
+        # changed there; frames of other sites get it all here.
+        .replace('for (const name of ["width", "availWidth"]) defineGetter(window.Screen.prototype, name, () => width);\n'
+                 '          for (const name of ["height", "availHeight"]) defineGetter(window.Screen.prototype, name, () => height);',
+                 'const shown = (name) => {\n'
+                 '            try { return getOwnPropertyDescriptor(window.Screen.prototype, name).get.call(window.screen); } catch (e) { return undefined; }\n'
+                 '          };\n'
+                 '          const byChromium = shown("width") === width && shown("height") === height;\n'
+                 '          if (!byChromium) {\n'
+                 '            for (const name of ["width", "availWidth"]) defineGetter(window.Screen.prototype, name, () => width);\n'
+                 '            defineGetter(window.Screen.prototype, "height", () => height);\n'
+                 '          }\n'
+                 '          defineGetter(window.Screen.prototype, "availHeight", () => height - 48);\n'
+                 '          if (!byChromium) {')
+        .replace('              return written.get(this) || value;\n            });\n          }\n',
+                 '              return written.get(this) || value;\n            });\n          }\n          }\n')),
     ("config.hardware", (
         "// Hardware: pages see a common PC's core count and memory instead of\n"
         "// this one's, in workers too.\n"

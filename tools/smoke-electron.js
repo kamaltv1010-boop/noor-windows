@@ -204,11 +204,19 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ zone:
   await open(base);
   const popupOpened = await inTab(`Boolean(window.open(${JSON.stringify(base + "popup")}, "signin", "width=480,height=600"))`);
   await sleep(2000);
-  results.popup = await main(async (electron, target) => {
-    const tab = global.noorTest.browser.tabs.find((t) => !t.webContents.isDestroyed() && t.webContents.getURL() === target);
-    const page = tab ? await tab.webContents.executeJavaScript("({ opener: Boolean(window.opener), protected: Function.prototype.toString.call(function () { /* noor lookalike */ }).includes('native code') })", true) : null;
+  results.popup = await main(async (electron, [target]) => {
+    // The same drawing reads the same in the popup as in its opener (the
+    // same site, so the same noise): the popup has the protection too.
+    const canvas = "(() => { const c = new OffscreenCanvas(80, 24); const x = c.getContext('2d'); x.font = '15px sans-serif'; x.fillText('Noor 42', 2, 17); let h = 0; for (const v of x.getImageData(0, 0, 80, 24).data) h = (h * 31 + v) >>> 0; return h; })()";
+    const tabs = global.noorTest.browser.tabs.filter((t) => !t.webContents.isDestroyed());
+    const tab = tabs.find((t) => t.webContents.getURL() === target);
+    const from = tab && tab.opener && !tab.opener.webContents.isDestroyed() ? tab.opener : null;
+    const page = tab ? await tab.webContents.executeJavaScript(`({ opener: Boolean(window.opener), canvas: ${canvas} })`, true) : null;
+    if (page && from) {
+      page.protected = page.canvas === await from.webContents.executeJavaScript(canvas, true);
+    }
     return { tab: Boolean(tab), page, errors: global.__mainErrors };
-  }, base + "popup");
+  }, [base + "popup", base]);
   results.popup.opened = popupOpened;
   if (!(popupOpened && results.popup.tab && results.popup.page && results.popup.page.opener && results.popup.page.protected && results.popup.errors.length === 0)) {
     console.error("POPUP FAILED", JSON.stringify(results.popup));

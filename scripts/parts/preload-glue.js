@@ -10,12 +10,6 @@
     };
     return;
   }
-  // The frame made below for the protection's realm, were Electron ever to
-  // run this script there: nothing to do in it.
-  const REALM = Symbol.for("noor:realm");
-  try {
-    if (window.frameElement && window.frameElement[REALM]) return;
-  } catch (error) {}
   let config = null;
   try {
     config = ipcRenderer.sendSync("noor:page-config", location.href);
@@ -25,6 +19,15 @@
   if (!config) {
     return;
   }
+  // The frame made below for the protection's realm, were Electron ever to
+  // run this script there: nothing to do in it. Its mark, and the one a
+  // replacement's source carries (the iPhone app's "noor lookalike"), are
+  // the app's for this run, which no page knows.
+  const REALM = config.realmKey || "noorRealm";
+  const MARK = config.mark || "noor lookalike";
+  try {
+    if (window.frameElement && Object.prototype.hasOwnProperty.call(window.frameElement, REALM)) return;
+  } catch (error) {}
 
   // The protection runs from a realm of its own: an empty frame's, made
   // and taken out of the document again before the page's first script.
@@ -45,7 +48,7 @@
   // loads a page of its site, the opener's protection has replaced it).
   // null if any of that fails: then it runs here, as before.
   const KEY = "noorProtect";
-  const source = () => "(() => {\n" + protectSource + "\nwindow." + KEY + " = protectPage;\n})();\nvoid 0;\n";
+  const source = (key = KEY) => "(() => {\n" + protectSource.split("noor lookalike").join(MARK) + "\nwindow." + key + " = protectPage;\n})();\nvoid 0;\n";
   const hiddenProtect = () => {
     let frame = null;
     let parent = null;
@@ -105,8 +108,20 @@
       // Run here instead.
     }
   }
+  // Here instead, made from the same text (with this run's mark), handed
+  // over through a property of the page's window that is gone again before
+  // the page's first script.
   try {
-    protectPage(window, config);
+    let made = null;
+    try {
+      const done = webFrame.executeJavaScript(source(REALM));
+      if (done && typeof done.catch === "function") {
+        done.catch(() => {});
+      }
+      made = window[REALM];
+      delete window[REALM];
+    } catch (error) {}
+    (typeof made === "function" ? made : protectPage)(window, config);
   } catch (error) {
     // The page is shown unprotected rather than not at all.
   }
