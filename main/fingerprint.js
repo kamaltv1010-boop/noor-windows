@@ -1,5 +1,6 @@
 "use strict";
 const crypto = require("crypto");
+const { IPHONES } = require("./iphone");
 
 /// The protections, each with a seed per profile that decides the values
 /// pages see. The noise ones give canvas, WebGL and audio values and
@@ -8,6 +9,10 @@ const crypto = require("crypto");
 /// count and memory.
 const KINDS = ["canvas", "webGL", "audio", "clientRects", "screen", "hardware"];
 const NOISE_KINDS = ["canvas", "webGL", "audio", "clientRects"];
+/// Noor iPhone's: the noise ones, and "device", the iPhone a profile is
+/// (its screen, Safari's user agent and the rest, see main/iphone.js),
+/// always on.
+const IPHONE_KINDS = ["canvas", "webGL", "audio", "clientRects", "device"];
 
 /// Common PC screens, in CSS pixels.
 const SCREENS = [
@@ -20,9 +25,12 @@ const SCREENS = [
 const HARDWARE = [4, 6, 8, 12, 16].map((cores) => ({ cores, memory: 8 }));
 
 class Fingerprint {
-  constructor(store, profiles) {
+  constructor(store, profiles, { iphone = false } = {}) {
     this.store = store;
     this.profiles = profiles;
+    this.iphoneMode = Boolean(iphone);
+    /// The kinds this build has (Noor iPhone's, or Noor's).
+    this.kinds = this.iphoneMode ? IPHONE_KINDS : KINDS;
     /// This PC's screen in CSS pixels, set at launch.
     this.realScreen = { width: 0, height: 0 };
   }
@@ -41,9 +49,19 @@ class Fingerprint {
   /// Chrome, and the measured sizes of elements the same for everyone with
   /// the same Windows and fonts, so noise there would single this browser
   /// out rather than hide it.
+  ///
+  /// In Noor iPhone every one is on at first, as in the iPhone app: what this
+  /// PC renders is no iPhone's anyway, so the noise keeps a site from
+  /// following a profile to another; and the iPhone itself can't be off.
   isEnabled(kind) {
+    if (kind === "device") {
+      return true;
+    }
     const value = this.store.get(this.enabledKey(kind));
-    return typeof value === "boolean" ? value : kind !== "audio" && kind !== "clientRects";
+    if (typeof value === "boolean") {
+      return value;
+    }
+    return this.iphoneMode || (kind !== "audio" && kind !== "clientRects");
   }
 
   setEnabled(kind, isOn) {
@@ -70,8 +88,15 @@ class Fingerprint {
 
   newSeeds(kinds) {
     for (const kind of kinds) {
-      this.newSeed(kind);
+      if (this.kinds.includes(kind)) {
+        this.newSeed(kind);
+      }
     }
+  }
+
+  /// The iPhone the profile in use is, in Noor iPhone.
+  iphone() {
+    return this.pick(this.seed("device"), IPHONES);
   }
 
   /// The screens pages may see: those at least as big as this PC's, since
@@ -97,6 +122,9 @@ class Fingerprint {
 
   /// What a seed shows for a kind; a new seed must change it.
   visibleValue(seed, kind) {
+    if (kind === "device") {
+      return this.pick(seed, IPHONES).name;
+    }
     if (kind === "screen") {
       const s = this.pick(seed, this.screens());
       return `${s.width}x${s.height}`;
@@ -109,6 +137,9 @@ class Fingerprint {
 
   /// How many different values a new seed can pick from.
   choices(kind) {
+    if (kind === "device") {
+      return new Set(IPHONES.map((iphone) => iphone.name)).size;
+    }
     if (kind === "screen") {
       return new Set(this.screens().map((s) => `${s.width}x${s.height}`)).size;
     }
@@ -122,10 +153,17 @@ class Fingerprint {
   /// (none without `protections`, shields down for the site), and the
   /// screen and hardware unless `realDevice` (a sign-in site, which checks
   /// them against the device).
+  ///
+  /// In Noor iPhone the iPhone stays one everywhere, sign-in sites and sites
+  /// with their shields down too (a site that saw another device there would
+  /// see two): its screen and the rest come with it (see main.js), not here.
   config({ protections = true, realDevice = false } = {}) {
     const seeds = {};
     for (const kind of NOISE_KINDS) {
       seeds[kind] = protections && this.isEnabled(kind) ? this.seed(kind) : null;
+    }
+    if (this.iphoneMode) {
+      return { seeds, screen: null, hardware: null };
     }
     return {
       seeds,
@@ -136,8 +174,8 @@ class Fingerprint {
 
   /// Changes whenever a switch or a seed changes.
   signature() {
-    return KINDS.map((kind) => `${this.isEnabled(kind)}:${this.seed(kind)}`).join(",");
+    return this.kinds.map((kind) => `${this.isEnabled(kind)}:${this.seed(kind)}`).join(",");
   }
 }
 
-module.exports = { Fingerprint, KINDS, NOISE_KINDS, SCREENS, HARDWARE };
+module.exports = { Fingerprint, KINDS, IPHONE_KINDS, NOISE_KINDS, SCREENS, HARDWARE };

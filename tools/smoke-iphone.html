@@ -1,0 +1,101 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>iPhone probe</title>
+<link rel="stylesheet" href="/style.css"><script src="/script.js"></script>
+<style>html,body{margin:0;font:16px sans-serif} #tall{height:2000px}</style></head>
+<body><img src="/pixel.png" width="1" height="1"><div id="tall">probe</div><div id="box" style="position:absolute;left:-9999px;top:0;font-size:72px"></div>
+<script>
+(async () => {
+const out = {};
+const tryv = (f) => { try { return f(); } catch (e) { return "ERR " + e.name + ": " + e.message; } };
+const w = window, n = navigator;
+const countTruthy = (list) => list.filter(Boolean).length;
+// FingerprintJS v4 engine checks.
+out.fpjs = {
+  isChromium: countTruthy(["webkitPersistentStorage" in n, "webkitTemporaryStorage" in n, (n.vendor || "").indexOf("Google") === 0, "webkitResolveLocalFileSystemURL" in w, "BatteryManager" in w, "webkitMediaStream" in w, "webkitSpeechGrammar" in w]) >= 5,
+  isWebKit: countTruthy(["ApplePayError" in w, "CSSPrimitiveValue" in w, "Counter" in w, n.vendor.indexOf("Apple") === 0, "RGBColor" in w, "WebKitMediaKeys" in w]) >= 4,
+  isDesktopWebKit: countTruthy(["safari" in w, !("ongestureend" in w), !("TouchEvent" in w), !("orientation" in w), w.HTMLElement && !("autocapitalize" in HTMLElement.prototype), w.Document && "pointerLockElement" in Document.prototype]) >= 4,
+  isSafariWebKit: countTruthy([!("MediaSettingsRange" in w), "RTCEncodedAudioFrame" in w, "" + w.Intl === "[object Intl]", "" + w.Reflect === "[object Reflect]"]) >= 3,
+  isWebKit616OrNewer: countTruthy([!("getStorageUpdates" in n), w.HTMLButtonElement && "popover" in HTMLButtonElement.prototype, "CSSCounterStyleRule" in w, CSS.supports("font-size-adjust: ex-height 0.5"), CSS.supports("text-transform: full-width")]) >= 4,
+  isWebKit606OrNewer: countTruthy(["DOMRectList" in w, "RTCPeerConnectionIceEvent" in w, "SVGGeometryElement" in w, "ontransitioncancel" in w]) >= 3,
+  isGecko: countTruthy(["buildID" in n, "MozAppearance" in (document.documentElement.style || {}), "onmozfullscreenchange" in w, "mozInnerScreenX" in w, "CSSMozDocumentRule" in w, "CanvasCaptureMediaStream" in w]) >= 4,
+  applePay: tryv(() => typeof w.ApplePaySession === "function" ? (ApplePaySession.canMakePayments() ? 1 : 0) : -1),
+};
+// BotD.
+const evalLength = eval.toString().length;
+const botdWebkit = countTruthy(["ApplePayError" in w, "CSSPrimitiveValue" in w, "Counter" in w, n.vendor.indexOf("Apple") === 0, "getStorageUpdates" in n, "WebKitMediaKeys" in w]) >= 4;
+out.botd = { evalLength, engineWebKit: botdWebkit, mismatch: (evalLength === 37 && !(botdWebkit)) || (evalLength === 33 && botdWebkit) };
+// CreepJS engine.
+out.creepEngine = (() => { const x = [].constructor; try { (-1).toFixed(-1); } catch (err) { return err.message.length + (x + "").split(x.name).join("").length; } })();
+out.toStrings = { fn: Function.prototype.toString.call(Function.prototype.toString), getter: String(Object.getOwnPropertyDescriptor(Screen.prototype, "width").get), bound: String(function f() {}.bind(null)), cls: String(HTMLElement), stackLimit: Error.stackTraceLimit, toFixed: tryv(() => (1).toFixed(101)) };
+out.nav = { ua: n.userAgent, appVersion: n.appVersion, platform: n.platform, vendor: n.vendor, vendorSub: n.vendorSub, productSub: n.productSub, hc: n.hardwareConcurrency, dm: n.deviceMemory, mtp: n.maxTouchPoints, langs: n.languages, lang: n.language, standalone: n.standalone, dnt: "doNotTrack" in n, uad: "userAgentData" in n, connection: "connection" in n, battery: "getBattery" in n, webdriver: n.webdriver, pdf: n.pdfViewerEnabled, plugins: n.plugins.length, mimeTypes: n.mimeTypes.length, share: typeof n.share, audioSession: typeof n.audioSession, keyboard: "keyboard" in n, gpu: "gpu" in n, cookieEnabled: n.cookieEnabled };
+out.chromeOnly = Object.fromEntries(["chrome", "Notification", "MediaSource", "SourceBuffer", "requestIdleCallback", "scheduler", "navigation", "trustedTypes", "Temporal", "showOpenFilePicker", "queryLocalFonts", "BatteryManager", "NetworkInformation", "NavigatorUAData", "webkitRequestFileSystem", "webkitSpeechGrammar", "SharedStorage", "documentPictureInPicture", "originAgentCluster", "onbeforeinstallprompt", "cookieStore", "CookieStore", "URLPattern", "GPU", "Float16Array", "Iterator"].map((k) => [k, k in w]));
+out.webkitOnly = Object.fromEntries(["ApplePayError", "ApplePaySession", "CSSPrimitiveValue", "Counter", "RGBColor", "Rect", "WebKitMediaKeys", "GestureEvent", "ongesturestart", "ManagedMediaSource", "ManagedSourceBuffer", "orientation", "onorientationchange", "ontouchstart", "TouchEvent"].map((k) => [k, k in w]));
+out.elements = { requestFullscreen: "requestFullscreen" in document.documentElement, fullscreenEnabled: "fullscreenEnabled" in document, webkitEnterFullscreen: "webkitEnterFullscreen" in document.createElement("video"), webkitSupportsFullscreen: document.createElement("video").webkitSupportsFullscreen, pointerLock: "requestPointerLock" in document.documentElement, motionPermission: typeof (w.DeviceMotionEvent && DeviceMotionEvent.requestPermission), touchCallout: CSS.supports("-webkit-touch-callout", "none"), touchCallout1: CSS.supports("(-webkit-touch-callout: none)"), hls: document.createElement("video").canPlayType("application/vnd.apple.mpegurl"), mmsSupported: tryv(() => w.ManagedMediaSource ? ManagedMediaSource.isTypeSupported('video/mp4; codecs="avc1.42E01E"') : null) };
+out.screen = { w: screen.width, h: screen.height, aw: screen.availWidth, ah: screen.availHeight, al: screen.availLeft, at: screen.availTop, cd: screen.colorDepth, o: screen.orientation && screen.orientation.type, isExtended: "isExtended" in screen };
+out.win = { iw: innerWidth, ih: innerHeight, ow: outerWidth, oh: outerHeight, sx: screenX, sy: screenY, dpr: devicePixelRatio, cw: document.documentElement.clientWidth, orientation: w.orientation };
+out.mq = Object.fromEntries(["(pointer: coarse)", "(hover: none)", "(any-hover: hover)", "(color-gamut: p3)", "(dynamic-range: high)", "(video-dynamic-range: high)", "(device-width: " + screen.width + "px)", "(-webkit-device-pixel-ratio: 3)", "(orientation: portrait)"].map((q) => [q, matchMedia(q).matches]));
+out.mqText = matchMedia("(dynamic-range: high)").media;
+// Clocks.
+out.clocks = { now: performance.now(), nowFrac: performance.now() % 1, origin: performance.timeOrigin % 1, event: new Event("x").timeStamp % 1 };
+// WebGL.
+out.webgl = tryv(() => {
+  const res = {};
+  for (const kind of ["webgl", "webgl2"]) {
+    const gl = document.createElement("canvas").getContext(kind);
+    if (!gl) { res[kind] = null; continue; }
+    const before = gl.getParameter(0x9246);
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    res[kind] = { vendor: gl.getParameter(gl.VENDOR), renderer: gl.getParameter(gl.RENDERER), version: gl.getParameter(gl.VERSION), sl: gl.getParameter(gl.SHADING_LANGUAGE_VERSION), unmaskedBefore: before, uv: dbg && gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL), ur: dbg && gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL), maxTex: gl.getParameter(gl.MAX_TEXTURE_SIZE), viewport: Array.from(gl.getParameter(gl.MAX_VIEWPORT_DIMS)), point: Array.from(gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)), varyings: gl.getParameter(gl.MAX_VARYING_VECTORS), vuv: gl.getParameter(gl.MAX_VERTEX_UNIFORM_VECTORS), exts: gl.getSupportedExtensions(), s3tc: gl.getExtension("WEBGL_compressed_texture_s3tc") };
+  }
+  return res;
+});
+// Voices.
+out.voices = tryv(() => { const v = speechSynthesis.getVoices(); return { count: v.length, first: v.slice(0, 3).map((x) => [x.name, x.lang, x.voiceURI, x.localService, x.default]), defaults: v.filter((x) => x.default).map((x) => x.name) }; });
+// Fonts as FingerprintJS measures them, and as CreepJS loads them.
+const box = document.getElementById("box");
+const bases = ["monospace", "sans-serif", "serif"];
+const measure = (family) => bases.map((base) => { const s = document.createElement("span"); s.textContent = "mmMwWLliI0fiflO&1"; s.style.fontFamily = family ? `'${family}', ${base}` : base; box.appendChild(s); const width = s.offsetWidth; box.removeChild(s); return width; });
+const baseW = measure(null);
+const FONTS = ["Calibri", "Segoe UI", "Consolas", "Cambria", "Arial", "Times New Roman", "Helvetica Neue", "Menlo", "Gill Sans", "DejaVu Sans", "Liberation Mono", "Noto Color Emoji", "Ubuntu", "Roboto"];
+out.fonts = Object.fromEntries(FONTS.map((f) => [f, String(measure(f)) !== String(baseW)]));
+out.fontLoads = {};
+for (const f of ["DejaVu Sans", "Liberation Mono", "Helvetica Neue", "Futura Bold", "NoSuchFont1"]) {
+  try { await new FontFace(f, `local("${f}")`).load(); out.fontLoads[f] = "loaded"; } catch (e) { out.fontLoads[f] = e.name; }
+}
+out.fontSet = { size: document.fonts.size, status: document.fonts.status, has: tryv(() => { let c = 0; document.fonts.forEach(() => c++); return c; }), iter: tryv(() => [...document.fonts].length), ctor: String(FontFace), ctorName: FontFace.name };
+// Permissions.
+out.permissions = {};
+for (const name of ["geolocation", "camera", "notifications", "midi", "clipboard-read", "persistent-storage"]) {
+  try { out.permissions[name] = (await navigator.permissions.query({ name })).state; } catch (e) { out.permissions[name] = e.name + ": " + e.message; }
+}
+out.motion = await tryv(() => DeviceMotionEvent.requestPermission()).then?.((v) => v, (e) => e.name) ?? null;
+out.estimate = await tryv(() => navigator.storage.estimate().then((e) => Object.keys(e)));
+// A dedicated worker.
+out.worker = await new Promise((resolve) => { const wk = new Worker("/worker.js"); wk.onmessage = (e) => resolve(e.data); wk.onerror = (e) => resolve("ERR " + e.message); wk.postMessage(1); setTimeout(() => resolve("timeout"), 5000); });
+// A frame of another site (localhost against 127.0.0.1).
+out.frame = await new Promise((resolve) => { addEventListener("message", (e) => { if (e.data && e.data.frame) resolve(e.data.frame); }); const f = document.createElement("iframe"); f.src = `http://localhost:${new URLSearchParams(location.search).get("port")}/frame`; document.body.appendChild(f); setTimeout(() => resolve("timeout"), 5000); });
+// A service worker and a shared worker (each step given 10 seconds).
+const within = (promise, ms = 10000) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve("timeout"), ms))]);
+const asked = (port) => new Promise((resolve) => { port.onmessage = (e) => resolve(e.data); setTimeout(() => resolve("timeout"), 8000); });
+fetch("/report", { method: "POST", body: JSON.stringify({ step: "workers" }) });
+out.shared = await tryv(() => { const s = new SharedWorker("/shared.js"); const p = asked(s.port); s.port.start(); s.port.postMessage(1); return p; });
+fetch("/report", { method: "POST", body: JSON.stringify({ step: "service" }) });
+out.service = await within((async () => {
+  try {
+    const registration = await navigator.serviceWorker.register("/sw.js");
+    const worker = registration.active || registration.installing || registration.waiting;
+    const channel = new MessageChannel();
+    const answer = asked(channel.port1);
+    if (worker.state !== "activated") await new Promise((r) => worker.addEventListener("statechange", () => worker.state === "activated" && r()));
+    worker.postMessage(1, [channel.port2]);
+    return await answer;
+  } catch (e) { return "ERR " + e; }
+})());
+fetch("/report", { method: "POST", body: JSON.stringify({ step: "popup" }) });
+// A window the page opens.
+out.popup = await new Promise((resolve) => { addEventListener("message", (e) => { if (e.data && e.data.popup) resolve(e.data.popup); }); window.open("/popup", "_blank", "width=400,height=600"); setTimeout(() => resolve("timeout"), 8000); });
+await fetch("/fetch-check").catch(() => {});
+out.done = true;
+await fetch("/report", { method: "POST", body: JSON.stringify(out) });
+})().catch((e) => fetch("/report", { method: "POST", body: JSON.stringify({ done: true, error: String(e && e.stack || e) }) }));
+</script></body></html>

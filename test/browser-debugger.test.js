@@ -30,7 +30,7 @@ class FakeSocket extends EventTarget {
 const answering = (body) => async () => ({ json: async () => body });
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
 
-test("connects to Chromium's own target and asks for shared and service workers, held as they start", async () => {
+test("connects to Chromium's own target and asks for what it holds as it starts: workers, and pages", async () => {
   const port = 23456;
   const debuggerHere = new BrowserDebugger({
     port,
@@ -43,7 +43,7 @@ test("connects to Chromium's own target and asks for shared and service workers,
   const [attach] = FakeSocket.last.sent;
   assert.equal(attach.method, "Target.setAutoAttach");
   assert.equal(attach.params.waitForDebuggerOnStart, true);
-  assert.deepEqual(attach.params.filter, [{ type: "shared_worker" }, { type: "service_worker" }, { exclude: true }]);
+  assert.deepEqual(attach.params.filter, [{ type: "browser", exclude: true }, { type: "tab", exclude: true }, {}]);
 });
 
 test("an answer that isn't Chromium's on its port isn't connected to", async () => {
@@ -76,4 +76,45 @@ test("a site's worker gets the protection as the inspector's code before its fir
   socket.fromChrome({ method: "Target.attachedToTarget", params: { sessionId: "s2", targetInfo: { type: "service_worker", url: "chrome-extension://abc/sw.js" }, waitingForDebugger: true } });
   await settle();
   assert.deepEqual(socket.sent.map((m) => [m.method, m.sessionId]), [["Runtime.runIfWaitingForDebugger", "s2"]]);
+});
+
+test("a page held as it opens (a window a page opened, and with it that page) is let go, then left", async () => {
+  const port = 23459;
+  const debuggerHere = new BrowserDebugger({
+    port,
+    scriptFor: () => "protect()",
+    Socket: FakeSocket,
+    fetch: answering({ webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/browser/abc` }),
+  });
+  await debuggerHere.connect(100);
+  const socket = FakeSocket.last;
+  socket.sent.length = 0;
+  socket.fromChrome({ method: "Target.attachedToTarget", params: { sessionId: "p1", targetInfo: { type: "page", url: "https://site.example/popup" }, waitingForDebugger: true } });
+  await settle();
+  assert.deepEqual(socket.sent.map((m) => [m.method, m.sessionId]), [["Runtime.runIfWaitingForDebugger", "p1"], ["Target.detachFromTarget", undefined]]);
+  assert.deepEqual(socket.sent[1].params, { sessionId: "p1" });
+  // One open as it connects isn't held: only left.
+  socket.sent.length = 0;
+  socket.fromChrome({ method: "Target.attachedToTarget", params: { sessionId: "p2", targetInfo: { type: "page", url: "noor://start" }, waitingForDebugger: false } });
+  await settle();
+  assert.deepEqual(socket.sent.map((m) => [m.method, m.params.sessionId]), [["Target.detachFromTarget", "p2"]]);
+});
+
+test("what a target was asked as it went is given up, not waited for", async () => {
+  const port = 23460;
+  const debuggerHere = new BrowserDebugger({ port, scriptFor: () => null, Socket: FakeSocket, fetch: answering({ webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/browser/abc` }) });
+  await debuggerHere.connect(100);
+  const socket = FakeSocket.last;
+  socket.sent.length = 0;
+  socket.send = function (text) {
+    this.sent.push(JSON.parse(text));
+  };
+  const asked = debuggerHere.send("Runtime.runIfWaitingForDebugger", {}, "gone");
+  const other = debuggerHere.send("Runtime.runIfWaitingForDebugger", {}, "staying");
+  socket.fromChrome({ method: "Target.detachedFromTarget", params: { sessionId: "gone" } });
+  await assert.rejects(asked, /Detached/);
+  assert.equal(debuggerHere.pending.size, 1);
+  socket.fromChrome({ id: socket.sent[1].id, result: {} });
+  await other;
+  assert.equal(debuggerHere.pending.size, 0);
 });

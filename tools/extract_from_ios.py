@@ -72,7 +72,7 @@ parts = [
                  '            for (const name of ["width", "availWidth"]) defineGetter(window.Screen.prototype, name, () => width);\n'
                  '            defineGetter(window.Screen.prototype, "height", () => height);\n'
                  '          }\n'
-                 '          defineGetter(window.Screen.prototype, "availHeight", () => height - 48);\n'
+                 '          defineGetter(window.Screen.prototype, "availHeight", () => (config.screen.availHeight != null ? config.screen.availHeight : height - 48));\n'
                  '          if (!byChromium) {')
         .replace('              return written.get(this) || value;\n            });\n          }\n',
                  '              return written.get(this) || value;\n            });\n          }\n          }\n')),
@@ -86,6 +86,9 @@ parts = [
     # Chromium-only, written by hand for this app (not in the Swift file).
     ("config.chrome", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "chrome.js").read_text(encoding="utf-8")),
     ("config.languages", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "languages.js").read_text(encoding="utf-8")),
+    # Noor iPhone's (see main/iphone.js), last: it takes away, at its end,
+    # what an iPhone lacks.
+    ("config.iphone", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "iphone.js").read_text(encoding="utf-8")),
 ]
 assert "\\#(" not in shared + helpers + frames, "unreplaced interpolation"
 
@@ -107,7 +110,10 @@ source = (
     "// prototype. Everything else here is strict, so no function of this\n"
     "// script shows a page its caller.\n"
     "const plainFunction = (impl) => [function () { /* noor lookalike */ return impl.apply(this, arguments); }][0];\n"
-    "const protectPage = (window, config) => {\n"
+    # Noor iPhone's data (see scripts/parts/iphone.js).
+    + (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "iphone-surface.js").read_text(encoding="utf-8")
+    + (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "iphone-fonts.js").read_text(encoding="utf-8")
+    + "const protectPage = (window, config) => {\n"
     "\"use strict\";\n"
     + shared
     + "const protect = (window) => {\n"

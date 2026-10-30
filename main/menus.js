@@ -1,11 +1,11 @@
 "use strict";
 const { app, Menu, dialog, clipboard, shell } = require("electron");
-const { KINDS } = require("./fingerprint");
 const { Shields } = require("./shields");
 const { SETTINGS_URL, LIBRARY_URL, isWebPage } = require("./address");
 
 const KIND_TITLES = {
   canvas: "Canvas", webGL: "WebGL", audio: "Audio", clientRects: "ClientRects", screen: "Screen Size", hardware: "Processor & Memory",
+  device: "iPhone",
 };
 
 /// The menus: the ⋯ menu, the profile menu, the shields menu, a tab's
@@ -38,7 +38,7 @@ class Menus {
       { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => browser.newTab({ url: SETTINGS_URL }) },
       { label: "New Session…", click: () => this.confirmNewSession() },
       { type: "separator" },
-      { label: `Noor ${app.getVersion()}`, enabled: false },
+      { label: `${this.browser.isIPhone ? "Noor iPhone" : "Noor"} ${app.getVersion()}`, enabled: false },
     ]);
   }
 
@@ -54,7 +54,13 @@ class Menus {
 
   fingerprintItems() {
     const browser = this.browser;
-    const items = KINDS.map((kind) => ({
+    const items = browser.fingerprint.kinds.map((kind) => (kind === "device" ? {
+      label: "New iPhone",
+      click: () => {
+        browser.newFingerprint([kind]);
+        browser.toast(`Now an ${browser.fingerprint.iphone().name}`);
+      },
+    } : {
       label: `New ${KIND_TITLES[kind]} Fingerprint`,
       enabled: browser.fingerprint.isEnabled(kind),
       click: () => {
@@ -66,7 +72,7 @@ class Menus {
     items.push({
       label: "Change All",
       click: () => {
-        browser.newFingerprint(KINDS);
+        browser.newFingerprint(browser.fingerprint.kinds);
         browser.toast("All fingerprints changed");
       },
     });

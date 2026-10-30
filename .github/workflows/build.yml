@@ -56,10 +56,17 @@ jobs:
             echo '```'
             echo
             echo "Windows 10/11, 64-bit. The portable .exe runs without installing; the Setup .exe installs. SmartScreen asks once: More info, then Run anyway."
+            echo
+            echo "Noor-iPhone-*.exe is Noor iPhone: the same browser, in which every profile is a real iPhone to the sites it opens (Safari, the iPhone's screen and touch). It keeps its own profiles and data, apart from Noor's."
           } > release-notes.md
 
       - name: Build the .exe
         run: npm run dist
+
+      # Noor iPhone: the same app as an app of its own, in which every
+      # profile is an iPhone to sites (see main/iphone.js).
+      - name: Build Noor iPhone
+        run: npm run dist:iphone
 
       - name: Keep the .exe
         uses: actions/upload-artifact@v4

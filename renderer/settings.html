@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Settings</title>
 <link rel="stylesheet" href="app.css">
 </head>
@@ -46,7 +47,7 @@
     <div class="row"><div class="label">Change all fingerprints<small>New values for every protection, in this profile.</small></div><button class="button secondary small" id="changeall">Change All</button></div>
   </div>
   <div class="card" id="values"></div>
-  <p class="footer">Websites see noisy canvas, WebGL and audio values and shifted ClientRects that differ from this PC's but stay the same on a site, another common PC's screen size, processor and memory, and Google Chrome on Windows. Sign-in sites of Meta, Google, Apple and Microsoft see this PC's real screen and hardware.</p>
+  <p class="footer" id="fingerprintfooter">Websites see noisy canvas, WebGL and audio values and shifted ClientRects that differ from this PC's but stay the same on a site, another common PC's screen size, processor and memory, and Google Chrome on Windows. Sign-in sites of Meta, Google, Apple and Microsoft see this PC's real screen and hardware.</p>
 
   <h3>General</h3>
   <div class="card">
@@ -62,7 +63,7 @@
 
   <h3>About</h3>
   <div class="card">
-    <div class="row"><div class="label">Noor for Windows</div><div class="value" id="version"></div></div>
+    <div class="row"><div class="label" id="appname">Noor for Windows</div><div class="value" id="version"></div></div>
     <div class="row"><div class="label">Chromium</div><div class="value" id="chromium"></div></div>
     <div class="row"><div class="label">Source code</div><div class="value"><a href="https://github.com/kamaltv1010-boop/noor-windows">github.com/kamaltv1010-boop/noor-windows</a></div></div>
   </div>

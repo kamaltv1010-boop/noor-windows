@@ -3,7 +3,7 @@ const path = require("path");
 const fs = require("fs");
 const { BaseWindow, WebContentsView, session } = require("electron");
 const { History } = require("./history");
-const { KINDS } = require("./fingerprint");
+const iphone = require("./iphone");
 const { DEFAULT_ID } = require("./profiles");
 const { START_URL, ERROR_URL, isStartPage, isAppPage, isErrorPage, isWebPage, displayURL, hostOf } = require("./address");
 const { storeExtensionID } = require("./crx");
@@ -14,6 +14,10 @@ const CHROME_PARTITION = "persist:noor-chrome";
 const CHROME_URL = "noor://app/chrome.html";
 /// The tab strip and the toolbar, in CSS pixels.
 const CHROME_HEIGHT = 86;
+/// The room Noor iPhone leaves around the iPhone's page, and the shortest
+/// its page area gets.
+const PHONE_MARGIN = 12;
+const MIN_PAGE_HEIGHT = 360;
 /// Dark pages: everything inverted, and pictures and videos inverted back.
 const NIGHT_CSS = `
   html { filter: invert(1) hue-rotate(180deg) !important; background: #121212 !important; }
@@ -57,11 +61,22 @@ class Tab {
     // it comes, Electron runs no preload in it (the protection).
     this.view = new WebContentsView(Object.assign({ webPreferences: webPreferences || browser.webPreferences(partition) }, webContents ? { webContents } : {}));
     this.view.setBackgroundColor("#ffffff");
+    if (browser.isIPhone && typeof this.view.setBorderRadius === "function") {
+      // The iPhone's page, with a screen's rounded corners.
+      this.view.setBorderRadius(14);
+    }
     this.webContents = this.view.webContents;
+    // A page a site opened has its renderer already: its iPhone is told at
+    // once (see emulate), with no empty page first.
+    this.emulated = Boolean(webContents);
     this.watch();
     this.guardWorkers();
     this.setTimezone(browser.timezone ? browser.timezone.current : null);
-    this.showScreen(webContents ? webContents.getURL() : "");
+    if (browser.isIPhone) {
+      this.emulate();
+    } else {
+      this.showScreen(webContents ? webContents.getURL() : "");
+    }
     if (browser.extensions) {
       browser.extensions.tabCreated(this);
     }
@@ -90,7 +105,7 @@ class Tab {
   /// page at `url` (a sign-in site, or one with its shields down, sees the
   /// real screen; see main.js).
   showScreen(url) {
-    if (!this.debugging || !this.browser.screenFor) {
+    if (!this.debugging || !this.browser.screenFor || this.browser.isIPhone) {
       return;
     }
     const screen = this.browser.screenFor(url || "");
@@ -107,6 +122,48 @@ class Tab {
       })
       : this.webContents.debugger.sendCommand("Emulation.clearDeviceMetricsOverride", {});
     command.catch(() => {});
+  }
+
+  /// Noor iPhone: Chromium shows the tab's pages as the profile's iPhone
+  /// (see main/iphone.js): its page area, pixel density and screen, as a
+  /// phone (the page's viewport tag counts, scroll bars float over it),
+  /// touch for the mouse (a press is a tap, a drag scrolls, and nothing
+  /// hovers), its wide colors, and Safari's user agent, language and
+  /// platform, in this tab and its session (its workers). Told once, before
+  /// the tab's first page (see load), and kept through every page after.
+  emulate() {
+    if (!this.debugging) {
+      this.emulation = Promise.resolve(false);
+      return;
+    }
+    const device = this.browser.fingerprint.iphone();
+    const language = this.browser.iphoneLanguage();
+    const agent = iphone.userAgent(device);
+    this.device = device;
+    this.pageHeight = Math.min(this.pageHeight || device.pageHeight, device.height);
+    try {
+      this.webContents.session.setUserAgent(agent, iphone.acceptLanguage(language));
+    } catch (error) {
+      // The session keeps the agent it had.
+    }
+    const send = (method, params) => this.webContents.debugger.sendCommand(method, params);
+    this.emulation = Promise.all([
+      send("Emulation.setDeviceMetricsOverride", iphone.deviceMetrics(device, this.pageHeight)),
+      send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }),
+      send("Emulation.setEmitTouchEventsForMouse", { enabled: true, configuration: "mobile" }),
+      send("Emulation.setEmulatedMedia", { features: [{ name: "color-gamut", value: "p3" }] }),
+      send("Network.setUserAgentOverride", { userAgent: agent, acceptLanguage: language, platform: "iPhone" }),
+    ]).then(() => true, () => false);
+  }
+
+  /// The height of the iPhone's page area (see Browser.phoneBounds): the
+  /// page sees a resize, as on an iPhone whose toolbar shows or hides.
+  setPageHeight(height) {
+    if (!this.device || !this.debugging || height === this.pageHeight) {
+      return;
+    }
+    this.pageHeight = height;
+    this.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", iphone.deviceMetrics(this.device, height)).catch(() => {});
   }
 
   /// A page's dedicated workers start without the preload, so a page could
@@ -226,6 +283,10 @@ class Tab {
       const main = typeof details.isMainFrame === "boolean" ? details.isMainFrame : isMainFrame;
       const same = typeof details.isSameDocument === "boolean" ? details.isSameDocument : isInPlace;
       if (main && !same) {
+        if (this.pendingURL && (details.url || url) === "about:blank") {
+          // The empty page a new tab starts with (see load).
+          return;
+        }
         this.url = details.url || url;
         this.showScreen(this.url);
         this.title = "";
@@ -235,6 +296,9 @@ class Tab {
       }
     });
     wc.on("did-navigate", (event, url) => {
+      if (this.pendingURL && url === "about:blank") {
+        return;
+      }
       this.url = url;
       this.visited(url);
       this.changed();
@@ -321,6 +385,25 @@ class Tab {
     this.needsReload = false;
     const target = this.browser.rewrite(url, this) || url;
     this.url = target;
+    if (this.browser.isIPhone && !this.emulated) {
+      // A new tab has no page, and no renderer to tell its iPhone to, until
+      // it loads one: an empty one first, then, once Chromium has the
+      // iPhone, the page, which is an iPhone's from its first line.
+      this.pendingURL = target;
+      if (!this.emulating) {
+        this.emulating = true;
+        this.webContents.loadURL("about:blank").catch(() => {});
+        Promise.resolve(this.emulation).then(() => {
+          this.emulated = true;
+          if (!this.webContents.isDestroyed() && this.pendingURL) {
+            const next = this.pendingURL;
+            this.pendingURL = null;
+            this.webContents.loadURL(next);
+          }
+        });
+      }
+      return;
+    }
     this.webContents.loadURL(target);
   }
 
@@ -338,6 +421,8 @@ class Tab {
   reload() {
     if (this.deferredURL) {
       this.load(this.deferredURL);
+    } else if (this.pendingURL) {
+      // Still waiting for its iPhone (see load).
     } else {
       this.webContents.reload();
     }
@@ -431,6 +516,8 @@ class Tab {
 class Browser {
   constructor(context) {
     Object.assign(this, context);
+    /// Noor iPhone (see main/iphone.js): the profile's iPhone in every tab.
+    this.isIPhone = Boolean(this.fingerprint && this.fingerprint.iphoneMode);
     this.profile = this.profiles.current();
     this.history = this.openHistory(this.profile);
     this.tabs = [];
@@ -491,15 +578,35 @@ class Browser {
     return new History(path.join(this.userData, this.profiles.historyFile(profile)));
   }
 
+  /// The language Noor iPhone tells sites of (see main.js).
+  iphoneLanguage() {
+    return (this.iphone && this.iphone.language) || "en-US";
+  }
+
   // MARK: - Window
 
+  /// Noor iPhone's window fits the iPhone's page under the toolbar.
+  windowSize() {
+    if (!this.isIPhone) {
+      return { width: 1280, height: 860 };
+    }
+    const device = this.fingerprint.iphone();
+    let work = { width: 1280, height: 1000 };
+    try {
+      work = require("electron").screen.getPrimaryDisplay().workAreaSize;
+    } catch (error) {}
+    const height = Math.min(work.height - 16, CHROME_HEIGHT + device.pageHeight + 2 * PHONE_MARGIN + 40);
+    return { width: Math.min(work.width - 16, 760), height: Math.max(560, height) };
+  }
+
   makeWindow() {
+    const size = this.windowSize();
     this.win = new BaseWindow({
-      width: 1280,
-      height: 860,
-      minWidth: 640,
-      minHeight: 420,
-      title: "Noor",
+      width: size.width,
+      height: size.height,
+      minWidth: this.isIPhone ? 480 : 640,
+      minHeight: this.isIPhone ? CHROME_HEIGHT + MIN_PAGE_HEIGHT + 2 * PHONE_MARGIN + 30 : 420,
+      title: this.isIPhone ? "Noor iPhone" : "Noor",
       backgroundColor: "#f6f5f1",
       show: false,
       icon: path.join(__dirname, "..", "build", "icon.ico"),
@@ -538,8 +645,36 @@ class Browser {
     const top = this.fullScreen ? 0 : this.chromeHeight;
     this.chrome.setBounds({ x: 0, y: 0, width, height: top });
     if (this.selected) {
-      this.selected.view.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
+      this.selected.view.setBounds(this.isIPhone ? this.phoneBounds(this.selected, width, height, top) : { x: 0, y: top, width, height: Math.max(0, height - top) });
     }
+  }
+
+  /// Where Noor iPhone draws a tab's page: the iPhone's page area, at its
+  /// size (a CSS pixel to a pixel of the PC's), in the middle under the
+  /// toolbar; on a screen too short for it, as tall as fits (see
+  /// Tab.setPageHeight), and the whole screen's height for a video shown
+  /// full screen.
+  phoneBounds(tab, width, height, top) {
+    const device = tab.device || this.fingerprint.iphone();
+    const margin = this.fullScreen ? 0 : PHONE_MARGIN;
+    const room = Math.max(MIN_PAGE_HEIGHT, height - top - 2 * margin);
+    const pageHeight = Math.min(this.fullScreen ? device.height : device.pageHeight, room);
+    tab.setPageHeight(pageHeight);
+    return { x: Math.max(0, Math.round((width - device.width) / 2)), y: top + Math.max(0, Math.round((height - top - pageHeight) / 2)), width: device.width, height: pageHeight };
+  }
+
+  /// A new iPhone for the profile: every tab and the profile's sessions
+  /// are told it, and the pages load again with it.
+  applyDevice() {
+    for (const tab of this.allTabs) {
+      if (!tab.webContents.isDestroyed()) {
+        tab.emulate();
+      }
+    }
+    try {
+      require("electron").app.userAgentFallback = iphone.userAgent(this.fingerprint.iphone());
+    } catch (error) {}
+    this.layout();
   }
 
   setFullScreen(isOn) {
@@ -900,6 +1035,9 @@ class Browser {
   /// Gives every site new values for `kinds` and reloads the page with them.
   newFingerprint(kinds) {
     this.fingerprint.newSeeds(kinds);
+    if (this.isIPhone && kinds.includes("device")) {
+      this.applyDevice();
+    }
     this.applyPrivacySettings();
   }
 
@@ -987,7 +1125,7 @@ class Browser {
     this.destroyTabs();
     this.shields.httpOnlyHosts.clear();
     this.history.clear();
-    this.fingerprint.newSeeds(KINDS);
+    this.fingerprint.newSeeds(this.fingerprint.kinds);
     this.appliedSignature = this.privacySignature();
     await this.clearData(this.profile);
     this.newTab();

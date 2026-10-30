@@ -6,7 +6,7 @@ const { app, protocol, session, screen, ipcMain, net, Menu, dialog, WebContentsV
 const { pathToFileURL } = require("url");
 const { Store } = require("./store");
 const { Profiles } = require("./profiles");
-const { Fingerprint, KINDS } = require("./fingerprint");
+const { Fingerprint } = require("./fingerprint");
 const { Shields, Stats } = require("./shields");
 const { Bookmarks } = require("./bookmarks");
 const { Timezone } = require("./timezone");
@@ -17,6 +17,10 @@ const { Menus } = require("./menus");
 const { ENGINES, APP_ORIGIN, ERROR_URL, isAppPage, isWebPage } = require("./address");
 const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages, userAgentMetadata } = require("./useragent");
 const { BrowserDebugger } = require("./browser-debugger");
+const iphone = require("./iphone");
+
+/// Noor iPhone (see main/iphone.js): every profile is an iPhone to sites.
+const IPHONE = iphone.isIPhone();
 
 const RENDERER = path.join(__dirname, "..", "renderer");
 const SCRIPTS = path.join(__dirname, "..", "scripts");
@@ -44,8 +48,8 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "crx", privileges: { bypassCSP: true } },
 ]);
 
-app.userAgentFallback = userAgent();
-app.setAppUserModelId("ma.noor.browser");
+app.userAgentFallback = IPHONE ? iphone.userAgent(iphone.IPHONES[0]) : userAgent();
+app.setAppUserModelId(IPHONE ? "ma.noor.iphone" : "ma.noor.browser");
 // Pages see navigator.webdriver as false, as in Chrome, even under a
 // debugger.
 app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled");
@@ -56,9 +60,19 @@ app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled");
 /// browser as automated.
 const DEBUGGING_PORT = 20000 + crypto.randomInt(20000);
 app.commandLine.appendSwitch("remote-debugging-port", String(DEBUGGING_PORT));
+if (IPHONE) {
+  // Frames of other sites in a page share its process, as in Safari on an
+  // iPhone: Chromium shows them the iPhone too (its touch, pixel density
+  // and screen), which it does only for frames in the page's process.
+  app.commandLine.appendSwitch("disable-site-isolation-trials");
+}
 if (process.env.NOOR_USER_DATA) {
   // Tests keep their data apart.
   app.setPath("userData", process.env.NOOR_USER_DATA);
+} else if (IPHONE && !app.isPackaged) {
+  // Noor iPhone run from the source keeps its data apart from Noor's, as
+  // the built app does (its own name, its own folder).
+  app.setPath("userData", path.join(app.getPath("appData"), "Noor iPhone"));
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -127,13 +141,36 @@ const isChromeSession = (ses) => {
   }
 };
 
+/// The language Noor iPhone tells sites of, as Safari does: the system's
+/// first, with its region (see main/iphone.js).
+let iphoneLanguageTag = null;
+const iphoneLanguage = () => {
+  if (!iphoneLanguageTag) {
+    let preferred = [];
+    try {
+      preferred = app.getPreferredSystemLanguages();
+    } catch (error) {
+      preferred = [];
+    }
+    iphoneLanguageTag = iphone.languageTag(preferred && preferred.length ? preferred : [app.getLocale()]);
+  }
+  return iphoneLanguageTag;
+};
+
 const setUpSessions = new WeakSet();
 const setUpSession = (ses) => {
   if (setUpSessions.has(ses)) {
     return;
   }
   setUpSessions.add(ses);
-  ses.setUserAgent(userAgent(), acceptLanguages(app.getLocale()));
+  if (IPHONE) {
+    // The iPhone of the profile in use, whose tabs make the sessions they
+    // are in; a change of iPhone tells its sessions again (see tabs.js).
+    const current = context ? context.fingerprint.iphone() : iphone.IPHONES[0];
+    ses.setUserAgent(iphone.userAgent(current), iphone.acceptLanguage(iphoneLanguage()));
+  } else {
+    ses.setUserAgent(userAgent(), acceptLanguages(app.getLocale()));
+  }
   ses.protocol.handle("noor", serveAppPage);
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => callback(isAllowed(permission, details)));
   ses.setPermissionCheckHandler((webContents, permission, origin, details) => isAllowed(permission, details));
@@ -174,6 +211,11 @@ const setUpSession = (ses) => {
     const bridged = extensions ? extensions.bridgeHeaders(ses, details) : null;
     if (bridged) {
       return callback({ requestHeaders: bridged });
+    }
+    if (IPHONE) {
+      // As Safari on the profile's iPhone sends them (see main/iphone.js).
+      const current = context ? context.fingerprint.iphone() : iphone.IPHONES[0];
+      return callback({ requestHeaders: iphone.safariHeaders(details.requestHeaders, { type: details.resourceType, iphone: current, language: iphoneLanguage() }) });
     }
     const headers = withClientHints(details);
     for (const name of Object.keys(headers)) {
@@ -232,7 +274,7 @@ const originOf = (url) => {
 };
 
 const rememberAcceptCH = (details) => {
-  if (details.resourceType !== "mainFrame" || !isSecureSite(details.url) || !details.responseHeaders) {
+  if (IPHONE || details.resourceType !== "mainFrame" || !isSecureSite(details.url) || !details.responseHeaders) {
     return;
   }
   const name = Object.keys(details.responseHeaders).find((key) => key.toLowerCase() === "accept-ch");
@@ -367,6 +409,19 @@ const configFor = (top) => {
   const protections = context.shields.areUp(top);
   const realDevice = Shields.isSignInSite(top);
   const config = context.fingerprint.config({ protections, realDevice });
+  if (IPHONE) {
+    // The profile's iPhone, on every site: Chromium shows its screen (see
+    // Tab.emulate), frames of other sites get it here, with no taskbar;
+    // Safari's single language; and the rest an iPhone is and lacks (see
+    // scripts/parts/iphone.js).
+    const current = context.fingerprint.iphone();
+    config.screen = { width: current.width, height: current.height, availHeight: current.height };
+    config.languages = [iphoneLanguage()];
+    config.iphone = iphone.pageConfig(current);
+    config.mark = LOOKALIKE_MARK;
+    config.realmKey = REALM_KEY;
+    return config;
+  }
   config.chrome = {
     brands: brandList,
     fullVersionList: fullVersionList(),
@@ -381,7 +436,7 @@ const configFor = (top) => {
 /// The screen Chromium itself shows a tab's page at `url` (see
 /// Tab.showScreen), or null for the real one.
 const screenFor = (url) => {
-  if (!context || !isWebPage(url)) {
+  if (IPHONE || !context || !isWebPage(url)) {
     return null;
   }
   return configFor(url).screen || null;
@@ -540,13 +595,18 @@ const settingsSnapshot = () => ({
   timezoneFromIP: context.timezone.enabled(),
   timezone: context.timezone.current,
   extensions: extensions ? extensions.list() : [],
-  protections: Object.fromEntries(KINDS.map((kind) => [kind, context.fingerprint.isEnabled(kind)])),
-  values: {
+  kinds: context.fingerprint.kinds,
+  protections: Object.fromEntries(context.fingerprint.kinds.map((kind) => [kind, context.fingerprint.isEnabled(kind)])),
+  values: IPHONE ? (() => {
+    const current = context.fingerprint.iphone();
+    return { iphone: { name: current.name, iOS: current.iOS, width: current.width, height: current.height, scale: current.scale }, userAgent: iphone.userAgent(current), language: iphoneLanguage() };
+  })() : {
     screen: context.fingerprint.screen(),
     hardware: context.fingerprint.hardware(),
     userAgent: userAgent(),
     brands: brandList,
   },
+  device: IPHONE ? "iphone" : "windows",
   shieldsDownSites: context.shields.downSites(),
   profiles: context.profiles.all(),
   profile: browser.profile,
@@ -601,7 +661,7 @@ const registerIPC = () => {
       browser.setNightMode(Boolean(value));
     } else if (key === "timezoneFromIP") {
       context.timezone.setEnabled(Boolean(value));
-    } else if (key.startsWith("protection.") && KINDS.includes(key.slice("protection.".length))) {
+    } else if (key.startsWith("protection.") && context.fingerprint.kinds.includes(key.slice("protection.".length)) && key !== "protection.device") {
       context.fingerprint.setEnabled(key.slice("protection.".length), Boolean(value));
     } else {
       throw new Error("Unknown setting");
@@ -653,7 +713,7 @@ const registerIPC = () => {
     return settingsSnapshot();
   });
   handle("fingerprint:new", (event, kinds) => {
-    const wanted = Array.isArray(kinds) ? kinds.filter((k) => KINDS.includes(k)) : KINDS;
+    const wanted = Array.isArray(kinds) ? kinds.filter((k) => context.fingerprint.kinds.includes(k)) : context.fingerprint.kinds;
     browser.newFingerprint(wanted);
     return settingsSnapshot();
   });
@@ -691,7 +751,7 @@ app.whenReady().then(async () => {
   store.set("doomedPartitions", []);
 
   const profiles = new Profiles(store);
-  const fingerprint = new Fingerprint(store, profiles);
+  const fingerprint = new Fingerprint(store, profiles, { iphone: IPHONE });
   const display = screen.getPrimaryDisplay();
   fingerprint.realScreen = { width: display.size.width, height: display.size.height };
   let rules = [];
@@ -714,7 +774,7 @@ app.whenReady().then(async () => {
   if (store.get("clearOnQuit", false)) {
     // Every launch is a new session: new fingerprints, and nothing left of
     // any profile's website data.
-    fingerprint.newSeeds(KINDS);
+    fingerprint.newSeeds(fingerprint.kinds);
     for (const profile of profiles.all()) {
       const ses = session.fromPartition(profiles.partition(profile, false));
       ses.clearStorageData().catch(() => {});
@@ -737,13 +797,20 @@ app.whenReady().then(async () => {
     await timezone.ready();
   }
 
-  // What Chromium says of the system, kept for the override of every tab
-  // (and from the last launch while it is read again).
-  const highEntropy = await probeHighEntropy();
-  if (highEntropy && typeof highEntropy === "object") {
-    store.set("highEntropy", highEntropy);
+  if (IPHONE) {
+    // Each tab is told its iPhone itself (see Tab.emulate).
+    context.userAgentOverride = null;
+    context.iphone = { language: iphoneLanguage() };
+    app.userAgentFallback = iphone.userAgent(fingerprint.iphone());
+  } else {
+    // What Chromium says of the system, kept for the override of every tab
+    // (and from the last launch while it is read again).
+    const highEntropy = await probeHighEntropy();
+    if (highEntropy && typeof highEntropy === "object") {
+      store.set("highEntropy", highEntropy);
+    }
+    context.userAgentOverride = userAgentOverride(highEntropy || store.get("highEntropy", null));
   }
-  context.userAgentOverride = userAgentOverride(highEntropy || store.get("highEntropy", null));
 
   // Shared and service workers are held as they start, from now on.
   browserDebugger = new BrowserDebugger({ port: DEBUGGING_PORT, scriptFor: debuggedWorkerScript });
@@ -775,7 +842,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(browser.menus.application());
   registerIPC();
   if (process.env.NOOR_TEST) {
-    global.noorTest = { browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK };
+    global.noorTest = { browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE };
   }
 
   app.on("second-instance", (event, argv) => {

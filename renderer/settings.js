@@ -7,6 +7,12 @@
     clientRects: ["ClientRects", "Measured sizes of elements shift slightly. Off at first: on a PC these sizes are the same for everyone with the same Windows and fonts, so a shift would stand out."],
     screen: ["Screen Size", "Sites see another common PC screen."],
     hardware: ["Processor & Memory", "Sites see another common core count."],
+    device: ["iPhone", "The iPhone this profile is to every site: its screen, touch, Safari and iOS version."],
+  };
+  // Noor iPhone: the noise is on at first, as in the iPhone app.
+  const IPHONE_HINTS = {
+    audio: "Sound processing gets noise, so a site can't follow this profile to another.",
+    clientRects: "Measured sizes of elements shift slightly, so a site can't follow this profile to another.",
   };
   let settings = null;
 
@@ -70,9 +76,18 @@
     $("deleteallrow").hidden = settings.profiles.length < 2;
     $("newprofilename").placeholder = `Profile ${settings.profiles.length + 1}`;
 
+    const isIPhone = settings.device === "iphone";
     const protections = $("protections");
     protections.textContent = "";
-    for (const [kind, [title, hint]] of Object.entries(KIND_TITLES)) {
+    for (const kind of settings.kinds || Object.keys(KIND_TITLES)) {
+      const [title, plainHint] = KIND_TITLES[kind];
+      const hint = (isIPhone && IPHONE_HINTS[kind]) || plainHint;
+      if (kind === "device") {
+        // The iPhone can't be off: only changed.
+        const renew = button("New iPhone", "secondary", () => noor.invoke("fingerprint:new", [kind]).then(apply));
+        protections.append(row(`${title}: ${settings.values.iphone.name}`, hint, renew));
+        continue;
+      }
       const controls = document.createElement("div");
       controls.style.display = "flex";
       controls.style.alignItems = "center";
@@ -96,10 +111,20 @@
       element.textContent = text;
       return element;
     };
-    values.append(row("Screen size", "", value(`${settings.values.screen.width} × ${settings.values.screen.height}`)));
-    values.append(row("Processor & memory", "", value(`${settings.values.hardware.cores} cores · ${settings.values.hardware.memory} GB`)));
-    values.append(row("User agent", "", value(settings.values.userAgent)));
-    values.append(row("Brands", "", value(settings.values.brands.map((b) => `${b.brand} ${b.version}`).join(" · "))));
+    if (isIPhone) {
+      const iphone = settings.values.iphone;
+      values.append(row("iPhone", "", value(`${iphone.name} · iOS ${iphone.iOS}`)));
+      values.append(row("Screen size", "", value(`${iphone.width} × ${iphone.height} · ×${iphone.scale}`)));
+      values.append(row("User agent", "", value(settings.values.userAgent)));
+      values.append(row("Language", "", value(settings.values.language)));
+      $("fingerprintfooter").textContent = "Every profile is one real iPhone to the sites it opens, the same ones as in the iPhone app: Safari's user agent and requests, the iPhone's screen, pixel density and touch, its graphics card, voices and fonts, and what Safari on its iOS version has and lacks, sign-in sites included. Canvas, WebGL and audio values and ClientRects get noise of their own on each site.";
+      $("appname").textContent = "Noor iPhone for Windows";
+    } else {
+      values.append(row("Screen size", "", value(`${settings.values.screen.width} × ${settings.values.screen.height}`)));
+      values.append(row("Processor & memory", "", value(`${settings.values.hardware.cores} cores · ${settings.values.hardware.memory} GB`)));
+      values.append(row("User agent", "", value(settings.values.userAgent)));
+      values.append(row("Brands", "", value(settings.values.brands.map((b) => `${b.brand} ${b.version}`).join(" · "))));
+    }
 
     const extensions = $("extensionlist");
     extensions.textContent = "";
