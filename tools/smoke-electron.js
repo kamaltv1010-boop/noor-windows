@@ -112,6 +112,17 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ zone:
       worker.onerror = (event) => { clearTimeout(timer); resolve("error " + event.message); };
     }),
   }))()`);
+  // A sign-in page that asks the Credential Management API for a saved
+  // password, or to stop signing in by itself, gets Chrome's answers.
+  results.credentials = await inTab(`(async () => ({
+    get: await navigator.credentials.get({ password: true }).then((c) => String(c), (e) => e.name + ": " + e.message),
+    store: await navigator.credentials.store(new PasswordCredential({ id: "a", password: "b" })).then((c) => String(c), (e) => e.name + ": " + e.message),
+    preventSilentAccess: await navigator.credentials.preventSilentAccess().then(() => "ok", (e) => e.name + ": " + e.message),
+  }))()`);
+  if (!(results.credentials.get === "null" && results.credentials.store === "undefined" && results.credentials.preventSilentAccess === "ok")) {
+    console.error("CREDENTIALS FAILED", JSON.stringify(results.credentials));
+    process.exitCode = 1;
+  }
   results.headers = { ua: lastHeaders["user-agent"], secChUa: lastHeaders["sec-ch-ua"], platform: lastHeaders["sec-ch-ua-platform"] };
   results.tab = await main(() => {
     const tab = global.noorTest.browser.selected;

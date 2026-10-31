@@ -193,6 +193,30 @@ const callLater = (callback, value) => {
   }
 }
 
+// Credentials: Chrome keeps passwords behind the Credential Management
+// API; Electron has nothing there, and fails every call that needs it
+// ("Error connecting to Credential Management service."), which a sign-in
+// page that waits on one never gets past. Pages see a Chrome with no
+// password saved for them: asked for one, it gives none (null); asked to
+// store one, or to stop signing in by itself, it does so.
+{
+  const container = window.CredentialsContainer && window.CredentialsContainer.prototype;
+  const unserved = (error) => Boolean(error) && error.name === "NotSupportedError" && /Credential Management service/.test(String(error.message));
+  const settle = (name, answer) => {
+    if (!container || typeof container[name] !== "function") return;
+    define(container, name, (original) => function () {
+      const result = original.apply(this, arguments);
+      return result && typeof result.then === "function" ? result.then(undefined, (error) => {
+        if (unserved(error)) return answer;
+        throw error;
+      }) : result;
+    });
+  };
+  settle("get", null);
+  settle("store", undefined);
+  settle("preventSilentAccess", undefined);
+}
+
 // Voices: Chrome on Windows offers Google's voices beside the system's,
 // which Chromium alone doesn't; a site reads the list to tell Chrome from
 // the browsers built on it. They are listed after the system's, as in

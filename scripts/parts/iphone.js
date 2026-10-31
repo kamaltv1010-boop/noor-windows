@@ -93,6 +93,18 @@
   const fullscreenElementOf = documentProto && (getOwnPropertyDescriptor(documentProto, "fullscreenElement") || {}).get;
   const addListener = window.EventTarget && window.EventTarget.prototype.addEventListener;
   const dispatch = window.EventTarget && window.EventTarget.prototype.dispatchEvent;
+  // Listens on `target` from the page's realm, where this runs from one of
+  // its own: the browser calls back no listener added from that one once
+  // it is gone.
+  const listen = (target, type, fn, capture) => {
+    outside.apply(addListener, target, [type, outside.callback(fn, null), capture]);
+  };
+  // Runs `fn` in a task of its own, after what runs now (the other
+  // listeners of an event being sent), the same way.
+  const pageSetTimeout = window.setTimeout;
+  const later = (fn) => {
+    outside.apply(pageSetTimeout, window, [outside.callback(fn, null), 0]);
+  };
   const PageEvent = window.Event;
   const fontFaceSetLoadEvent = window.FontFaceSetLoadEvent;
   // The font faces made here (see Fonts below).
@@ -210,8 +222,14 @@
         });
         addGetter(Session.prototype, "state", () => "inactive");
         addHandler(Session.prototype, "onstatechange");
+        // A real event target, so a site can listen on it for
+        // "statechange" (an object made from the prototype alone refuses
+        // addEventListener: "Illegal invocation").
+        const makeSession = () => {
+          try { return setPrototypeOf(new window.EventTarget(), Session.prototype); } catch (e) { return Object.create(Session.prototype); }
+        };
         let session = null;
-        addGetter(navigatorProto, "audioSession", () => session || (session = Object.create(Session.prototype)));
+        addGetter(navigatorProto, "audioSession", () => session || (session = makeSession()));
       }
     }
   }
@@ -331,7 +349,7 @@
           }
         } catch (e) {}
       };
-      try { addListener.call(document, "fullscreenchange", outside.callback(changed, null), true); } catch (e) {}
+      try { listen(document, "fullscreenchange", changed, true); } catch (e) {}
     }
   }
 
@@ -362,9 +380,21 @@
       nativeClass("WebKitMediaKeyNeededEvent", PageEvent);
     }
     if (!window.GestureEvent && window.UIEvent) {
-      nativeClass("GestureEvent", window.UIEvent);
+      const Gesture = nativeClass("GestureEvent", window.UIEvent);
       for (const target of [window, documentProto, elementProto]) {
         for (const name of ["ongesturechange", "ongestureend", "ongesturestart"]) addHandler(target, name);
+      }
+      // document.createEvent("GestureEvent") makes one, as in Safari on
+      // an iPhone (Chromium refuses the name). Anything else, the name
+      // included, is left to Chromium, which reads it as it reads it.
+      if (documentProto && typeof documentProto.createEvent === "function") {
+        define(documentProto, "createEvent", (original) => function (type) {
+          if (typeof type !== "string" || !/^gestureevent$/i.test(type)) return original.apply(this, arguments);
+          // Chromium checks `this` is a document, as Safari does.
+          const event = original.call(this, "UIEvent");
+          setPrototypeOf(event, Gesture.prototype);
+          return event;
+        });
       }
     }
     // Apple Pay: ApplePayError always, and on secure pages the session, on
@@ -424,14 +454,17 @@
         "use strict"; /* noor lookalike */
         if (new.target === undefined) throw new PageTypeError("Constructor requires 'new' operator");
         const source = Reflect.construct(RealMediaSource, [], new.target);
-        // A player waits for "startstreaming" before it loads.
-        if (addListener && dispatch && outside) {
+        // A player waits for "startstreaming" before it loads: sent once
+        // the source is open, after the page's own "sourceopen" listeners.
+        if (addListener && dispatch && outside && pageSetTimeout) {
           try {
-            addListener.call(source, "sourceopen", outside.callback(() => {
+            listen(source, "sourceopen", () => {
               if (opened.has(source)) return;
               opened.add(source);
-              try { dispatch.call(source, new PageEvent("startstreaming")); } catch (e) {}
-            }, null));
+              later(() => {
+                try { dispatch.call(source, new PageEvent("startstreaming")); } catch (e) {}
+              });
+            }, false);
           } catch (e) {}
         }
         return source;
@@ -467,6 +500,30 @@
     }
   }
 
+  // Credentials: Safari offers the Credential Management API for passkeys
+  // alone. It grants preventSilentAccess(), and turns down a saved password
+  // asked for or given to store with its own words; Electron, with nothing
+  // behind that API, fails all three ("Error connecting to Credential
+  // Management service."), which a sign-in page that waits on the first
+  // never gets past.
+  {
+    const container = window.CredentialsContainer && window.CredentialsContainer.prototype;
+    const unserved = (error) => Boolean(error) && error.name === "NotSupportedError" && /Credential Management service/.test(String(error.message));
+    const settle = (name, answer) => {
+      if (!container || typeof container[name] !== "function") return;
+      define(container, name, (original) => function () {
+        const result = original.apply(this, arguments);
+        return result && typeof result.then === "function" ? result.then(undefined, (error) => {
+          if (unserved(error)) return answer();
+          throw error;
+        }) : result;
+      });
+    };
+    settle("preventSilentAccess", () => undefined);
+    settle("get", () => { throw new PageException("Only PublicKeyCredential is supported.", "NotSupportedError"); });
+    settle("store", () => { throw new PageException("Not implemented.", "NotSupportedError"); });
+  }
+
   // Permissions as Safari answers them: its own names only (a name it
   // doesn't know is a TypeError, one it knows but can't tell is refused),
   // and the camera, microphone and location not asked yet ("prompt"; the
@@ -484,7 +541,9 @@
       }
       if (NAMES.indexOf(name) === -1) return rejectedWith(new PageTypeError("Type error"));
       if (TOLD.indexOf(name) === -1) return rejectedWith(new PageException("Permissions::query does not support this API", "NotSupportedError"));
-      return original.call(this, { name });
+      // Push is asked for as Safari has it, for notifications the user sees
+      // (Chromium answers no other).
+      return original.call(this, name === "push" ? { name, userVisibleOnly: true } : { name });
     });
     // Chromium names some by what it uses inside ("video_capture" for the
     // camera); Safari by the names asked.
@@ -828,6 +887,35 @@
       });
     };
     const scope = isWindow ? "window" : "worker";
+    const globals = IPHONE_SURFACE[scope] || {};
+    // Safari before 26 has no Trusted Types, so a site's scripts give plain
+    // strings to innerHTML, a script's src, a worker's address and the like
+    // there; Chromium still turns those strings down where the site's CSP
+    // asks for Trusted Types (Google's sites, among others), even with
+    // Trusted Types taken away from the page. A default policy that lets
+    // every string through, made before the page's own scripts run and
+    // before Trusted Types are taken away below, lets them in, as Safari
+    // does. Where the site's CSP allows no policy by that name, Trusted
+    // Types stay, for the site's own scripts to use.
+    const TRUSTED = ["trustedTypes", "TrustedHTML", "TrustedScript", "TrustedScriptURL", "TrustedTypePolicy", "TrustedTypePolicyFactory"];
+    let keepTrusted = false;
+    if (TRUSTED.some((name) => name in globals && !has(globals[name]))) {
+      try {
+        const factory = window.trustedTypes;
+        if (factory && typeof factory.createPolicy === "function") {
+          // Made, and asked for, from the page's realm where this runs from
+          // one of its own: the browser no longer calls back into that one
+          // once it is gone.
+          const keep = (value) => value;
+          const pass = outside ? outside.callback(keep, null) : keep;
+          const options = { createHTML: pass, createScript: pass, createScriptURL: pass };
+          if (outside) outside.apply(factory.createPolicy, factory, ["default", options]);
+          else factory.createPolicy("default", options);
+        }
+      } catch (e) {
+        keepTrusted = true;
+      }
+    }
     for (const where of Object.keys(IPHONE_SURFACE)) {
       if (where === "window" || where === "worker") continue;
       const dot = where.indexOf(".");
@@ -841,8 +929,8 @@
         }
       }
     }
-    const globals = IPHONE_SURFACE[scope] || {};
     for (const name of Object.keys(globals)) {
+      if (keepTrusted && TRUSTED.indexOf(name) !== -1) continue;
       if (!has(globals[name])) {
         try { delete window[name]; } catch (e) {}
       }

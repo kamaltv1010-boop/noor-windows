@@ -50,6 +50,12 @@ const server = http.createServer((req, res) => {
   if (url === "/sw.js") {
     return send("text/javascript", `self.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim())); self.addEventListener("message", (e) => e.ports[0].postMessage(${WORKER_VALUES}));`);
   }
+  if (url === "/trusted") {
+    // As a site that uses Trusted Types where the browser has them, and
+    // plain strings where it hasn't (Safari before 26).
+    res.setHeader("content-security-policy", "require-trusted-types-for 'script'");
+    return send("text/html; charset=utf-8", `<!doctype html><div id="box"></div><script>const r = { tt: typeof window.trustedTypes }; const policy = window.trustedTypes ? trustedTypes.createPolicy("site", { createHTML: (s) => s, createScriptURL: (s) => s }) : null; try { document.getElementById("box").innerHTML = policy ? policy.createHTML("<b>x</b>") : "<b>x</b>"; r.innerHTML = "ok"; } catch (e) { r.innerHTML = e.message; } try { document.createElement("script").src = policy ? policy.createScriptURL("/script.js") : "/script.js"; r.scriptSrc = "ok"; } catch (e) { r.scriptSrc = e.message; } parent.postMessage({ trusted: r }, "*");</script>`);
+  }
   if (url === "/frame" || url === "/popup") {
     const key = url.slice(1);
     return send("text/html; charset=utf-8", `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><script>(${key === "popup" ? "opener" : "parent"}).postMessage({ ${key}: { mtp: navigator.maxTouchPoints, touch: "ontouchstart" in window, coarse: matchMedia("(pointer: coarse)").matches, dpr: devicePixelRatio, sw: screen.width, sh: screen.height, ua: navigator.userAgent, vendor: navigator.vendor, hc: navigator.hardwareConcurrency, uad: typeof navigator.userAgentData, chrome: typeof window.chrome, toString: Function.prototype.toString.call(Function.prototype.toString), dw: matchMedia("(device-width: " + screen.width + "px)").matches } }, "*");</script>`);
@@ -103,6 +109,10 @@ const check = (name, ok, detail) => {
   check("WebGL as an iPhone's", gl && gl.version === "WebGL 1.0" && gl.sl === "WebGL GLSL ES 1.0 (1.0)" && gl.unmaskedBefore === null && gl.uv === "Apple Inc." && gl.ur === "Apple GPU" && !gl.s3tc && gl.point[1] <= 511, gl);
   check("an iPhone's voices", r.voices.count > 40 && r.voices.first[0][2].indexOf("com.apple.") === 0, r.voices);
   check("Windows fonts hidden, the page's font list as its own", !r.fonts.Calibri && !r.fonts["Segoe UI"] && !r.fonts.Consolas && !r.fonts["DejaVu Sans"] && r.fontSet.size === 0 && r.fontSet.status === "loaded" && r.fontLoads["DejaVu Sans"] === "NetworkError", { fonts: r.fonts, set: r.fontSet, loads: r.fontLoads });
+  check("a sign-in page's credentials, audio session, gesture event and push", r.signIn.preventSilentAccess === "ok" && r.signIn.password === "NotSupportedError: Only PublicKeyCredential is supported." && r.signIn.audioSession === "ok" && r.signIn.gesture === true && ["prompt", "denied", "granted"].includes(r.signIn.push), r.signIn);
+  check("a managed media source streams once open", r.streaming === "none" || r.streaming.join() === "sourceopen,startstreaming", r.streaming);
+  const safari = Number((/Version\/(\d+)/.exec(ua) || [])[1]);
+  check("a page that asks for Trusted Types works, with them (iOS 26) or without", r.trusted.innerHTML === "ok" && r.trusted.scriptSrc === "ok" && r.trusted.tt === (safari >= 26 ? "object" : "undefined"), r.trusted);
   check("permissions as Safari answers", r.permissions.camera === "prompt" && /^TypeError/.test(r.permissions["clipboard-read"]), r.permissions);
   for (const [name, w] of [["worker", r.worker], ["shared worker", r.shared], ["service worker", r.service]]) {
     check(name, w && w.ua === ua && w.platform === "iPhone" && w.hc === 4 && w.dm === undefined && w.uad === "undefined" && w.temporal === "undefined" && w.toString === "function toString() {\n    [native code]\n}", w);

@@ -70,6 +70,27 @@ for (const name of ["geolocation", "camera", "notifications", "midi", "clipboard
 }
 out.motion = await tryv(() => DeviceMotionEvent.requestPermission()).then?.((v) => v, (e) => e.name) ?? null;
 out.estimate = await tryv(() => navigator.storage.estimate().then((e) => Object.keys(e)));
+// What a sign-in page leans on: the credentials API as Safari answers it,
+// an audio session to listen on, a gesture event, push permission.
+out.signIn = {
+  preventSilentAccess: await navigator.credentials.preventSilentAccess().then(() => "ok", (e) => e.name + ": " + e.message),
+  password: await navigator.credentials.get({ password: true }).then((c) => "resolved " + c, (e) => e.name + ": " + e.message),
+  audioSession: tryv(() => { const s = navigator.audioSession; if (!s) return "none"; s.addEventListener("statechange", () => {}); return "ok"; }),
+  gesture: tryv(() => document.createEvent("GestureEvent") instanceof GestureEvent),
+  push: await navigator.permissions.query({ name: "push", userVisibleOnly: true }).then((s) => s.state, (e) => e.name + ": " + e.message),
+};
+// A player's managed media source: open, then streaming (iOS 17.1 on).
+out.streaming = window.ManagedMediaSource ? await new Promise((resolve) => {
+  const ms = new ManagedMediaSource();
+  const got = [];
+  for (const type of ["sourceopen", "startstreaming"]) ms.addEventListener(type, () => { got.push(type); if (got.length === 2) resolve(got); });
+  const v = document.createElement("video");
+  v.disableRemotePlayback = true;
+  v.src = URL.createObjectURL(ms);
+  setTimeout(() => resolve(got), 5000);
+}) : "none";
+// A page whose CSP asks for Trusted Types, in a frame of its own.
+out.trusted = await new Promise((resolve) => { addEventListener("message", (e) => { if (e.data && e.data.trusted) resolve(e.data.trusted); }); const f = document.createElement("iframe"); f.src = "/trusted"; document.body.appendChild(f); setTimeout(() => resolve("timeout"), 5000); });
 // A dedicated worker.
 out.worker = await new Promise((resolve) => { const wk = new Worker("/worker.js"); wk.onmessage = (e) => resolve(e.data); wk.onerror = (e) => resolve("ERR " + e.message); wk.postMessage(1); setTimeout(() => resolve("timeout"), 5000); });
 // A frame of another site (localhost against 127.0.0.1).
