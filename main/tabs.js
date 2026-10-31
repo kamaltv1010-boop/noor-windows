@@ -37,10 +37,14 @@ const sameSite = (a, b) => {
 /// what the toolbar shows of it. `webContents`: the page a site opened as a
 /// window (see Browser.openWindow), shown in this tab.
 class Tab {
-  constructor(browser, { isPrivate = false, partition = null, webPreferences = null, opener = null, webContents = null } = {}) {
+  constructor(browser, { isPrivate = false, partition = null, webPreferences = null, opener = null, webContents = null, background = false } = {}) {
     this.browser = browser;
     this.id = nextTabId++;
     this.isPrivate = isPrivate;
+    /// A tab nobody sees (see Browser.backgroundTab and main/warmup.js):
+    /// its pages go into no history, open no window and show nothing of
+    /// themselves in the toolbar or to the extensions.
+    this.background = background;
     this.opener = opener;
     this.title = "";
     this.url = "";
@@ -77,7 +81,7 @@ class Tab {
     } else {
       this.showScreen(webContents ? webContents.getURL() : "");
     }
-    if (browser.extensions) {
+    if (browser.extensions && !background) {
       browser.extensions.tabCreated(this);
     }
   }
@@ -267,7 +271,7 @@ class Tab {
     // A page that closes itself (a window a site opened, its work done):
     // its tab goes too. Not as the app closes it, or closes them all.
     wc.once("destroyed", () => {
-      if (!this.closing && !this.browser.closing) {
+      if (!this.closing && !this.browser.closing && !this.background) {
         this.browser.close(this);
       }
     });
@@ -312,7 +316,7 @@ class Tab {
     });
     wc.on("page-title-updated", (event, title) => {
       this.title = title;
-      if (!this.isPrivate && isWebPage(this.url)) {
+      if (!this.isPrivate && !this.background && isWebPage(this.url)) {
         this.browser.history.updateTitle(title, this.url);
       }
       this.changed();
@@ -331,9 +335,19 @@ class Tab {
     });
     wc.on("did-fail-load", (event, code, description, url, isMainFrame) => this.failed(code, description, url, isMainFrame));
     wc.on("dom-ready", () => {
+      if (this.background) {
+        return;
+      }
       this.browser.applyNightMode(this);
       this.readCanonical();
     });
+    if (this.background) {
+      // Nothing it opens becomes a window, and no page keeps it from
+      // going on to the next.
+      wc.setWindowOpenHandler(() => ({ action: "deny" }));
+      wc.on("will-prevent-unload", (event) => event.preventDefault());
+      return;
+    }
     wc.on("context-menu", (event, params) => this.browser.menus.page(this, params));
     wc.on("enter-html-full-screen", () => this.browser.setFullScreen(true));
     wc.on("leave-html-full-screen", () => this.browser.setFullScreen(false));
@@ -346,7 +360,9 @@ class Tab {
   }
 
   changed() {
-    this.browser.pushState();
+    if (!this.background) {
+      this.browser.pushState();
+    }
   }
 
   /// Reads the page's canonical link, when it points to the same site.
@@ -373,38 +389,44 @@ class Tab {
   }
 
   visited(url) {
-    if (!this.isPrivate && isWebPage(url)) {
+    if (!this.isPrivate && !this.background && isWebPage(url)) {
       this.browser.history.record(url, this.title);
     }
   }
 
   /// Opens a page, over https:// and without tracking codes when the
-  /// shields say so.
-  load(url) {
+  /// shields say so; `referrer`: the page a link to it was on.
+  load(url, { referrer = null } = {}) {
     this.deferredURL = null;
     this.needsReload = false;
     const target = this.browser.rewrite(url, this) || url;
+    const options = referrer ? { httpReferrer: referrer } : undefined;
     this.url = target;
     if (this.browser.isIPhone && !this.emulated) {
       // A new tab has no page, and no renderer to tell its iPhone to, until
       // it loads one: an empty one first, then, once Chromium has the
       // iPhone, the page, which is an iPhone's from its first line.
       this.pendingURL = target;
+      this.pendingOptions = options;
       if (!this.emulating) {
         this.emulating = true;
         this.webContents.loadURL("about:blank").catch(() => {});
         Promise.resolve(this.emulation).then(() => {
           this.emulated = true;
-          if (!this.webContents.isDestroyed() && this.pendingURL) {
+          // A tab closed meanwhile (a window that closes itself at once)
+          // loads nothing more: Chromium ends the app over a page loaded
+          // in a closing tab.
+          if (!this.closing && !this.webContents.isDestroyed() && this.pendingURL) {
             const next = this.pendingURL;
             this.pendingURL = null;
-            this.webContents.loadURL(next);
+            this.webContents.loadURL(next, this.pendingOptions).catch(() => {});
           }
         });
       }
       return;
     }
-    this.webContents.loadURL(target);
+    // A page that doesn't load shows the error page (see failed).
+    this.webContents.loadURL(target, options).catch(() => {});
   }
 
   /// Loads a restored tab's page the first time it is shown, or a tab's
@@ -474,7 +496,7 @@ class Tab {
       this.webContents.loadURL(url.replace(/^https:/i, "http:"));
       return;
     }
-    if (isAppPage(url)) {
+    if (isAppPage(url) || this.background) {
       return;
     }
     const page = new URL(ERROR_URL);
@@ -522,6 +544,8 @@ class Browser {
     this.history = this.openHistory(this.profile);
     this.tabs = [];
     this.privateTabs = [];
+    /// Tabs nobody sees (see backgroundTab).
+    this.backgroundTabs = [];
     this.selected = null;
     this.fullScreen = false;
     this.chromeHeight = CHROME_HEIGHT;
@@ -537,7 +561,7 @@ class Browser {
 
   /// Every tab's pages see `zone` (null: the system's) from now on.
   applyTimezone(zone) {
-    for (const tab of this.allTabs) {
+    for (const tab of this.allTabs.concat(this.backgroundTabs)) {
       tab.setTimezone(zone);
     }
   }
@@ -644,8 +668,13 @@ class Browser {
     const { width, height } = this.win.getContentBounds();
     const top = this.fullScreen ? 0 : this.chromeHeight;
     this.chrome.setBounds({ x: 0, y: 0, width, height: top });
+    const page = (tab) => (this.isIPhone ? this.phoneBounds(tab, width, height, top) : { x: 0, y: top, width, height: Math.max(0, height - top) });
     if (this.selected) {
-      this.selected.view.setBounds(this.isIPhone ? this.phoneBounds(this.selected, width, height, top) : { x: 0, y: top, width, height: Math.max(0, height - top) });
+      this.selected.view.setBounds(page(this.selected));
+    }
+    // Where the shown tab is, under it.
+    for (const tab of this.backgroundTabs) {
+      tab.view.setBounds(page(tab));
     }
   }
 
@@ -666,7 +695,7 @@ class Browser {
   /// A new iPhone for the profile: every tab and the profile's sessions
   /// are told it, and the pages load again with it.
   applyDevice() {
-    for (const tab of this.allTabs) {
+    for (const tab of this.allTabs.concat(this.backgroundTabs)) {
       if (!tab.webContents.isDestroyed()) {
         tab.emulate();
       }
@@ -798,6 +827,34 @@ class Browser {
         return tab.webContents;
       },
     };
+  }
+
+  /// A tab nobody sees, in the profile's normal partition, with what its
+  /// tabs have (its fingerprints, its iPhone, the shields, the time zone,
+  /// the extensions' scripts), for main/warmup.js: under the shown tab,
+  /// where it is, so its pages have a shown page's size and are drawn and
+  /// run as a shown tab's are, with no sound and no dialog.
+  backgroundTab() {
+    const partition = this.partitionFor(false);
+    const webPreferences = Object.assign(this.webPreferences(partition), { backgroundThrottling: false, disableDialogs: true });
+    const tab = new Tab(this, { partition, webPreferences, background: true });
+    tab.webContents.setAudioMuted(true);
+    this.backgroundTabs.push(tab);
+    this.layout();
+    this.win.contentView.addChildView(tab.view, 0);
+    return tab;
+  }
+
+  closeBackgroundTab(tab) {
+    this.backgroundTabs = this.backgroundTabs.filter((t) => t !== tab);
+    try {
+      if (!this.win.isDestroyed()) {
+        this.win.contentView.removeChildView(tab.view);
+      }
+    } catch (error) {
+      // The window is going.
+    }
+    tab.close();
   }
 
   select(tab) {
@@ -1060,6 +1117,9 @@ class Browser {
     if (!profile || profile.id === this.profile.id) {
       return;
     }
+    if (this.warmup) {
+      this.warmup.stop();
+    }
     this.saveTabs();
     this.destroyTabs();
     this.profiles.select(id);
@@ -1122,6 +1182,9 @@ class Browser {
   /// closes every tab, gives every site new fingerprints in that profile
   /// and opens an empty tab. Other profiles and bookmarks are kept.
   async startNewSession() {
+    if (this.warmup) {
+      this.warmup.stop();
+    }
     this.destroyTabs();
     this.shields.httpOnlyHosts.clear();
     this.history.clear();

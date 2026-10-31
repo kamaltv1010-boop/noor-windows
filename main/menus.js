@@ -93,6 +93,7 @@ class Menus {
       },
     }));
     items.push({ type: "separator" });
+    items.push({ label: "Collect Cookies…", click: () => browser.newTab({ url: SETTINGS_URL + "#cookies" }) });
     items.push({ label: "New Profile…", click: () => this.newProfile() });
     if (browser.profiles.all().length > 1) {
       items.push({ label: "Delete All Profiles…", click: () => this.confirmDeleteAllProfiles() });

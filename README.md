@@ -17,6 +17,7 @@
 ## شنو فيه ✨
 
 - **الملفات الشخصية (Profiles) 👤**: زر «👤 Personal ▾» فالشريط وفصفحة البداية، وقسم فالإعدادات. كل بروفايل عندو الـ cookies والبيانات ديال المواقع ديالو (partition ديال Chromium بوحدو)، السجل ديالو، الـ onglets ديالو، والبصمات ديالو. **ملف شخصي جديد** كيصاوب واحد ويحلو، **Delete** كتمسحو مع كل البيانات ديالو، و**Delete All** كتمسح كلشي ما عدا الأول بضغطة وحدة. المفضلة والإعدادات مشتركين.
+- **جمع الكوكيز 🍪**: فالإعدادات › **Cookies** (ولا القائمة ⋯ ← Profile ← **Collect Cookies…**)، اختار شحال من موقع (10، 20 ولا 40) وضغط **Collect**. Noor كيزور مواقع معروفة فـ onglet مخفي، فالبروفايل المحلول، بنفس البصمات والدروع ديالو (وفـ Noor iPhone بنفس الـ iPhone). باش أي موقع كيشيكي الكوكيز يلقى بروفايل مستعمل، ماشي خاوي. ف كل موقع كيقرا الصفحة شوية، كيسكرولي بحال إنسان (بالصبع فـ Noor iPhone، بالماوس فـ Noor)، كيقبل البانر ديال الكوكيز، وأحيانا كيدخل لصفحة أخرى من نفس الموقع. المواقع خليط عشوائي جديد كل مرة: مواقع العالم ومواقع البلاد ديال المنطقة الزمنية ديالك (من المغرب: هسبريس، أفيتو، جوميا…). ما كيدخلش أبدا لروابط تسجيل الدخول ولا الخروج، الحساب، السلة ولا التحميل. ما كيحلّش نوافذ، ما كيبانش، ما كيصوّتش، وما كيكتب والو فالسجل. كتشوف التقدم (شحال من موقع وشحال من كوكي)، و**Stop** كيوقفو فأي وقت. الـ onglets ديالك كيبقاو كيف ما هوما.
 - **المنطقة الزمنية ديال الـ IP 🕒**: الصفحات كتشوف المنطقة الزمنية ديال البلاصة فين كاين الاتصال ديالك (ديال الـ VPN إلا كان مشعل)، بحال زائر حقيقي من تماك، بلا ما تبدل شي حاجة فWindows. كتتعاود كل 15 دقيقة، وتقدر تطفيها من الإعدادات.
 - **الحماية ضد البصمات 🎨**: الصفحات كتشوف Canvas وWebGL وصوت فيهم ضجيج صغير (نفس الطريقة والكود ديال نسخة iPhone: `scripts/protect.js` كيتولّد من `FingerprintProtection.swift`)، قياسات ClientRects مزحزحة شوية (الصوت وClientRects طافيين فالبداية: فالـ PC هاد القيم تقريباً نفسها عند الجميع، فالضجيج فيهم كيبيّن المتصفح بدل ما يخبيه)، وشاشة وعدد cores ديال PC عادي آخر (دائماً أكبر أو يساوي الشاشة الحقيقية). الحماية كتوصل حتى للـ Web Workers (وحتى worker داخل worker)، للـ Shared Workers وللـ Service Workers، وللـ frames والنوافذ اللي كتحل الصفحة، باش الصفحة ما تلقاش فرق بيناتهم. حجم الشاشة كيوريه Chromium نفسو للصفحة، فالـ CSS (`@media (device-width)`) والـ JavaScript متوافقين. القيم كتبقى ثابتة فنفس الموقع فنفس البروفايل، وكتتبدل من موقع لآخر. **New** حدا كل حماية كيعطي قيم جديدة، و**Change All** كيبدّل الكل.
 - **Google Chrome 🪟**: المواقع كتشوف Chrome على Windows بنفس الإصدار ديال Chromium اللي فالتطبيق، بلا أثر ديال Electron: الـ user agent، الـ brands ديال `navigator.userAgentData` وديال headers `Sec-CH-UA` (مع Google Chrome)، `chrome.app/csi/loadTimes` (بنفس الشكل والقيم ديال Chrome)، `navigator.webdriver = false`، الأذونات بحال Chrome جديد (اللي Chrome كيعطيه بلا سؤال كيتعطى، والباقي كيبان «prompt»)، الأصوات ديال Google فـ `speechSynthesis`، وWidevine (الطلبات ديالو كتجاوب بحال Chrome بالضبط، بـ ClearKey حقيقي من التحت؛ الأفلام المحمية مازال ما كتخدمش).
@@ -66,6 +67,7 @@
 | `main/shields.js` | الدروع لكل موقع، قواعد المتتبعين، HTTPS، الروابط النقية، الإحصائيات |
 | `main/useragent.js` | الـ user agent ديال Chrome والـ brands |
 | `main/profiles.js`, `main/history.js`, `main/bookmarks.js`, `main/store.js` | البروفايلات، السجل، المفضلة، الإعدادات |
+| `main/warmup.js` | جمع الكوكيز: المواقع حسب المنطقة، الزيارات فـ onglet مخفي، البانرات، الروابط اللي كيتبعها واللي كيتجنبها |
 | `main/menus.js`, `main/address.js` | القوائم والاختصارات، وشنو كيتحل ملي تكتب فشريط العنوان |
 | `scripts/preload.js`, `scripts/protect.js` | الحماية المحقونة فالصفحات (مولّدين من `FingerprintProtection.swift` ديال iPhone بـ `tools/extract_from_ios.py`) |
 | `scripts/parts/chrome.js` | الجزء الخاص بـ Chromium: `userAgentData` و`chrome.app/csi/loadTimes` |
@@ -77,6 +79,7 @@
 | `test/` | tests ديال Node (`npm test`) |
 | `tools/smoke-electron.js` | كيشغّل التطبيق بصح وكيتأكد من الأساسيات (Playwright) |
 | `tools/smoke-iphone.js` | كيشغّل Noor iPhone بحال مستخدم وكيتأكد أن الصفحة، الـ frames، الـ workers والنوافذ كيشوفو iPhone |
+| `tools/smoke-warmup.js` | كيجرّب جمع الكوكيز على مواقع محلية: الكوكيز، البانر، السكرول، المقالات، وشنو ما خاصوش يدير |
 | `tools/build-iphone.js` | كيبني الـ `.exe` ديال Noor iPhone |
 | `tools/dump-surface.js`, `tools/iphone_surface.js` | كيولّدو `scripts/parts/iphone-surface.js` (شنو كاين فـ Chromium وماكاينش فـ Safari) |
 | `.github/workflows/build.yml` | البناء ديال `.exe` على Windows |
@@ -91,6 +94,7 @@ npm run dist       # كيبني .exe فـ dist/ (على Windows)
 npm run start:iphone   # كيشغّل Noor iPhone
 npm run dist:iphone    # كيبني .exe ديال Noor iPhone
 xvfb-run -a node tools/smoke-iphone.js   # test كامل ديال Noor iPhone
+xvfb-run -a node tools/smoke-warmup.js [iphone]   # test ديال جمع الكوكيز
 ```
 
 باش تجدّد الحماية من كود iPhone:

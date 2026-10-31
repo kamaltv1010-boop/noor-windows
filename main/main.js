@@ -17,6 +17,7 @@ const { Menus } = require("./menus");
 const { ENGINES, APP_ORIGIN, ERROR_URL, isAppPage, isWebPage } = require("./address");
 const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages, userAgentMetadata } = require("./useragent");
 const { BrowserDebugger } = require("./browser-debugger");
+const { Warmup, FAST } = require("./warmup");
 const iphone = require("./iphone");
 
 /// Noor iPhone (see main/iphone.js): every profile is an iPhone to sites.
@@ -615,6 +616,41 @@ const settingsSnapshot = () => ({
   electron: process.versions.electron,
 });
 
+/// Collecting cookies for the profile in use (see main/warmup.js): what is
+/// under way goes to the app's pages (the settings), and its start and end
+/// show in the window. Tests give their own sites, and quicker visits.
+const makeWarmup = (target) => {
+  const test = Boolean(process.env.NOOR_TEST);
+  let sites = null;
+  if (test && process.env.NOOR_TEST_WARMUP_SITES) {
+    try {
+      sites = JSON.parse(process.env.NOOR_TEST_WARMUP_SITES);
+    } catch (error) {
+      sites = null;
+    }
+  }
+  const timing = test && process.env.NOOR_TEST_WARMUP_FAST ? Object.assign({}, FAST) : {};
+  if (test && process.env.NOOR_TEST_WARMUP_FOLLOW) {
+    timing.follow = Number(process.env.NOOR_TEST_WARMUP_FOLLOW);
+  }
+  const warmup = new Warmup(target, { sites, timing });
+  let wasRunning = false;
+  warmup.onChange((status) => {
+    for (const tab of target.allTabs) {
+      if (!tab.webContents.isDestroyed() && isAppPage(tab.webContents.getURL())) {
+        tab.webContents.send("noor:warmup", { ...status, clearOnQuit: target.clearOnQuit() });
+      }
+    }
+    if (status.running && !wasRunning) {
+      target.toast("Collecting cookies in the background…");
+    } else if (!status.running && wasRunning) {
+      target.toast(status.stopped ? `Stopped: ${status.added} new cookies` : `Cookies collected: ${status.added} new, from ${status.done - status.failed} sites`);
+    }
+    wasRunning = status.running;
+  });
+  return warmup;
+};
+
 const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit"]);
 
 const registerIPC = () => {
@@ -729,6 +765,9 @@ const registerIPC = () => {
   handle("profiles:delete", async (event, id) => { await browser.menus.confirmDeleteProfile(String(id)); return settingsSnapshot(); });
   handle("profiles:deleteAll", async () => { await browser.menus.confirmDeleteAllProfiles(); return settingsSnapshot(); });
   handle("session:new", () => browser.menus.confirmNewSession());
+  handle("warmup:get", () => browser.warmup.snapshot());
+  handle("warmup:start", (event, count) => browser.warmup.start([10, 20, 40].includes(Number(count)) ? Number(count) : 20));
+  handle("warmup:stop", () => browser.warmup.stop());
   handle("chrome:height", (event, height) => browser.setChromeHeight(height));
   handle("find", (event, text, options) => browser.find(String(text || ""), options || {}));
   handle("find:stop", () => browser.stopFind());
@@ -822,6 +861,7 @@ app.whenReady().then(async () => {
   browser = new Browser(context);
   extensions.browser = browser;
   browser.menus = new Menus(browser);
+  browser.warmup = makeWarmup(browser);
   browser.toggleBookmark = () => {
     const tab = browser.selected;
     if (!tab || !isWebPage(tab.url)) {
@@ -842,7 +882,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(browser.menus.application());
   registerIPC();
   if (process.env.NOOR_TEST) {
-    global.noorTest = { browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE };
+    global.noorTest = { browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, warmup: browser.warmup };
   }
 
   app.on("second-instance", (event, argv) => {
@@ -868,6 +908,9 @@ app.on("web-contents-created", (event, webContents) => {
 app.on("before-quit", () => {
   if (browser) {
     browser.saveTabs();
+    if (browser.warmup) {
+      browser.warmup.stop();
+    }
   }
 });
 

@@ -24,6 +24,18 @@
   </div>
   <p class="footer">Each profile has its own cookies, website data, history, tabs and fingerprints, so accounts stay apart. Bookmarks and settings are shared. The profiles are also in the ⋯ menu and on the start page.</p>
 
+  <h3 id="cookies">Cookies</h3>
+  <div class="card">
+    <div class="row">
+      <div class="label">Collect cookies<small id="warmupstatus"></small></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <select id="warmupcount"><option value="10">10 sites</option><option value="20" selected>20 sites</option><option value="40">40 sites</option></select>
+        <button class="button small" id="warmupstart">Collect</button>
+      </div>
+    </div>
+  </div>
+  <p class="footer" id="warmupfooter">So that a site that checks finds a profile in daily use, not an empty one: Noor visits popular sites in a tab you don't see, in the profile in use, with its fingerprints and shields. It reads each page a little, scrolls, accepts the cookie banner, and sometimes opens another page of the site, as a person would. The sites are the world's and those of the country of your time zone, in a new random mix each time. It never signs in or out, buys or downloads anything, and nothing goes into the history; your tabs stay as they are.</p>
+
   <h3 id="extensions">Extensions</h3>
   <div class="card" id="extensionlist"></div>
   <div class="card">

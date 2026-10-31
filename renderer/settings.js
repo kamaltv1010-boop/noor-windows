@@ -15,6 +15,34 @@
     clientRects: "Measured sizes of elements shift slightly, so a site can't follow this profile to another.",
   };
   let settings = null;
+  let warmup = null;
+
+  // Collecting cookies (see main/warmup.js): what is under way, or how
+  // many cookies the profile in use has.
+  const showWarmup = (next) => {
+    if (!next) {
+      return;
+    }
+    warmup = next;
+    const start = $("warmupstart");
+    start.textContent = warmup.running ? "Stop" : "Collect";
+    start.className = "button small" + (warmup.running ? " danger" : "");
+    $("warmupcount").disabled = warmup.running;
+    const where = warmup.region ? `Sites of the world and of ${warmup.region}.` : "";
+    let text;
+    if (warmup.running) {
+      text = `Visiting ${Math.min(warmup.done + 1, warmup.total)} of ${warmup.total}${warmup.current ? `: ${warmup.current}` : ""}. ${warmup.cookies} cookies (+${warmup.added}). ${where}`;
+    } else if (warmup.finished) {
+      const opened = warmup.done - warmup.failed;
+      text = `${warmup.stopped ? "Stopped" : "Done"}: ${opened} of ${warmup.total} sites visited${warmup.failed ? ` (${warmup.failed} didn't open)` : ""}. This profile has ${warmup.cookies} cookies from ${warmup.domains} sites now (+${warmup.added}).`;
+    } else {
+      text = `This profile has ${warmup.cookies} cookies from ${warmup.domains} sites.`;
+    }
+    if (warmup.clearOnQuit) {
+      text += " \"Clear everything on quit\" is on: they go when Noor closes.";
+    }
+    $("warmupstatus").textContent = text.trim();
+  };
 
   const row = (label, hint, control) => {
     const element = document.createElement("div");
@@ -207,9 +235,17 @@
   $("deleteall").addEventListener("click", () => noor.invoke("profiles:deleteAll").then(apply));
   $("changeall").addEventListener("click", () => noor.invoke("fingerprint:new", null).then(apply));
   $("newsession").addEventListener("click", () => noor.invoke("session:new"));
+  $("warmupstart").addEventListener("click", () => {
+    const action = warmup && warmup.running ? noor.invoke("warmup:stop") : noor.invoke("warmup:start", Number($("warmupcount").value));
+    action.then(showWarmup).catch(() => {});
+  });
+  noor.on("warmup", showWarmup);
   $("resetstats").addEventListener("click", () => noor.invoke("stats:reset"));
 
-  const refresh = () => noor.invoke("settings:get").then(apply).catch(() => {});
+  const refresh = () => Promise.all([
+    noor.invoke("settings:get").then(apply).catch(() => {}),
+    noor.invoke("warmup:get").then(showWarmup).catch(() => {}),
+  ]);
   window.addEventListener("focus", refresh);
   refresh().then(scrollToHash);
 })();
