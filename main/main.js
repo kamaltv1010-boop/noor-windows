@@ -11,6 +11,7 @@ const { Shields, Stats } = require("./shields");
 const { Bookmarks } = require("./bookmarks");
 const { Timezone } = require("./timezone");
 const { Browser, CHROME_PARTITION } = require("./tabs");
+const { Windows, profileArgument } = require("./windows");
 const { Extensions, STORE_URL } = require("./extensions");
 const { storeExtensionID, storeTitle } = require("./crx");
 const { Menus } = require("./menus");
@@ -81,7 +82,8 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
-let browser = null;
+/// The app's windows, one for each profile open (see main/windows.js).
+let windows = null;
 let context = null;
 let extensions = null;
 /// Chromium's own "Not A Brand" entry, from its first request, so the
@@ -194,8 +196,8 @@ const setUpSession = (ses) => {
       return callback({});
     }
     if (context.shields.trackersEnabled() && context.shields.areUp(page) && context.shields.isTracker(details.url, page)) {
-      if (browser) {
-        browser.trackerBlocked(details.webContents);
+      if (windows) {
+        windows.trackerBlocked(details.webContents);
       } else {
         context.stats.trackerBlocked();
       }
@@ -412,13 +414,15 @@ const REALM_KEY = "_" + crypto.randomBytes(12).toString("hex");
 const sessionProfiles = new Map();
 const contextProfiles = new Map();
 
-/// The fingerprints of the profile `id`: the profile in use's, or another's.
+/// The fingerprints of the profile `id` (the window in front's if none),
+/// whichever window is in front.
 const fingerprintFor = (id) => {
-  if (!id || !browser || id === browser.profile.id) {
-    return context.fingerprint;
+  const profile = id ? context.profiles.find(id) : null;
+  if (profile) {
+    return context.fingerprint.forProfile(profile);
   }
-  const profile = context.profiles.find(id);
-  return profile ? context.fingerprint.forProfile(profile) : context.fingerprint;
+  const front = windows && windows.current;
+  return front ? front.fingerprint : context.fingerprint;
 };
 const fingerprintOfSession = (ses) => fingerprintFor(ses ? sessionProfiles.get(ses) : null);
 
@@ -480,7 +484,7 @@ const screenFor = (url, fingerprint) => {
 };
 
 const pageConfig = (event) => {
-  const tab = browser ? browser.tabFor(event.sender) : null;
+  const tab = windows ? windows.tabFor(event.sender) : null;
   let top = "";
   try {
     top = (event.senderFrame && event.senderFrame.top && event.senderFrame.top.url) || event.sender.getURL();
@@ -614,14 +618,20 @@ const trusted = (event) => {
 /// The app's pages (toolbar, start page, settings, library) call these.
 const handle = (channel, handler) => {
   ipcMain.handle("noor:" + channel, (event, ...args) => {
-    if (!trusted(event) || !browser) {
+    if (!trusted(event) || !windows || !windows.current) {
       throw new Error("Not allowed");
     }
     return handler(event, ...args);
   });
 };
 
-const settingsSnapshot = () => ({
+/// The window an app's page is in (its toolbar, or a tab of it), or the
+/// one in front.
+const windowOf = (event) => (event && windows.browserFor(event.sender)) || windows.current;
+
+/// The settings as the page of `browser` (a window) shows them: its
+/// profile's fingerprints.
+const settingsSnapshot = (browser = windows.current) => ({
   searchEngine: browser.searchEngine,
   searchEngines: Object.entries(ENGINES).map(([id, engine]) => ({ id, name: engine.name })),
   blockTrackers: context.shields.trackersEnabled(),
@@ -632,14 +642,14 @@ const settingsSnapshot = () => ({
   timezoneFromIP: context.timezone.enabled(),
   timezone: context.timezone.current,
   extensions: extensions ? extensions.list() : [],
-  kinds: context.fingerprint.kinds,
-  protections: Object.fromEntries(context.fingerprint.kinds.map((kind) => [kind, context.fingerprint.isEnabled(kind)])),
+  kinds: browser.fingerprint.kinds,
+  protections: Object.fromEntries(browser.fingerprint.kinds.map((kind) => [kind, browser.fingerprint.isEnabled(kind)])),
   values: IPHONE ? (() => {
-    const current = context.fingerprint.iphone();
+    const current = browser.fingerprint.iphone();
     return { iphone: { name: current.name, iOS: current.iOS, width: current.width, height: current.height, scale: current.scale }, userAgent: iphone.userAgent(current), language: iphoneLanguage() };
   })() : {
-    screen: context.fingerprint.screen(),
-    hardware: context.fingerprint.hardware(),
+    screen: browser.fingerprint.screen(),
+    hardware: browser.fingerprint.hardware(),
     userAgent: userAgent(),
     brands: brandList,
   },
@@ -647,14 +657,17 @@ const settingsSnapshot = () => ({
   shieldsDownSites: context.shields.downSites(),
   profiles: context.profiles.all(),
   profile: browser.profile,
+  // The profiles open in a window, and whether closing one replaces it.
+  openProfiles: windows.shown.map((w) => w.profile.id),
+  freshOnClose: windows.freshOnClose(),
   version: app.getVersion(),
   chromium: process.versions.chrome,
   electron: process.versions.electron,
 });
 
-/// Collecting cookies for the profile in use (see main/warmup.js): what is
-/// under way goes to the app's pages (the settings), and its start and end
-/// show in the window. Tests give their own sites, and quicker visits.
+/// Collecting cookies (see main/warmup.js), for every window: what is under
+/// way goes to the app's pages (the settings), and its start and end show
+/// in the window in front. Tests give their own sites, and quicker visits.
 const makeWarmup = (target) => {
   const test = Boolean(process.env.NOOR_TEST);
   let sites = null;
@@ -717,14 +730,14 @@ const makeWarmup = (target) => {
   return warmup;
 };
 
-/// A profile by its id, or the one in use.
-const profileFor = (id) => context.profiles.find(String(id || "")) || browser.profile;
+/// A profile by its id, or the one of the window an app's page is in.
+const profileFor = (id, event = null) => context.profiles.find(String(id || "")) || windowOf(event).profile;
 
 /// The profiles' cookies (see main/cookies.js): each profile's normal
 /// session, the one its tabs use.
-const cookies = cookieTools((profile) => session.fromPartition(browser.partitionFor(false, profile)));
+const cookies = cookieTools((profile) => session.fromPartition(windows.partitionFor(false, profile)));
 
-const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit"]);
+const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit", "freshOnClose"]);
 
 const registerIPC = () => {
   ipcMain.on("noor:page-config", (event) => {
@@ -735,39 +748,41 @@ const registerIPC = () => {
     }
   });
 
-  handle("state", () => browser.state());
-  handle("tabs:new", (event, options) => { browser.newTab({ isPrivate: Boolean(options && options.isPrivate) }); });
-  handle("tabs:select", (event, id) => { const tab = browser.tabWithId(id); if (tab) browser.select(tab); });
-  handle("tabs:close", (event, id) => { const tab = browser.tabWithId(id); if (tab) browser.close(tab); });
-  handle("nav:go", (event, text) => {
-    const sender = browser.tabFor(event.sender);
-    browser.go(text, sender || browser.selected);
+  // Each call acts on the window its page is in (`at`).
+  const on = (channel, handler) => handle(channel, (event, ...args) => handler(windowOf(event), event, ...args));
+  on("state", (at) => at.state());
+  on("tabs:new", (at, event, options) => { at.newTab({ isPrivate: Boolean(options && options.isPrivate) }); });
+  on("tabs:select", (at, event, id) => { const tab = at.tabWithId(id); if (tab) at.select(tab); });
+  on("tabs:close", (at, event, id) => { const tab = at.tabWithId(id); if (tab) at.close(tab); });
+  on("nav:go", (at, event, text) => {
+    const sender = at.tabFor(event.sender);
+    at.go(text, sender || at.selected);
   });
-  handle("nav:back", () => browser.selected && browser.selected.goBack());
-  handle("nav:forward", () => browser.selected && browser.selected.goForward());
-  handle("nav:reload", () => browser.selected && browser.selected.reload());
-  handle("nav:stop", () => browser.selected && browser.selected.stop());
-  handle("bookmark:toggle", () => browser.toggleBookmark());
+  on("nav:back", (at) => at.selected && at.selected.goBack());
+  on("nav:forward", (at) => at.selected && at.selected.goForward());
+  on("nav:reload", (at) => at.selected && at.selected.reload());
+  on("nav:stop", (at) => at.selected && at.selected.stop());
+  on("bookmark:toggle", (at) => at.toggleBookmark());
   handle("bookmarks:list", () => context.bookmarks.all());
-  handle("bookmarks:remove", (event, url) => { context.bookmarks.remove(url); browser.pushState(); });
-  handle("history:list", (event, query) => query ? browser.history.search(query, 200) : browser.history.all().slice(0, 500));
-  handle("history:remove", (event, url) => browser.history.remove(url));
-  handle("history:clear", () => browser.history.clear());
-  handle("menu:more", () => browser.menus.more());
-  handle("menu:profile", () => browser.menus.profile());
-  handle("menu:shields", () => browser.menus.shields());
-  handle("menu:tab", (event, id) => { const tab = browser.tabWithId(id); if (tab) browser.menus.tab(tab); });
-  handle("start:state", (event) => ({
-    profile: browser.profile,
+  handle("bookmarks:remove", (event, url) => { context.bookmarks.remove(url); windows.pushState(); });
+  on("history:list", (at, event, query) => query ? at.history.search(query, 200) : at.history.all().slice(0, 500));
+  on("history:remove", (at, event, url) => at.history.remove(url));
+  on("history:clear", (at) => at.history.clear());
+  on("menu:more", (at) => at.menus.more());
+  on("menu:profile", (at) => at.menus.profile());
+  on("menu:shields", (at) => at.menus.shields());
+  on("menu:tab", (at, event, id) => { const tab = at.tabWithId(id); if (tab) at.menus.tab(tab); });
+  on("start:state", (at) => ({
+    profile: at.profile,
     stats: context.stats.toJSON(),
     bookmarks: context.bookmarks.all(),
   }));
-  handle("settings:get", () => settingsSnapshot());
-  handle("settings:set", (event, key, value) => {
+  on("settings:get", (at) => settingsSnapshot(at));
+  on("settings:set", (at, event, key, value) => {
     if (SETTING_KEYS.has(key)) {
       context.store.set(key, key === "searchEngine" ? String(value) : Boolean(value));
     } else if (key === "nightMode") {
-      browser.setNightMode(Boolean(value));
+      windows.setNightMode(Boolean(value));
     } else if (key === "timezoneFromIP") {
       context.timezone.setEnabled(Boolean(value));
     } else if (key.startsWith("protection.") && context.fingerprint.kinds.includes(key.slice("protection.".length)) && key !== "protection.device") {
@@ -775,13 +790,13 @@ const registerIPC = () => {
     } else {
       throw new Error("Unknown setting");
     }
-    browser.applyPrivacySettings();
-    return settingsSnapshot();
+    windows.applyPrivacySettings();
+    return settingsSnapshot(at);
   });
-  handle("extensions:store", () => { browser.newTab({ url: STORE_URL }); return settingsSnapshot(); });
+  on("extensions:store", (at) => { at.newTab({ url: STORE_URL }); return settingsSnapshot(at); });
   // The toolbar's "Add to Noor", on a store page.
-  handle("extensions:addFromStore", async () => {
-    const tab = browser.selected;
+  on("extensions:addFromStore", async (at) => {
+    const tab = at.selected;
     const id = tab ? storeExtensionID(tab.url) : null;
     if (!id) {
       return false;
@@ -789,25 +804,25 @@ const registerIPC = () => {
     try {
       const name = await extensions.installFromStore(id, storeTitle(tab.title));
       if (name) {
-        browser.toast(`"${name}" added`);
+        at.toast(`"${name}" added`);
       }
     } catch (error) {
-      dialog.showMessageBox(browser.win, { type: "error", message: "The extension wasn't added", detail: String(error.message || error) });
+      dialog.showMessageBox(at.win, { type: "error", message: "The extension wasn't added", detail: String(error.message || error) });
     }
-    browser.pushState();
+    windows.pushState();
     return true;
   });
-  handle("extensions:options", (event, url) => {
+  on("extensions:options", (at, event, url) => {
     if (/^chrome-extension:\/\/[a-p]{32}\//.test(String(url))) {
-      browser.newTab({ url: String(url) });
+      at.newTab({ url: String(url) });
     }
-    return settingsSnapshot();
+    return settingsSnapshot(at);
   });
-  handle("extensions:enable", (event, id, isOn) => { extensions.setEnabled(String(id), Boolean(isOn)); return settingsSnapshot(); });
-  handle("extensions:remove", async (event, id) => { await extensions.remove(String(id)); return settingsSnapshot(); });
-  handle("extensions:install", async (event, kind) => {
+  on("extensions:enable", (at, event, id, isOn) => { extensions.setEnabled(String(id), Boolean(isOn)); return settingsSnapshot(at); });
+  on("extensions:remove", async (at, event, id) => { await extensions.remove(String(id)); return settingsSnapshot(at); });
+  on("extensions:install", async (at, event, kind) => {
     const folder = kind === "folder";
-    const { canceled, filePaths } = await dialog.showOpenDialog(browser.win, {
+    const { canceled, filePaths } = await dialog.showOpenDialog(at.win, {
       title: folder ? "A folder with a manifest.json" : "A .crx or .zip file",
       properties: [folder ? "openDirectory" : "openFile"],
       filters: folder ? [] : [{ name: "Extensions", extensions: ["crx", "zip"] }],
@@ -816,68 +831,79 @@ const registerIPC = () => {
       try {
         await extensions.installFile(filePaths[0]);
       } catch (error) {
-        dialog.showMessageBox(browser.win, { type: "error", message: "The extension wasn't installed", detail: String(error.message || error) });
+        dialog.showMessageBox(at.win, { type: "error", message: "The extension wasn't installed", detail: String(error.message || error) });
       }
     }
-    return settingsSnapshot();
+    return settingsSnapshot(at);
   });
-  handle("fingerprint:new", (event, kinds) => {
+  on("fingerprint:new", (at, event, kinds) => {
     const wanted = Array.isArray(kinds) ? kinds.filter((k) => context.fingerprint.kinds.includes(k)) : context.fingerprint.kinds;
-    browser.newFingerprint(wanted);
-    return settingsSnapshot();
+    at.newFingerprint(wanted);
+    return settingsSnapshot(at);
   });
-  handle("shields:set", (event, isUp) => { browser.setShieldsUp(Boolean(isUp)); });
-  handle("shields:allow", (event, site) => { context.shields.setUp(true, String(site)); browser.applyPrivacySettings(); return settingsSnapshot(); });
-  handle("profiles:create", (event, name) => {
+  on("shields:set", (at, event, isUp) => { at.setShieldsUp(Boolean(isUp)); windows.applyPrivacySettings(); });
+  on("shields:allow", (at, event, site) => { context.shields.setUp(true, String(site)); windows.applyPrivacySettings(); return settingsSnapshot(at); });
+  // A new profile, in a window of its own.
+  on("profiles:create", (at, event, name) => {
     const trimmed = String(name || "").trim();
-    const profile = browser.createProfile(trimmed || `Profile ${context.profiles.all().length + 1}`);
-    browser.toast(`Switched to “${profile.name}”`);
-    return settingsSnapshot();
+    const profile = windows.createProfile(trimmed || `Profile ${context.profiles.all().length + 1}`);
+    windows.toast(`“${profile.name}”: a new profile, in its own window`);
+    return settingsSnapshot(at);
   });
-  handle("profiles:switch", (event, id) => { browser.switchProfile(String(id)); return settingsSnapshot(); });
+  // A profile opens in its own window, or its window comes to the front.
+  const openProfile = (at, event, id) => {
+    const profile = context.profiles.find(String(id));
+    if (profile) {
+      windows.open(profile);
+    }
+    return settingsSnapshot(at);
+  };
+  on("profiles:open", openProfile);
+  on("profiles:switch", openProfile);
   // Several profiles at once (the settings, or the ⋯ menu's prompt).
-  handle("profiles:createMany", (event, count, name) => {
-    const made = browser.createProfiles(count, name);
+  on("profiles:createMany", (at, event, count, name) => {
+    const made = windows.createProfiles(count, name);
     if (made.length) {
       const range = made.length > 1 ? `${made[0].name} to ${made[made.length - 1].name}` : made[0].name;
-      browser.toast(`${made.length} ${made.length === 1 ? "profile" : "profiles"} made: ${range}` + (browser.warmup.settings().auto ? `, collecting cookies ${made.length === 1 ? "now" : "all at once"}` : ""));
+      at.toast(`${made.length} ${made.length === 1 ? "profile" : "profiles"} made: ${range}` + (windows.warmup.settings().auto ? `, collecting cookies ${made.length === 1 ? "now" : "all at once"}` : ""));
     }
-    return settingsSnapshot();
+    return settingsSnapshot(at);
   });
-  handle("profiles:delete", async (event, id) => { await browser.menus.confirmDeleteProfile(String(id)); return settingsSnapshot(); });
-  handle("profiles:deleteAll", async () => { await browser.menus.confirmDeleteAllProfiles(); return settingsSnapshot(); });
-  handle("session:new", () => browser.menus.confirmNewSession());
-  // A profile's collection (the one in use if no id is given).
-  handle("warmup:get", (event, id) => browser.warmup.snapshot(id ? profileFor(id).id : undefined));
+  on("profiles:delete", async (at, event, id) => { await at.menus.confirmDeleteProfile(String(id)); return settingsSnapshot(windowOf(event)); });
+  on("profiles:deleteAll", async (at) => { await at.menus.confirmDeleteAllProfiles(); return settingsSnapshot(at); });
+  on("session:new", (at) => at.menus.confirmNewSession());
+  // A profile's collection (the one of the page's window if no id is given).
+  const warmup = () => windows.warmup;
+  handle("warmup:get", (event, id) => warmup().snapshot(profileFor(id, event).id));
   // The settings as the page has them, saved, and the visits started.
   handle("warmup:save", (event, settings) => {
-    browser.warmup.saveSettings(settings && typeof settings === "object" ? settings : {});
-    return browser.warmup.snapshot();
+    warmup().saveSettings(settings && typeof settings === "object" ? settings : {});
+    return warmup().snapshot(profileFor(null, event).id);
   });
   handle("warmup:start", (event, settings, id) => {
     if (settings && typeof settings === "object") {
-      browser.warmup.saveSettings(settings);
+      warmup().saveSettings(settings);
     }
-    return browser.warmup.start(null, profileFor(id));
+    return warmup().start(null, profileFor(id, event));
   });
-  handle("warmup:stop", (event, id) => browser.warmup.stop(profileFor(id).id));
+  handle("warmup:stop", (event, id) => warmup().stop(profileFor(id, event).id));
   // Every profile at once (as many as the settings say, the others
   // waiting their turn).
-  handle("warmup:startAll", async () => {
-    await browser.warmup.startMany(context.profiles.all());
-    return browser.warmup.snapshot();
+  handle("warmup:startAll", async (event) => {
+    await warmup().startMany(context.profiles.all());
+    return warmup().snapshot(profileFor(null, event).id);
   });
-  handle("warmup:stopAll", () => {
-    browser.warmup.stopAll();
-    return browser.warmup.snapshot();
+  handle("warmup:stopAll", (event) => {
+    warmup().stopAll();
+    return warmup().snapshot(profileFor(null, event).id);
   });
   // The Cookies page: every profile's cookies, by site.
-  handle("cookies:open", () => { browser.newTab({ url: COOKIES_URL }); });
-  handle("cookies:profiles", () => ({ profiles: context.profiles.all(), current: browser.profile.id }));
-  handle("cookies:list", (event, id) => cookies.list(profileFor(id)));
-  handle("cookies:remove", async (event, id, site) => {
-    const profile = profileFor(id);
-    const { response } = await dialog.showMessageBox(browser.win, {
+  on("cookies:open", (at) => { at.newTab({ url: COOKIES_URL }); });
+  on("cookies:profiles", (at) => ({ profiles: context.profiles.all(), current: at.profile.id }));
+  handle("cookies:list", (event, id) => cookies.list(profileFor(id, event)));
+  on("cookies:remove", async (at, event, id, site) => {
+    const profile = profileFor(id, event);
+    const { response } = await dialog.showMessageBox(at.win, {
       type: "warning",
       buttons: ["Cancel", "Delete Cookies"],
       defaultId: 0,
@@ -890,9 +916,9 @@ const registerIPC = () => {
     }
     return cookies.list(profile);
   });
-  handle("cookies:export", async (event, id) => {
-    const profile = profileFor(id);
-    const { canceled, filePath } = await dialog.showSaveDialog(browser.win, {
+  on("cookies:export", async (at, event, id) => {
+    const profile = profileFor(id, event);
+    const { canceled, filePath } = await dialog.showSaveDialog(at.win, {
       title: `The cookies of “${profile.name}”`,
       defaultPath: `cookies-${profile.name.replace(/[^\w.-]+/g, "-")}.txt`,
       filters: [{ name: "cookies.txt (Netscape)", extensions: ["txt"] }, { name: "JSON", extensions: ["json"] }],
@@ -902,13 +928,13 @@ const registerIPC = () => {
     }
     const { count, text } = await cookies.exported(profile, /\.json$/i.test(filePath) ? "json" : "txt");
     fs.writeFileSync(filePath, text);
-    browser.toast(`${count} cookies saved`);
+    at.toast(`${count} cookies saved`);
     return { count, file: filePath };
   });
-  handle("chrome:height", (event, height) => browser.setChromeHeight(height));
-  handle("find", (event, text, options) => browser.find(String(text || ""), options || {}));
-  handle("find:stop", () => browser.stopFind());
-  handle("stats:reset", () => { context.stats.reset(); browser.pushState(); return context.stats.toJSON(); });
+  on("chrome:height", (at, event, height) => at.setChromeHeight(height));
+  on("find", (at, event, text, options) => at.find(String(text || ""), options || {}));
+  on("find:stop", (at) => at.stopFind());
+  handle("stats:reset", () => { context.stats.reset(); windows.pushState(); return context.stats.toJSON(); });
 };
 
 app.whenReady().then(async () => {
@@ -996,32 +1022,35 @@ app.whenReady().then(async () => {
   Browser.prototype.tabMade = registerTab;
   Browser.prototype.screenFor = screenFor;
   Browser.prototype.extensions = extensions;
-  browser = new Browser(context);
-  extensions.browser = browser;
-  browser.menus = new Menus(browser);
-  browser.warmup = makeWarmup(browser);
-  browser.toggleBookmark = () => {
-    const tab = browser.selected;
-    if (!tab || !isWebPage(tab.url)) {
-      return false;
-    }
-    const url = tab.bookmarkURL;
-    const saved = bookmarks.contains(tab.url) && url !== tab.url
-      ? (bookmarks.remove(tab.url), false)
-      : bookmarks.toggle(tab.title, url);
-    browser.toast(saved ? "Bookmark added" : "Bookmark removed");
-    browser.pushState();
-    return saved;
-  };
-  browser.findOnPage = () => {
-    browser.chrome.webContents.focus();
-    browser.chrome.webContents.send("noor:find");
-  };
-  Menu.setApplicationMenu(browser.menus.application());
+  // Each profile's window (see main/windows.js): Noor's icon for the first
+  // profile's, and for a pinned profile's button, what starts the app (the
+  // portable app's own .exe, not the copy it runs from).
+  windows = new Windows(context, {
+    makeBrowser: (profile, bounds) => {
+      const made = new Browser(context, { profile, windows, bounds });
+      made.menus = new Menus(made);
+      return made;
+    },
+    appId: IPHONE ? "ma.noor.iphone" : "ma.noor.browser",
+    executable: app.isPackaged ? process.env.PORTABLE_EXECUTABLE_FILE || process.execPath : null,
+    appIcon: path.join(__dirname, "..", "build", "icon.ico"),
+    profileIdOfSession: (ses) => sessionProfiles.get(ses) || null,
+  });
+  extensions.windows = windows;
+  windows.warmup = makeWarmup(windows);
+  // The profiles open as the app last quit, or the one asked for.
+  windows.restore(profileArgument(process.argv));
+  Menu.setApplicationMenu(windows.current.menus.application());
   registerIPC();
+  // Profiles made new as the app closed collect their cookies now.
+  windows.collectPending();
   if (process.env.NOOR_TEST) {
     global.noorTest = {
-      browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, warmup: browser.warmup, cookies, fingerprintFor,
+      // The window in front.
+      get browser() {
+        return windows.current;
+      },
+      windows, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, warmup: windows.warmup, cookies, fingerprintFor,
       // What pages of the profile `id` are shown: its user agent and screen.
       shownOf: (id) => {
         const fingerprint = fingerprintFor(id);
@@ -1031,16 +1060,20 @@ app.whenReady().then(async () => {
     };
   }
 
+  // Noor started again: a profile's window (a pinned profile's button
+  // gives --profile=<id>), with the address given in a new tab, or the
+  // window in front.
   app.on("second-instance", (event, argv) => {
-    if (browser && !browser.win.isDestroyed()) {
-      if (browser.win.isMinimized()) {
-        browser.win.restore();
-      }
-      browser.win.focus();
-      const url = argv.find((arg) => /^https?:\/\//i.test(arg));
-      if (url) {
-        browser.newTab({ url });
-      }
+    const wanted = profileArgument(argv);
+    const profile = wanted ? context.profiles.findBySlot(wanted) : null;
+    const target = profile ? windows.open(profile) : windows.current;
+    if (!target || target.win.isDestroyed()) {
+      return;
+    }
+    target.bringToFront();
+    const url = argv.find((arg) => /^https?:\/\//i.test(arg));
+    if (url) {
+      target.newTab({ url });
     }
   });
 });
@@ -1052,10 +1085,15 @@ app.on("web-contents-created", (event, webContents) => {
 });
 
 app.on("before-quit", () => {
-  if (browser) {
-    browser.saveTabs();
-    if (browser.warmup) {
-      browser.warmup.stopAll();
+  if (windows) {
+    // The windows open now open again at the next launch.
+    windows.saveOpen();
+    windows.quitting = true;
+    for (const w of windows.shown) {
+      w.saveTabs();
+    }
+    if (windows.warmup) {
+      windows.warmup.stopAll();
     }
   }
 });

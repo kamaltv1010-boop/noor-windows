@@ -190,25 +190,37 @@
       engine.append(option);
     }
 
+    // Each profile opens in a window of its own; this window's is marked.
     const profiles = $("profiles");
     profiles.textContent = "";
+    const open = new Set(settings.openProfiles || [settings.profile.id]);
     for (const profile of settings.profiles) {
       const controls = document.createElement("div");
       controls.style.display = "flex";
       controls.style.gap = "6px";
-      if (profile.id === settings.profile.id) {
+      const here = profile.id === settings.profile.id;
+      if (here) {
         const mark = document.createElement("span");
         mark.className = "value";
         mark.style.whiteSpace = "nowrap";
-        mark.textContent = "In use";
+        mark.textContent = "This window";
         controls.append(mark);
       } else {
-        controls.append(button("Switch", "secondary", () => noor.invoke("profiles:switch", profile.id).then(apply)));
+        const opening = button(open.has(profile.id) ? "Show" : "Open", "secondary", () => noor.invoke("profiles:open", profile.id).then(apply));
+        opening.title = open.has(profile.id) ? "Bring its window to the front" : "Open it in a window of its own";
+        controls.append(opening);
       }
       if (!profile.isDefault) {
         controls.append(button("Delete", "danger", () => noor.invoke("profiles:delete", profile.id).then(apply)));
       }
-      profiles.append(row((profile.id === settings.profile.id ? "✓ " : "") + profile.name, profile.isDefault ? "The first profile; it can't be deleted." : "", controls));
+      const hints = [];
+      if (profile.isDefault) {
+        hints.push("The first profile; it can't be deleted.");
+      }
+      if (!here && open.has(profile.id)) {
+        hints.push("Open in another window.");
+      }
+      profiles.append(row((here ? "✓ " : "") + profile.name, hints.join(" "), controls));
     }
     $("deleteallrow").hidden = settings.profiles.length < 2;
     $("newprofilename").placeholder = `Profile ${settings.profiles.length + 1}`;

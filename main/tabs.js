@@ -1,12 +1,11 @@
 "use strict";
 const path = require("path");
-const fs = require("fs");
 const { BaseWindow, WebContentsView, session } = require("electron");
 const { History } = require("./history");
 const iphone = require("./iphone");
-const { DEFAULT_ID } = require("./profiles");
 const { START_URL, ERROR_URL, isStartPage, isAppPage, isErrorPage, isWebPage, displayURL, hostOf } = require("./address");
 const { storeExtensionID } = require("./crx");
+const { iconLook } = require("./profile-icon");
 
 const PRELOAD = path.join(__dirname, "..", "scripts", "preload.js");
 const CHROME_PRELOAD = path.join(__dirname, "..", "scripts", "chrome-preload.js");
@@ -544,14 +543,21 @@ class Tab {
   }
 }
 
-/// The browser window: its tabs, normal and private, which one is shown,
-/// the profile in use, and what the tabs share.
+/// A window of the browser: the profile it shows (each profile has a
+/// window of its own, see main/windows.js), its tabs, normal and private,
+/// which one is shown, and what the tabs share.
 class Browser {
-  constructor(context) {
+  /// `profile`: the profile it shows (the one used last if none);
+  /// `windows`: the app's windows; `bounds`: where it goes.
+  constructor(context, { profile = null, windows = null, bounds = null } = {}) {
     Object.assign(this, context);
+    this.windows = windows;
     /// Noor iPhone (see main/iphone.js): the profile's iPhone in every tab.
     this.isIPhone = Boolean(this.fingerprint && this.fingerprint.iphoneMode);
-    this.profile = this.profiles.current();
+    this.profile = profile || this.profiles.current();
+    /// The fingerprints of this window's profile, whichever window is in front.
+    this.baseFingerprint = this.fingerprint;
+    this.fingerprint = this.baseFingerprint.forProfile(this.profile);
     this.history = this.openHistory(this.profile);
     this.tabs = [];
     this.privateTabs = [];
@@ -562,11 +568,25 @@ class Browser {
     this.chromeHeight = CHROME_HEIGHT;
     this.stateTimer = null;
     this.appliedSignature = "";
-    this.makeWindow();
+    /// Set as the window closes for good: its profile deleted (see
+    /// Windows.deleteProfile), so its tabs aren't kept.
+    this.deleting = false;
+    /// Settled once the taskbar shows this window as its profile's (see
+    /// Windows.dress): the window shows then.
+    this.dressing = null;
+    /// Settled once the window shows.
+    this.shown = new Promise((resolve) => {
+      this.markShown = resolve;
+    });
+    this.makeWindow(bounds);
     this.restoreTabs();
     this.applyPrivacySettings();
     if (this.timezone) {
-      this.timezone.onChange((zone) => this.applyTimezone(zone));
+      this.timezone.onChange((zone) => {
+        if (!this.closed) {
+          this.applyTimezone(zone);
+        }
+      });
     }
   }
 
@@ -634,11 +654,12 @@ class Browser {
     return { width: Math.min(work.width - 16, 760), height: Math.max(560, height) };
   }
 
-  makeWindow() {
-    const size = this.windowSize();
+  makeWindow(bounds = null) {
+    const size = bounds || this.windowSize();
     this.win = new BaseWindow({
       width: size.width,
       height: size.height,
+      ...(bounds ? { x: bounds.x, y: bounds.y } : {}),
       minWidth: this.isIPhone ? 480 : 640,
       minHeight: this.isIPhone ? CHROME_HEIGHT + MIN_PAGE_HEIGHT + 2 * PHONE_MARGIN + 30 : 420,
       title: this.isIPhone ? "Noor iPhone" : "Noor",
@@ -654,9 +675,23 @@ class Browser {
     this.chrome.setBackgroundColor("#f6f5f1");
     this.win.contentView.addChildView(this.chrome);
     this.chrome.webContents.loadURL(CHROME_URL);
+    // Shown once the taskbar has it as its profile's (its icon, see
+    // Windows.dress), or after a moment anyway; a window that isn't the one
+    // in front by then (one of several opened together) shows without
+    // taking the front.
     this.chrome.webContents.once("did-finish-load", () => {
-      this.win.show();
-      this.pushState();
+      const dressed = Promise.resolve(this.dressing);
+      Promise.race([dressed, new Promise((resolve) => setTimeout(resolve, 800))]).then(() => {
+        if (!this.win.isDestroyed()) {
+          if (this.windows && this.windows.current && this.windows.current !== this) {
+            this.win.showInactive();
+          } else {
+            this.win.show();
+          }
+          this.pushState();
+        }
+        this.markShown();
+      });
     });
     this.chrome.webContents.on("did-finish-load", () => this.pushState());
     this.chrome.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -664,11 +699,67 @@ class Browser {
     for (const event of ["resize", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "restore"]) {
       this.win.on(event, () => this.layout());
     }
+    this.win.on("focus", () => {
+      if (this.windows) {
+        this.windows.focused(this);
+      }
+    });
     this.win.on("close", () => {
-      this.saveTabs();
+      if (!this.deleting) {
+        this.saveTabs();
+      }
       // What closes with the window isn't closed by its pages.
       this.closing = true;
+      // Its tabs nobody sees go on in another window.
+      if (this.windows) {
+        this.windows.closing(this);
+      }
     });
+    this.win.on("closed", () => {
+      this.closed = true;
+      for (const tab of this.allTabs.concat(this.backgroundTabs)) {
+        tab.close();
+      }
+      try {
+        if (!this.chrome.webContents.isDestroyed()) {
+          this.chrome.webContents.close();
+        }
+      } catch (error) {
+        // Gone with the window.
+      }
+      if (this.windows) {
+        this.windows.closed(this);
+      }
+    });
+    this.layout();
+  }
+
+  /// Shows the window in front of the others.
+  bringToFront() {
+    if (this.win.isDestroyed()) {
+      return;
+    }
+    if (this.win.isMinimized()) {
+      this.win.restore();
+    }
+    this.win.show();
+    this.win.focus();
+  }
+
+  /// Takes a tab nobody sees from a window closing (see Windows.closing):
+  /// its pages go on here, under this window's shown tab.
+  adopt(tab, from) {
+    from.backgroundTabs = from.backgroundTabs.filter((t) => t !== tab);
+    try {
+      if (!from.win.isDestroyed()) {
+        from.win.contentView.removeChildView(tab.view);
+      }
+    } catch (error) {
+      // The window is going.
+    }
+    tab.browser = this;
+    this.backgroundTabs.push(tab);
+    this.win.contentView.addChildView(tab.view, 0);
     this.layout();
   }
 
@@ -757,8 +848,22 @@ class Browser {
     this.chrome.webContents.send("noor:focus-address");
   }
 
+  /// A line shown a moment in the toolbar (once it has loaded: a window
+  /// just opened is told too).
   toast(message) {
-    this.chrome.webContents.send("noor:toast", message);
+    const wc = this.chrome.webContents;
+    if (wc.isDestroyed()) {
+      return;
+    }
+    if (wc.isLoading() || wc.getURL() !== CHROME_URL) {
+      wc.once("did-finish-load", () => {
+        if (!wc.isDestroyed()) {
+          wc.send("noor:toast", message);
+        }
+      });
+      return;
+    }
+    wc.send("noor:toast", message);
   }
 
   /// Asks the toolbar page for a line of text; it answers with `action`.
@@ -1036,6 +1141,31 @@ class Browser {
     }
   }
 
+  /// Bookmarks the shown page (its canonical address, see Tab.bookmarkURL),
+  /// or takes its bookmark away. Whether it is bookmarked now.
+  toggleBookmark() {
+    const tab = this.selected;
+    if (!tab || !isWebPage(tab.url)) {
+      return false;
+    }
+    const url = tab.bookmarkURL;
+    const saved = this.bookmarks.contains(tab.url) && url !== tab.url
+      ? (this.bookmarks.remove(tab.url), false)
+      : this.bookmarks.toggle(tab.title, url);
+    this.toast(saved ? "Bookmark added" : "Bookmark removed");
+    if (this.windows) {
+      this.windows.pushState();
+    } else {
+      this.pushState();
+    }
+    return saved;
+  }
+
+  findOnPage() {
+    this.chrome.webContents.focus();
+    this.chrome.webContents.send("noor:find");
+  }
+
   trackerBlocked(webContents) {
     const tab = this.tabFor(webContents);
     if (tab) {
@@ -1054,8 +1184,8 @@ class Browser {
     }
   }
 
+  /// Night mode on or off in this window's tabs (see Windows.setNightMode).
   setNightMode(isOn) {
-    this.store.set("nightMode", isOn);
     for (const tab of this.allTabs) {
       if (tab.webContents.isDestroyed()) {
         continue;
@@ -1124,88 +1254,57 @@ class Browser {
 
   // MARK: - Profiles
 
-  /// Shows another profile: closes every tab and opens the profile's
-  /// remembered tabs, with its website data, history and fingerprints.
+  /// Shows another profile in this window: closes every tab and opens the
+  /// profile's remembered tabs, with its website data, history and
+  /// fingerprints. A profile open in another window is shown there.
   switchProfile(id) {
     const profile = this.profiles.find(id);
     if (!profile || profile.id === this.profile.id) {
+      return;
+    }
+    const shown = this.windows && this.windows.forProfile(profile.id);
+    if (shown && shown !== this) {
+      this.windows.open(profile);
       return;
     }
     this.saveTabs();
     this.destroyTabs();
     this.profiles.select(id);
     this.profile = profile;
+    this.fingerprint = this.baseFingerprint.forProfile(profile);
     this.shields.httpOnlyHosts.clear();
     this.history = this.openHistory(profile);
     this.restoreTabs();
     this.applyPrivacySettings({ reload: false });
+    if (this.windows) {
+      this.windows.dress(this);
+      this.windows.saveOpen();
+      this.windows.pushState();
+    }
     this.pushState();
   }
 
+  /// A new profile, in a window of its own (see Windows.createProfile).
   createProfile(name) {
-    const profile = this.profiles.add(name);
-    this.switchProfile(profile.id);
-    this.collectInNew([profile]);
-    return profile;
+    return this.windows.createProfile(name);
   }
 
-  /// `count` new profiles at once, named after `name` (see Profiles.addMany),
-  /// each with its own cookies and fingerprints; the profile in use stays.
+  /// `count` new profiles at once (see Windows.createProfiles).
   createProfiles(count, name) {
-    const made = this.profiles.addMany(count, name);
-    this.collectInNew(made);
-    this.pushState();
-    return made;
+    return this.windows.createProfiles(count, name);
   }
 
-  /// New profiles collect their cookies, all at once, each in the
-  /// background, where the settings say so (see main/warmup.js).
-  collectInNew(profiles) {
-    if (this.warmup && this.warmup.settings().auto) {
-      this.warmup.startMany(profiles).catch(() => {});
-    }
+  /// Deletes a profile with everything it kept (see Windows.deleteProfile).
+  deleteProfile(id) {
+    return this.windows.deleteProfile(id);
   }
 
-  /// Deletes a profile with everything it kept. Deleting the profile in
-  /// use shows the default profile instead.
-  async deleteProfile(id) {
-    const profile = this.profiles.find(id);
-    if (!profile || profile.isDefault) {
-      return;
-    }
-    if (this.warmup) {
-      this.warmup.stop(profile.id);
-    }
-    if (profile.id === this.profile.id) {
-      this.switchProfile(DEFAULT_ID);
-    }
-    await this.clearData(profile);
-    try {
-      fs.rmSync(path.join(this.userData, this.profiles.historyFile(profile)), { force: true });
-    } catch (error) {
-      // The file stays; it holds only history.
-    }
-    this.profiles.remove(id);
-    this.pushState();
+  deleteAllProfiles() {
+    return this.windows.deleteAllProfiles();
   }
 
-  async deleteAllProfiles() {
-    for (const profile of this.profiles.all()) {
-      if (!profile.isDefault) {
-        await this.deleteProfile(profile.id);
-      }
-    }
-  }
-
-  /// Deletes a profile's cookies, cache and other website data.
-  async clearData(profile) {
-    for (const partition of [this.partitionFor(false, profile), this.partitionFor(true, profile)]) {
-      const ses = session.fromPartition(partition);
-      await ses.clearStorageData().catch(() => {});
-      await ses.clearCache().catch(() => {});
-      await ses.clearAuthCache().catch(() => {});
-      ses.clearHostResolverCache().catch(() => {});
-    }
+  clearData(profile) {
+    return this.windows.clearData(profile);
   }
 
   // MARK: - New session
@@ -1214,8 +1313,9 @@ class Browser {
   /// closes every tab, gives every site new fingerprints in that profile
   /// and opens an empty tab. Other profiles and bookmarks are kept.
   async startNewSession() {
-    if (this.warmup) {
-      this.warmup.stop(this.profile.id);
+    const warmup = this.windows && this.windows.warmup;
+    if (warmup) {
+      warmup.stop(this.profile.id);
     }
     this.destroyTabs();
     this.shields.httpOnlyHosts.clear();
@@ -1246,7 +1346,7 @@ class Browser {
       shieldsUp: site ? this.shields.areUp(url) : true,
       trackersBlocked: active ? active.trackersBlocked : 0,
       bookmarked: Boolean(url && (this.bookmarks.contains(url) || this.bookmarks.contains(active.bookmarkURL))),
-      profile: { id: this.profile.id, name: this.profile.name },
+      profile: { id: this.profile.id, name: this.profile.name, color: this.profile.isDefault ? null : iconLook(this.profile.name).colors[0] },
       profiles: this.profiles.all(),
       stats: this.stats.toJSON(),
       nightMode: this.nightMode,

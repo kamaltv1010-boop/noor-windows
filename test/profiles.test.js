@@ -70,3 +70,44 @@ test("several profiles at once: numbered after the profiles there are, each name
   // Kept as any profile is.
   assert.equal(new Profiles(store).all().length, profiles.all().length);
 });
+
+test("a profile replaced: a new one of the same name at the same place, nothing of the old one kept", () => {
+  const store = tempStore();
+  const profiles = new Profiles(store);
+  const [a, b, c] = profiles.addMany(3, "Shop");
+  profiles.select(b.id);
+  store.set(profiles.key("seed.canvas", b), 7);
+  store.set(profiles.key("openTabs", b), [{ url: "https://example.com/" }]);
+  const fresh = profiles.replace(b.id);
+  assert.equal(fresh.name, "Shop 2");
+  assert.equal(fresh.isDefault, false);
+  assert.notEqual(fresh.id, b.id);
+  assert.deepEqual(profiles.all().map((p) => p.name), ["Personal", "Shop 1", "Shop 2", "Shop 3"]);
+  assert.deepEqual(profiles.all().map((p) => p.id), [DEFAULT_ID, a.id, fresh.id, c.id]);
+  assert.equal(profiles.find(b.id), null);
+  // The one used last is the new one, and nothing of the old one stays.
+  assert.equal(profiles.current().id, fresh.id);
+  assert.equal(store.get(`profile.${b.id}.seed.canvas`), undefined);
+  assert.equal(store.get(`profile.${b.id}.openTabs`), undefined);
+  assert.deepEqual(store.get("doomedPartitions"), [`noor-${b.id}`]);
+  // Its place stays the old one's (a pinned taskbar button opens it), made
+  // new again and again.
+  assert.equal(fresh.slot, b.id);
+  assert.equal(profiles.slotOf(fresh), b.id);
+  assert.equal(profiles.slotOf(a), a.id);
+  assert.equal(profiles.findBySlot(b.id).id, fresh.id);
+  const newer = profiles.replace(fresh.id);
+  assert.equal(newer.slot, b.id);
+  assert.equal(profiles.findBySlot(b.id).id, newer.id);
+  assert.equal(profiles.findBySlot(newer.id).id, newer.id);
+  assert.equal(profiles.findBySlot(fresh.id), null);
+  assert.equal(new Profiles(store).find(newer.id).slot, b.id);
+  // The last one, and one not in use.
+  const last = profiles.replace(c.id);
+  assert.deepEqual(profiles.all().map((p) => p.id), [DEFAULT_ID, a.id, newer.id, last.id]);
+  assert.equal(profiles.current().id, newer.id);
+  // Not the default profile, nor one there isn't.
+  assert.equal(profiles.replace(DEFAULT_ID), null);
+  assert.equal(profiles.replace("nobody"), null);
+  assert.equal(profiles.all().length, 4);
+});

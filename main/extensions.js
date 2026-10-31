@@ -57,7 +57,8 @@ class Extensions {
     this.managers = new Map();
     /// Store IDs being added now.
     this.installing = new Set();
-    this.browser = null;
+    /// The app's windows (see main/windows.js), set once made.
+    this.windows = null;
     this.updater = null;
   }
 
@@ -111,8 +112,15 @@ class Extensions {
     }
     const manager = new ElectronChromeExtensions({
       session: ses,
+      // A tab an extension opens: in its profile's window, opened if it
+      // isn't (as Chrome opens a window of that profile).
       createTab: async (details) => {
-        const browser = this.browser;
+        const windows = this.windows;
+        if (!windows) {
+          throw new Error("No window");
+        }
+        const profile = windows.profileOfSession(ses);
+        const browser = (profile && windows.open(profile)) || windows.current;
         if (!browser) {
           throw new Error("No window");
         }
@@ -120,15 +128,15 @@ class Extensions {
         return [tab.webContents, browser.win];
       },
       selectTab: (webContents) => {
-        const tab = this.browser && this.browser.tabFor(webContents);
+        const tab = this.windows && this.windows.tabFor(webContents);
         if (tab) {
-          this.browser.select(tab);
+          tab.browser.select(tab);
         }
       },
       removeTab: (webContents) => {
-        const tab = this.browser && this.browser.tabFor(webContents);
+        const tab = this.windows && this.windows.tabFor(webContents);
         if (tab) {
-          this.browser.close(tab);
+          tab.browser.close(tab);
         }
       },
     });
@@ -252,7 +260,8 @@ class Extensions {
   /// Asks before adding, as Chrome does, with what the extension may do.
   async confirm(name, manifest) {
     const can = permissionSummary(manifest);
-    const win = this.browser ? this.browser.win : undefined;
+    const front = this.windows && this.windows.current;
+    const win = front && !front.win.isDestroyed() ? front.win : undefined;
     const { response } = await dialog.showMessageBox(win, {
       type: "question",
       buttons: ["Add Extension", "Cancel"],
@@ -469,8 +478,8 @@ class Extensions {
   }
 
   changed() {
-    if (this.browser) {
-      this.browser.pushState();
+    if (this.windows) {
+      this.windows.pushState();
     }
   }
 }

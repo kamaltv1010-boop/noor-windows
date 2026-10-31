@@ -253,7 +253,8 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
     const own = await global.noorTest.cookies.list(inUse);
     return { added: all.length - before, names: made.map((p) => p.name), listed, stayed: browser.profile.id === inUse.id, inUseClean: !own.sites.some((s) => s.site === "warm-b.test"), select, waited, most, hint, toasts: [...toasts].filter(Boolean), queued, farms };
   }, [`http://warm-b.test:${port}/`]);
-  // A profile's collection goes on when another profile is opened.
+  // A profile's collection goes on when another profile is opened (in its
+  // own window, in front).
   const switching = await main(async (electron, sites) => {
     const browser = global.noorTest.browser;
     const warmup = global.noorTest.warmup;
@@ -261,8 +262,8 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
     const home = browser.profile;
     const other = global.noorTest.context.profiles.all().find((p) => p.id !== home.id);
     await warmup.start();
-    browser.switchProfile(other.id);
-    const right = { status: warmup.status(home.id), inUse: browser.profile.id === other.id };
+    global.noorTest.windows.open(other);
+    const right = { status: warmup.status(home.id), inUse: global.noorTest.windows.current.profile.id === other.id };
     for (let i = 0; i < 600 && warmup.running; i++) await new Promise((r) => setTimeout(r, 100));
     const listed = await global.noorTest.cookies.list(home);
     return { right, status: warmup.status(home.id), sites: listed.sites.map((s) => s.site) };

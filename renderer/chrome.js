@@ -80,6 +80,11 @@
     $("bookmark").classList.toggle("on", state.bookmarked);
     $("bookmark").disabled = !state.url;
     $("profilename").textContent = state.profile.name;
+    // The profile's color, as on its window's button in the taskbar.
+    const color = /^#[0-9a-f]{6}$/i.test(state.profile.color || "") ? state.profile.color : "";
+    $("profile").style.color = color;
+    $("profile").style.background = color ? color + "24" : "";
+    $("profile").title = `Profile: ${state.profile.name}. Each profile opens in a window of its own.`;
     const actions = $("actions");
     if (actions) {
       actions.hidden = !state.extensionsHere;

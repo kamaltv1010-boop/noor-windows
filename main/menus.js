@@ -28,7 +28,7 @@ class Menus {
       { label: "Bookmarks & History", accelerator: "CmdOrCtrl+H", click: () => browser.newTab({ url: LIBRARY_URL }) },
       { type: "separator" },
       { label: "Zoom", submenu: this.zoomItems() },
-      { label: "Night Mode", type: "checkbox", checked: browser.nightMode, click: (item) => browser.setNightMode(item.checked) },
+      { label: "Night Mode", type: "checkbox", checked: browser.nightMode, click: (item) => (browser.windows ? browser.windows.setNightMode(item.checked) : browser.setNightMode(item.checked)) },
       { label: "Find on Page", accelerator: "CmdOrCtrl+F", click: () => browser.findOnPage() },
       { type: "separator" },
       { label: `Profile: ${browser.profile.name}`, submenu: this.profileItems() },
@@ -79,19 +79,24 @@ class Menus {
     return items;
   }
 
+  /// The profiles: each opens in a window of its own (or its window comes
+  /// to the front); this window's is checked.
   profileItems() {
     const browser = this.browser;
-    const items = browser.profiles.all().map((profile) => ({
-      label: profile.name,
-      type: "radio",
-      checked: profile.id === browser.profile.id,
-      click: () => {
-        if (profile.id !== browser.profile.id) {
-          browser.switchProfile(profile.id);
-          browser.toast(`Switched to “${profile.name}”`);
-        }
-      },
-    }));
+    const windows = browser.windows;
+    const items = browser.profiles.all().map((profile) => {
+      const elsewhere = profile.id !== browser.profile.id && Boolean(windows && windows.forProfile(profile.id));
+      return {
+        label: profile.name + (elsewhere ? "   (open)" : ""),
+        type: "radio",
+        checked: profile.id === browser.profile.id,
+        click: () => {
+          if (profile.id !== browser.profile.id && windows) {
+            windows.open(profile);
+          }
+        },
+      };
+    });
     items.push({ type: "separator" });
     items.push({ label: "Collect Cookies…", click: () => browser.newTab({ url: SETTINGS_URL + "#cookies" }) });
     items.push({ label: "See Cookies", click: () => browser.newTab({ url: COOKIES_URL }) });
@@ -162,7 +167,7 @@ class Menus {
       defaultId: 1,
       cancelId: 0,
       message: "Start a new session?",
-      detail: "This deletes the cookies, website data and history of the profile in use, closes its tabs and changes all its fingerprints. Other profiles and bookmarks are kept.",
+      detail: `This deletes the cookies, website data and history of “${browser.profile.name}” (this window's profile), closes its tabs and changes all its fingerprints. Other profiles and bookmarks are kept.`,
     });
     if (response === 1) {
       await browser.startNewSession();
@@ -250,10 +255,17 @@ class Menus {
     Menu.buildFromTemplate(items).popup({ window: browser.win });
   }
 
-  /// The application menu: hidden, but its shortcuts work.
+  /// The application menu: hidden, but its shortcuts work, in the window
+  /// in front.
   application() {
-    const browser = this.browser;
-    const tab = () => browser.selected;
+    const front = () => (this.browser.windows && this.browser.windows.current) || this.browser;
+    // What each shortcut acts on: the window in front at the time.
+    const browser = new Proxy({}, { get: (target, key) => {
+      const current = front();
+      const value = current[key];
+      return typeof value === "function" ? value.bind(current) : value;
+    } });
+    const tab = () => front().selected;
     return Menu.buildFromTemplate([
       {
         label: "File",
@@ -270,10 +282,10 @@ class Menus {
         submenu: [
           { label: "Reload", accelerator: "CmdOrCtrl+R", click: () => tab() && tab().reload() },
           { label: "Reload", accelerator: "F5", visible: false, click: () => tab() && tab().reload() },
-          { label: "Zoom In", accelerator: "CmdOrCtrl+=", click: () => this.zoomBy(1.1) },
-          { label: "Zoom In", accelerator: "CmdOrCtrl+numadd", visible: false, click: () => this.zoomBy(1.1) },
-          { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: () => this.zoomBy(1 / 1.1) },
-          { label: "Zoom Out", accelerator: "CmdOrCtrl+numsub", visible: false, click: () => this.zoomBy(1 / 1.1) },
+          { label: "Zoom In", accelerator: "CmdOrCtrl+=", click: () => this.zoomBy(1.1, front()) },
+          { label: "Zoom In", accelerator: "CmdOrCtrl+numadd", visible: false, click: () => this.zoomBy(1.1, front()) },
+          { label: "Zoom Out", accelerator: "CmdOrCtrl+-", click: () => this.zoomBy(1 / 1.1, front()) },
+          { label: "Zoom Out", accelerator: "CmdOrCtrl+numsub", visible: false, click: () => this.zoomBy(1 / 1.1, front()) },
           { label: "Actual Size", accelerator: "CmdOrCtrl+0", click: () => tab() && tab().webContents.setZoomFactor(1) },
           { label: "Find on Page", accelerator: "CmdOrCtrl+F", click: () => browser.findOnPage() },
           { label: "Full Screen", accelerator: "F11", click: () => browser.setFullScreen(!browser.fullScreen) },
@@ -300,8 +312,8 @@ class Menus {
     ]);
   }
 
-  zoomBy(factor) {
-    const tab = this.browser.selected;
+  zoomBy(factor, browser = this.browser) {
+    const tab = browser.selected;
     if (tab) {
       tab.webContents.setZoomFactor(Math.min(3, Math.max(0.25, tab.webContents.getZoomFactor() * factor)));
     }

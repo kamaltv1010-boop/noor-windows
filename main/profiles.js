@@ -26,7 +26,7 @@ class Profiles {
     }
     const others = saved
       .filter((p) => p && typeof p.id === "string" && typeof p.name === "string" && p.id !== DEFAULT_ID)
-      .map((p) => ({ id: p.id, name: p.name, isDefault: false }));
+      .map((p) => Object.assign({ id: p.id, name: p.name, isDefault: false }, typeof p.slot === "string" && p.slot ? { slot: p.slot } : {}));
     return [{ id: DEFAULT_ID, name: this.defaultName, isDefault: true }].concat(others);
   }
 
@@ -39,6 +39,19 @@ class Profiles {
 
   find(id) {
     return this.all().find((p) => p.id === id) || null;
+  }
+
+  /// What stays of a profile through its replacements (see replace): the
+  /// id of the first profile in its place. Its taskbar button and a pinned
+  /// one are that, whichever profile is in its place now.
+  slotOf(profile) {
+    return profile.slot || profile.id;
+  }
+
+  /// The profile in the place `key` names (an id, or a slot), or null.
+  findBySlot(key) {
+    const all = this.all();
+    return all.find((p) => p.id === key) || all.find((p) => p.slot === key) || null;
   }
 
   select(id) {
@@ -84,7 +97,7 @@ class Profiles {
   }
 
   saveOthers(list) {
-    this.store.set("profiles", list.map((p) => ({ id: p.id, name: p.name })));
+    this.store.set("profiles", list.map((p) => Object.assign({ id: p.id, name: p.name }, p.slot ? { slot: p.slot } : {})));
   }
 
   /// The store key of a value kept per profile: `base` itself for the
@@ -125,6 +138,28 @@ class Profiles {
     }
     const doomed = this.store.get("doomedPartitions", []);
     this.store.set("doomedPartitions", doomed.concat([`noor-${id}`]));
+  }
+
+  /// A new profile in the place of `id`: the same name, at the same place
+  /// in the list, with nothing of the old one (its id, partition, values
+  /// and history file are new), which is forgotten as remove() does. The
+  /// new one, or null (the default profile stays).
+  replace(id) {
+    const others = this.all().filter((p) => !p.isDefault);
+    const index = others.findIndex((p) => p.id === id);
+    if (index === -1) {
+      return null;
+    }
+    const wasCurrent = this.store.get("currentProfile") === id;
+    const fresh = { id: crypto.randomUUID(), name: others[index].name, slot: this.slotOf(others[index]) };
+    this.remove(id);
+    const rest = this.all().filter((p) => !p.isDefault);
+    rest.splice(Math.min(index, rest.length), 0, fresh);
+    this.saveOthers(rest);
+    if (wasCurrent) {
+      this.select(fresh.id);
+    }
+    return { ...fresh, isDefault: false };
   }
 }
 
