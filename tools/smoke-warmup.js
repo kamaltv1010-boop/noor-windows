@@ -65,6 +65,11 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
       res.setHeader("content-type", "text/html; charset=utf-8");
       return res.end(page(host, server.address().port));
     }
+    if (url.startsWith("/mine")) {
+      res.setHeader("set-cookie", `mine_${host}=1; Path=/; Max-Age=86400`);
+      res.setHeader("content-type", "text/html; charset=utf-8");
+      return res.end(`<!doctype html><title>Mine</title><p>One of the user's sites.</p><div style="height:3000px"></div>`);
+    }
     if (url.startsWith("/news/")) {
       res.setHeader("set-cookie", `article_${host}=1; Path=/; Max-Age=86400`);
       res.setHeader("content-type", "text/html; charset=utf-8");
@@ -142,6 +147,55 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
       windows: electron.BrowserWindow.getAllWindows().length + electron.BaseWindow.getAllWindows().length,
     };
   });
+  // The user's own sites, saved: those are visited, and only those.
+  const mine = await main(async (electron, sites) => {
+    const warmup = global.noorTest.warmup;
+    warmup.saveSettings({ mode: "mine", sites: sites.join("\n") });
+    const started = await warmup.start();
+    for (let i = 0; i < 600 && warmup.status().running; i++) await new Promise((r) => setTimeout(r, 100));
+    const cookies = await electron.session.fromPartition(global.noorTest.browser.partitionFor(false)).cookies.get({});
+    return { started: { total: started.total, mine: started.mine }, status: warmup.status(), settings: warmup.settings(), cookies: cookies.map((c) => `${c.domain} ${c.name}`) };
+  }, [`http://warm-b.test:${port}/mine-page`]);
+  // The settings page shows them saved.
+  const form = await main(async () => {
+    const browser = global.noorTest.browser;
+    const tab = browser.newTab({ url: "noor://app/settings.html#cookies" });
+    await new Promise((r) => setTimeout(r, 2000));
+    const shown = await tab.webContents.executeJavaScript("({ mode: document.getElementById('warmupmode').value, sites: document.getElementById('warmupsites').value, countHidden: document.getElementById('warmupcountrow').hidden, saved: document.getElementById('warmupsaved').textContent })");
+    browser.close(tab);
+    return shown;
+  });
+  // A new profile collects by itself, where the settings say so.
+  const auto = await main(async (electron, sites) => {
+    const warmup = global.noorTest.warmup;
+    const browser = global.noorTest.browser;
+    warmup.saveSettings({ mode: "mine", sites: sites.join("\n"), auto: true });
+    const profile = browser.createProfile("Auto");
+    for (let i = 0; i < 100 && !warmup.status().running; i++) await new Promise((r) => setTimeout(r, 50));
+    const began = warmup.status().running;
+    for (let i = 0; i < 600 && warmup.status().running; i++) await new Promise((r) => setTimeout(r, 100));
+    const listed = await global.noorTest.cookies.list(profile);
+    return { began, profileId: profile.id, status: warmup.status(), sites: listed.sites.map((s) => `${s.site}:${s.count}`) };
+  }, [`http://warm-c.test:${port}/mine-auto`]);
+  // The Cookies page of that profile; a site's cookies taken away; all of
+  // them as a cookies.txt file.
+  const viewer = await main(async () => {
+    const browser = global.noorTest.browser;
+    const tab = browser.newTab({ url: "noor://app/cookies.html" });
+    await new Promise((r) => setTimeout(r, 2000));
+    const shown = await tab.webContents.executeJavaScript("({ summary: document.getElementById('summary').textContent, sites: [...document.querySelectorAll('.site .name')].map((e) => e.textContent), profile: document.getElementById('profile').selectedOptions[0].textContent })");
+    await tab.webContents.executeJavaScript("document.querySelector('.site .head').click()");
+    await new Promise((r) => setTimeout(r, 400));
+    const rows = await tab.webContents.executeJavaScript("document.querySelectorAll('.site table tr').length");
+    const shot = (await tab.webContents.capturePage()).toPNG().toString("base64");
+    const profile = browser.profile;
+    const exported = await global.noorTest.cookies.exported(profile, "txt");
+    const removed = await global.noorTest.cookies.removeSite(profile, "warm-c.test");
+    const left = await global.noorTest.cookies.list(profile);
+    browser.close(tab);
+    return { shown, rows, shot, exported: exported.text.startsWith("# Netscape HTTP Cookie File") && exported.text.includes("warm-c.test\tFALSE\t/\tFALSE"), removed, left: left.total };
+  });
+  fs.writeFileSync(path.join(userData, "cookies.png"), Buffer.from(viewer.shot, "base64"));
   await app.close();
   server.close();
 
@@ -165,8 +219,14 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
   check("no tab, window, history or hidden tab left", after.tabs === before.tabs && after.backgroundTabs === 0 && after.history.length === before.history && after.windows === 1, { before, after: { tabs: after.tabs, backgroundTabs: after.backgroundTabs, history: after.history, windows: after.windows } });
   check("what was under way was told", SITES.every((site) => seen.includes(`warm-${site}.test`)), seen);
   check("stopped halfway: at once, and said", stopped.right.running === false && stopped.right.hidden === 0 && stopped.after.stopped === true && stopped.after.finished === true, stopped);
-  check("the settings show the profile's cookies", /This profile has \d+ cookies from \d+ sites|Stopped: /.test(settings.text) && / \| Collect$/.test(settings.text), settings.text);
+  check("the settings show the profile's cookies", /This profile has \d+ cookies? from \d+ sites?|Stopped: /.test(settings.text) && / \| Collect$/.test(settings.text), settings.text);
   console.log("settings:", settings.text, "screenshot:", path.join(userData, "settings.png"));
+  check("my sites, saved: those visited and only those", mine.started.mine === true && mine.started.total === 1 && mine.status.done === 1 && mine.status.failed === 0 && mine.settings.mode === "mine" && mine.cookies.includes("warm-b.test mine_b") && hits.some((h) => h.startsWith("b /mine-page")), { started: mine.started, settings: mine.settings });
+  check("the settings page shows them saved", form.mode === "mine" && form.sites.includes(`warm-b.test:${port}/mine-page`) && form.countHidden === true && /^Saved: your 1 site\./.test(form.saved), form);
+  check("a new profile collects by itself", auto.began && auto.status.profileId === auto.profileId && auto.status.done === 1 && auto.sites.some((s) => s.startsWith("warm-c.test:")), auto);
+  check("the Cookies page lists the profile's cookies by site", viewer.shown.profile === "Auto" && viewer.shown.sites.includes("warm-c.test") && viewer.shown.summary === "1 cookie from 1 site." && viewer.rows === 2, { shown: viewer.shown, rows: viewer.rows });
+  check("a site's cookies taken away, and all saved as cookies.txt", viewer.exported && viewer.removed === 1 && viewer.left === 0, { exported: viewer.exported, removed: viewer.removed, left: viewer.left });
+  console.log("cookies page screenshot:", path.join(userData, "cookies.png"));
   console.log(JSON.stringify({ iphone, status, hits: hits.length, failures }, null, 2));
   process.exit(failures.length ? 1 : 0);
 })().catch((error) => {

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cookies</title>
+<link rel="stylesheet" href="app.css">
+<style>
+  .page { max-width: 900px; }
+  .site { border-top: 1px solid var(--line); }
+  .site:first-child { border-top: 0; }
+  .site > .head { display: flex; align-items: center; gap: 10px; padding: 10px 0; cursor: pointer; }
+  .site .arrow { color: var(--muted); width: 14px; flex: none; }
+  .site .name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .site .count { color: var(--muted); font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12.5px; margin: 0 0 12px; }
+  th { text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px; }
+  td { padding: 5px 6px; border-top: 1px solid var(--line); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.value { font-family: Consolas, monospace; cursor: copy; }
+  td.value.copied { color: var(--green); }
+  .flags span { display: inline-block; padding: 0 5px; margin: 0 3px 2px 0; border-radius: 5px; background: var(--hover); font-size: 11px; }
+  .summary { color: var(--muted); margin: 0 12px 10px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 style="text-align:center">Cookies</h1>
+  <div class="toolbar">
+    <select id="profile" title="Profile"></select>
+    <input type="search" id="q" placeholder="Search sites and cookies">
+    <button class="button secondary small" id="export">Save as File…</button>
+  </div>
+  <p class="summary" id="summary"></p>
+  <div class="card" id="sites" hidden></div>
+  <p class="empty" id="empty" hidden>No cookies in this profile yet. Collect some in Settings › Cookies, or browse a little.</p>
+  <p class="footer">Each site keeps its cookies in the profile: who you are to it (an id, a sign-in), what you chose (a language, a cookie banner), what its trackers know. A site sees its own cookies only. Click a site to see its cookies, and a value to copy it. "Save as File…" writes every cookie of the profile as a cookies.txt file (or JSON), as the "Get cookies.txt" extensions do.</p>
+</div>
+<script src="cookies.js"></script>
+</body>
+</html>

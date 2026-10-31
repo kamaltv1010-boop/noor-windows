@@ -12,6 +12,7 @@ const APP_ORIGIN = "noor://app";
 const START_URL = `${APP_ORIGIN}/start.html`;
 const SETTINGS_URL = `${APP_ORIGIN}/settings.html`;
 const LIBRARY_URL = `${APP_ORIGIN}/library.html`;
+const COOKIES_URL = `${APP_ORIGIN}/cookies.html`;
 const ERROR_URL = `${APP_ORIGIN}/error.html`;
 
 const search = (query, engine = "google") => (ENGINES[engine] || ENGINES.google).search + encodeURIComponent(query);
@@ -70,6 +71,6 @@ const hostOf = (url) => {
 };
 
 module.exports = {
-  ENGINES, APP_ORIGIN, START_URL, SETTINGS_URL, LIBRARY_URL, ERROR_URL,
+  ENGINES, APP_ORIGIN, START_URL, SETTINGS_URL, LIBRARY_URL, COOKIES_URL, ERROR_URL,
   search, resolve, isStartPage, isAppPage, isErrorPage, isWebPage, displayURL, hostOf,
 };

@@ -1134,6 +1134,10 @@ class Browser {
   createProfile(name) {
     const profile = this.profiles.add(name);
     this.switchProfile(profile.id);
+    // Cookies from the start, where the settings say so (see main/warmup.js).
+    if (this.warmup && this.warmup.settings().auto) {
+      this.warmup.start().catch(() => {});
+    }
     return profile;
   }
 

@@ -187,6 +187,64 @@ const pickSites = (count, zone, random = Math.random) => {
   return shuffled(chosen, random);
 };
 
+// MARK: - What the settings keep
+
+/// The most sites one collection visits.
+const MAX_SITES = 200;
+
+/// What "Collect cookies" does when nothing is saved: 20 popular sites,
+/// and nothing by itself in a new profile.
+const DEFAULT_SETTINGS = { mode: "popular", count: 20, sites: [], auto: false };
+
+const clampCount = (value) => Math.max(1, Math.min(MAX_SITES, Math.floor(Number(value)) || DEFAULT_SETTINGS.count));
+
+/// Sites as a person writes them, one per line ("hespress.com",
+/// "https://www.youtube.com/"), as addresses to visit: https:// where no
+/// scheme is given, each once; what isn't a web address is left out.
+const normalizeSites = (input) => {
+  const parts = Array.isArray(input) ? input : String(input == null ? "" : input).split(/[\s,;]+/);
+  const out = [];
+  const seen = new Set();
+  for (const part of parts) {
+    const text = String(part == null ? "" : part).trim();
+    if (!text) {
+      continue;
+    }
+    let url;
+    try {
+      url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+    } catch (error) {
+      continue;
+    }
+    if ((url.protocol !== "https:" && url.protocol !== "http:") || !url.hostname.includes(".") || url.username || url.password) {
+      continue;
+    }
+    url.hash = "";
+    if (!seen.has(url.href)) {
+      seen.add(url.href);
+      out.push(url.href);
+    }
+    if (out.length >= MAX_SITES) {
+      break;
+    }
+  }
+  return out;
+};
+
+/// The saved settings (store key "warmup"), each value checked: which
+/// sites ("popular", a new random mix each time, or "mine", the user's
+/// list), how many popular ones, the user's list, and whether a new
+/// profile collects by itself.
+const readSettings = (store) => {
+  const saved = (store && store.get("warmup", null)) || {};
+  return {
+    mode: saved.mode === "mine" ? "mine" : "popular",
+    count: clampCount(saved.count),
+    sites: normalizeSites(Array.isArray(saved.sites) ? saved.sites : []),
+    auto: Boolean(saved.auto),
+  };
+};
+
 // MARK: - Links worth following
 
 /// What a link's address or words say it does that a visit never does:
@@ -350,7 +408,7 @@ const TIMING = {
 const FAST = Object.assign({}, TIMING, { load: 10000, settle: [150, 300], between: [100, 250], afterBanner: [150, 250] });
 
 class Warmup {
-  /// `sites`: the addresses to visit instead of a random pick (tests);
+  /// `sites`: the addresses to visit instead of popular ones (tests);
   /// `timing`: TIMING's values to change; `random`: what picks.
   constructor(browser, { sites = null, timing = null, random = Math.random } = {}) {
     this.browser = browser;
@@ -363,9 +421,11 @@ class Warmup {
     /// The visits under way, and their end (see start).
     this.task = null;
     this.starting = false;
+    /// Counts the cookies every few seconds while visiting.
+    this.ticker = null;
     /// Where the mouse was last (not Noor iPhone's).
     this.mouse = null;
-    this.state = { running: false, finished: false, stopped: false, profileId: null, total: 0, done: 0, failed: 0, current: "", region: "", cookies: 0, domains: 0, before: 0 };
+    this.state = { running: false, finished: false, stopped: false, profileId: null, total: 0, done: 0, failed: 0, current: "", region: "", mine: false, cookies: 0, domains: 0, before: 0 };
   }
 
   onChange(listener) {
@@ -390,6 +450,24 @@ class Warmup {
         // A listener's trouble isn't the visits'.
       }
     }
+  }
+
+  /// The saved settings (see readSettings).
+  settings() {
+    return readSettings(this.browser.store);
+  }
+
+  /// Saves what `next` changes of the settings, checked; the settings now.
+  saveSettings(next = {}) {
+    const current = this.settings();
+    const saved = {
+      mode: next.mode === "mine" || next.mode === "popular" ? next.mode : current.mode,
+      count: next.count !== undefined ? clampCount(next.count) : current.count,
+      sites: next.sites !== undefined ? normalizeSites(next.sites) : current.sites,
+      auto: next.auto !== undefined ? Boolean(next.auto) : current.auto,
+    };
+    this.browser.store.set("warmup", saved);
+    return saved;
   }
 
   /// The profile's normal session (its cookies).
@@ -421,12 +499,18 @@ class Warmup {
         this.state.before = this.state.cookies;
       }
     }
-    return { ...this.status(), clearOnQuit: this.browser.clearOnQuit() };
+    return this.view();
   }
 
-  /// Visits `count` sites in the profile in use; what is under way shows
-  /// through onChange, and the visits go on after this returns.
-  async start(count = 20) {
+  /// The status, with what the settings page shows beside it.
+  view() {
+    return { ...this.status(), clearOnQuit: this.browser.clearOnQuit(), settings: this.settings() };
+  }
+
+  /// Visits sites in the profile in use, as the settings say (`count`:
+  /// that many popular ones instead); what is under way shows through
+  /// onChange, and the visits go on after this returns.
+  async start(count = null) {
     if (this.state.running || this.starting) {
       return this.snapshot();
     }
@@ -444,9 +528,20 @@ class Warmup {
 
   async begin(count) {
     const browser = this.browser;
+    const settings = this.settings();
     const zone = (browser.timezone && browser.timezone.current) || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const regions = regionsFor(zone);
-    const list = this.sites ? this.sites.slice(0, Math.max(1, Number(count) || this.sites.length)) : pickSites(count, zone, this.random);
+    // The user's own sites, in a new order each time; or popular ones.
+    const mine = count == null && settings.mode === "mine" && settings.sites.length > 0;
+    const regions = mine ? [] : regionsFor(zone);
+    let list;
+    if (mine) {
+      list = shuffled(settings.sites, this.random);
+    } else if (this.sites) {
+      // The tests' sites, in place of the popular ones.
+      list = this.sites.slice(0, Math.max(1, Number(count) || this.sites.length));
+    } else {
+      list = pickSites(count == null ? settings.count : count, zone, this.random);
+    }
     const ses = this.session();
     const counted = await this.count(ses);
     // The hidden tab first: if it can't be made, nothing is under way.
@@ -454,8 +549,18 @@ class Warmup {
     this.mouse = null;
     this.state = {
       running: true, finished: false, stopped: false, profileId: browser.profile.id, total: list.length, done: 0, failed: 0,
-      current: "", region: regions.length ? REGION_NAMES[regions[0]] || "" : "", cookies: counted.cookies, domains: counted.domains, before: counted.cookies,
+      current: "", region: regions.length ? REGION_NAMES[regions[0]] || "" : "", mine,
+      cookies: counted.cookies, domains: counted.domains, before: counted.cookies,
     };
+    // The count goes up as the pages give cookies, not only between sites.
+    this.ticker = setInterval(() => {
+      this.count(ses).then((now) => {
+        if (this.state.running) {
+          Object.assign(this.state, now);
+          this.emit();
+        }
+      });
+    }, 2000);
     // What a page tries to download is left: no dialog asks where.
     this.refuseDownloads = (event, item, webContents) => {
       if (this.tab && webContents && !this.tab.webContents.isDestroyed() && webContents.id === this.tab.webContents.id) {
@@ -467,7 +572,7 @@ class Warmup {
     this.task = this.run(list, ses).catch(() => {}).then(() => this.finish(ses)).catch(() => {}).then(() => {
       this.task = null;
     });
-    return { ...this.status(), clearOnQuit: browser.clearOnQuit() };
+    return this.view();
   }
 
   /// Ends the visits now: the hidden tab closes, and they show as stopped
@@ -475,13 +580,21 @@ class Warmup {
   stop() {
     if (this.state.running) {
       Object.assign(this.state, { running: false, stopped: true, finished: true, current: "" });
+      this.stopTicker();
       this.close();
       if (this.wake) {
         this.wake();
       }
       this.emit();
     }
-    return { ...this.status(), clearOnQuit: this.browser.clearOnQuit() };
+    return this.view();
+  }
+
+  stopTicker() {
+    if (this.ticker) {
+      clearInterval(this.ticker);
+      this.ticker = null;
+    }
   }
 
   close() {
@@ -493,6 +606,7 @@ class Warmup {
   }
 
   async finish(ses) {
+    this.stopTicker();
     this.close();
     if (this.refuseDownloads) {
       ses.removeListener("will-download", this.refuseDownloads);
@@ -534,6 +648,7 @@ class Warmup {
     if (!(await this.open(url))) {
       return false;
     }
+    await this.loaded();
     await this.pause(t.settle);
     await this.acceptBanner();
     await this.read(t.scrolls);
@@ -541,6 +656,7 @@ class Warmup {
       const from = this.tab.webContents.getURL();
       const link = await this.linkHere(from);
       if (link && (await this.open(link, from))) {
+        await this.loaded();
         await this.pause(t.settle);
         await this.acceptBanner();
         await this.read(t.moreScrolls);
@@ -587,6 +703,7 @@ class Warmup {
         clearTimeout(timer);
         this.wake = null;
         if (!wc.isDestroyed()) {
+          wc.removeListener("did-navigate", navigated);
           wc.removeListener("did-finish-load", finished);
           wc.removeListener("did-fail-load", failed);
         }
@@ -594,13 +711,18 @@ class Warmup {
       };
       // The address that failed: Chromium shows its error page there.
       let failedAt = null;
-      // The empty page an iPhone's first page comes after isn't the page.
-      const finished = () => {
-        if (wc.isDestroyed()) {
-          return;
+      // Whether the page asked for is the one shown: the empty page an
+      // iPhone's first page comes after isn't (and as it finishes, the
+      // address already names the page still loading).
+      let committed = false;
+      const navigated = (event, url) => {
+        if (url && url !== "about:blank") {
+          committed = true;
         }
-        const shown = wc.getURL();
-        if (shown !== "about:blank") {
+      };
+      const finished = () => {
+        if (!wc.isDestroyed() && committed) {
+          const shown = wc.getURL();
           done(!(failedAt && shown === failedAt));
         }
       };
@@ -611,6 +733,7 @@ class Warmup {
           return;
         }
         failedAt = failedURL;
+        committed = true;
         setImmediate(() => {
           if (wc.isDestroyed() || !wc.isLoading()) {
             done(false);
@@ -624,10 +747,25 @@ class Warmup {
         done(true);
       }, this.timing.load);
       this.wake = () => done(false);
+      wc.on("did-navigate", navigated);
       wc.on("did-finish-load", finished);
       wc.on("did-fail-load", failed);
       tab.load(url, { referrer });
     });
+  }
+
+  /// Waits for the page shown to have loaded (its document complete): the
+  /// browser says a page has finished before its document has, now and
+  /// then. As long as TIMING.load at most.
+  async loaded() {
+    const until = Date.now() + this.timing.load;
+    while (Date.now() < until && this.tab && !this.state.stopped) {
+      if ((await this.inPage("document.readyState")) === "complete") {
+        return true;
+      }
+      await this.wait(150);
+    }
+    return false;
   }
 
   /// Runs `code` in the page, in a world of its own.
@@ -748,5 +886,5 @@ class Warmup {
 
 module.exports = {
   Warmup, SITES, REGION_NAMES, regionsFor, siteKey, pickSites, pickLink, consentScript, LINKS_SCRIPT,
-  CONSENT_SELECTORS, CONSENT_WORDS, CONSENT_ABOUT, TIMING, FAST,
+  CONSENT_SELECTORS, CONSENT_WORDS, CONSENT_ABOUT, TIMING, FAST, MAX_SITES, DEFAULT_SETTINGS, normalizeSites, readSettings,
 };

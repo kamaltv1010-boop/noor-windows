@@ -7,6 +7,8 @@
 }
 body.private { --bg: #241d38; --fg: #ece7f5; --muted: #b3a8d1; --line: #3d3358; --card: #342a52; --accent: #b39dff; }
 * { box-sizing: border-box; }
+/* What a page hides stays hidden, whatever display its class gives it. */
+[hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 "Segoe UI", system-ui, sans-serif; }
 a { color: var(--accent); }
 button, input, select { font: inherit; color: inherit; }
@@ -25,8 +27,11 @@ h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: 
 .row .value { color: var(--muted); text-align: right; word-break: break-all; max-width: 65%; }
 .footer { color: var(--muted); font-size: 13px; margin: 6px 12px 0; }
 input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--accent); cursor: pointer; }
-select, input[type="text"], input[type="search"] { padding: 7px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--fg); outline: none; }
-input:focus { border-color: var(--accent); }
+select, input[type="text"], input[type="search"], input[type="number"], textarea { padding: 7px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--card); color: var(--fg); outline: none; }
+input:focus, textarea:focus { border-color: var(--accent); }
+input[type="number"] { width: 90px; }
+textarea { width: 100%; font: 13px/1.5 Consolas, monospace; resize: vertical; }
+.row.column { flex-direction: column; align-items: stretch; }
 .button { padding: 8px 14px; border-radius: 10px; border: 0; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; }
 .button.secondary { background: var(--hover); color: var(--fg); }
 .button.danger { background: var(--danger); color: #fff; }

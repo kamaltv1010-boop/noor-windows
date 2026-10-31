@@ -16,32 +16,85 @@
   };
   let settings = null;
   let warmup = null;
+  // The cookie settings as last saved, to tell what isn't saved yet.
+  let savedForm = null;
 
-  // Collecting cookies (see main/warmup.js): what is under way, or how
-  // many cookies the profile in use has.
+  // Collecting cookies (see main/warmup.js): its settings, what is under
+  // way, or how many cookies the profile in use has.
+  const form = () => ({
+    mode: $("warmupmode").value,
+    count: Number($("warmupcount").value),
+    sites: $("warmupsites").value,
+    auto: $("warmupauto").checked,
+  });
+  const formKey = (f) => JSON.stringify([f.mode, String(f.count), String(f.sites).trim(), Boolean(f.auto)]);
+  const written = () => $("warmupsites").value.split(/[\s,;]+/).filter(Boolean).length;
+  // An address as a person writes it: no "https://", no last "/".
+  const plain = (url) => url.replace(/^https:\/\//, "").replace(/\/$/, "");
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+  const showMode = () => {
+    const mine = $("warmupmode").value === "mine";
+    $("warmupcountrow").hidden = mine;
+    $("warmupsitesrow").hidden = !mine;
+    $("warmupmodehint").textContent = mine
+      ? `The sites you write below${written() ? ` (${written()})` : ""}.`
+      : "A new random mix each time: the world's, and those of the country of your time zone.";
+  };
+
+  const showSaved = () => {
+    const unsaved = savedForm !== null && formKey(form()) !== savedForm;
+    const saved = warmup && warmup.settings;
+    let text = "";
+    if (unsaved) {
+      text = "Changes not saved yet.";
+    } else if (saved) {
+      text = (saved.mode === "mine" ? `Saved: your ${plural(saved.sites.length, "site")}` : `Saved: ${plural(saved.count, "popular site")}`) + (saved.auto ? ", and in every new profile." : ".");
+    }
+    $("warmupsaved").textContent = text;
+    $("warmupsave").disabled = !unsaved;
+  };
+
+  // The form as the settings were saved (on opening, and once saved).
+  const fillForm = (saved) => {
+    $("warmupmode").value = saved.mode;
+    $("warmupcount").value = String(saved.count);
+    $("warmupsites").value = saved.sites.map(plain).join("\n");
+    $("warmupauto").checked = saved.auto;
+    savedForm = formKey(form());
+    showMode();
+  };
+
   const showWarmup = (next) => {
     if (!next) {
       return;
     }
     warmup = next;
+    if (savedForm === null && warmup.settings) {
+      fillForm(warmup.settings);
+    }
     const start = $("warmupstart");
     start.textContent = warmup.running ? "Stop" : "Collect";
     start.className = "button small" + (warmup.running ? " danger" : "");
-    $("warmupcount").disabled = warmup.running;
-    const where = warmup.region ? `Sites of the world and of ${warmup.region}.` : "";
+    for (const id of ["warmupmode", "warmupcount", "warmupsites", "warmupauto"]) {
+      $(id).disabled = warmup.running;
+    }
+    const where = warmup.mine ? " of your sites" : "";
+    const region = warmup.region ? ` Sites of the world and of ${warmup.region}.` : "";
     let text;
     if (warmup.running) {
-      text = `Visiting ${Math.min(warmup.done + 1, warmup.total)} of ${warmup.total}${warmup.current ? `: ${warmup.current}` : ""}. ${warmup.cookies} cookies (+${warmup.added}). ${where}`;
+      text = `Visiting ${Math.min(warmup.done + 1, warmup.total)} of ${warmup.total}${where}${warmup.current ? `: ${warmup.current}` : ""}. ${plural(warmup.cookies, "cookie")} (+${warmup.added}).${region}`;
     } else if (warmup.finished) {
       const opened = warmup.done - warmup.failed;
-      text = `${warmup.stopped ? "Stopped" : "Done"}: ${opened} of ${warmup.total} sites visited${warmup.failed ? ` (${warmup.failed} didn't open)` : ""}. This profile has ${warmup.cookies} cookies from ${warmup.domains} sites now (+${warmup.added}).`;
+      text = `${warmup.stopped ? "Stopped" : "Done"}: ${opened} of ${plural(warmup.total, "site")} visited${warmup.failed ? ` (${warmup.failed} didn't open)` : ""}. This profile has ${plural(warmup.cookies, "cookie")} from ${plural(warmup.domains, "site")} now (+${warmup.added}).`;
     } else {
-      text = `This profile has ${warmup.cookies} cookies from ${warmup.domains} sites.`;
+      text = `This profile has ${plural(warmup.cookies, "cookie")} from ${plural(warmup.domains, "site")}.`;
     }
     if (warmup.clearOnQuit) {
       text += " \"Clear everything on quit\" is on: they go when Noor closes.";
     }
     $("warmupstatus").textContent = text.trim();
+    showSaved();
   };
 
   const row = (label, hint, control) => {
@@ -236,9 +289,34 @@
   $("changeall").addEventListener("click", () => noor.invoke("fingerprint:new", null).then(apply));
   $("newsession").addEventListener("click", () => noor.invoke("session:new"));
   $("warmupstart").addEventListener("click", () => {
-    const action = warmup && warmup.running ? noor.invoke("warmup:stop") : noor.invoke("warmup:start", Number($("warmupcount").value));
-    action.then(showWarmup).catch(() => {});
+    if (warmup && warmup.running) {
+      noor.invoke("warmup:stop").then(showWarmup).catch(() => {});
+      return;
+    }
+    if ($("warmupmode").value === "mine" && !written()) {
+      $("warmupsaved").textContent = "Write your sites first, one per line.";
+      $("warmupsites").focus();
+      return;
+    }
+    // What the form says is saved, then visited.
+    noor.invoke("warmup:start", form()).then((next) => {
+      if (next && next.settings) {
+        fillForm(next.settings);
+      }
+      showWarmup(next);
+    }).catch(() => {});
   });
+  $("warmupsave").addEventListener("click", () => {
+    noor.invoke("warmup:save", form()).then((next) => {
+      fillForm(next.settings);
+      showWarmup(next);
+    }).catch(() => {});
+  });
+  for (const id of ["warmupmode", "warmupcount", "warmupsites", "warmupauto"]) {
+    $(id).addEventListener("input", () => { showMode(); showSaved(); });
+    $(id).addEventListener("change", () => { showMode(); showSaved(); });
+  }
+  $("cookiessee").addEventListener("click", () => noor.invoke("cookies:open"));
   noor.on("warmup", showWarmup);
   $("resetstats").addEventListener("click", () => noor.invoke("stats:reset"));
 

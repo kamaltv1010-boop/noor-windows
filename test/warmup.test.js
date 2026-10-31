@@ -140,3 +140,32 @@ test("visits are quicker for the tests only, and as a person's otherwise", () =>
   assert.ok(warmup.FAST.settle[1] < warmup.TIMING.settle[0]);
   assert.ok(warmup.TIMING.follow > 0 && warmup.TIMING.follow < 1);
 });
+
+test("sites as a person writes them: addresses or pages, each once, https:// where none is said", () => {
+  assert.deepEqual(warmup.normalizeSites("hespress.com\n  avito.ma  \nhttps://www.youtube.com/watch?v=1#t\nhttp://example.com/a\nhespress.com\nhello\nlocalhost\nftp://files.example.com\nuser:pw@x.com"), [
+    "https://hespress.com/", "https://avito.ma/", "https://www.youtube.com/watch?v=1", "http://example.com/a",
+  ]);
+  assert.deepEqual(warmup.normalizeSites(["jumia.ma", "", null, "https://jumia.ma"]), ["https://jumia.ma/"]);
+  assert.deepEqual(warmup.normalizeSites(""), []);
+  const many = Array.from({ length: 300 }, (_, i) => `site${i}.com`).join("\n");
+  assert.equal(warmup.normalizeSites(many).length, warmup.MAX_SITES);
+});
+
+test("the settings kept: popular sites or the user's, how many, and new profiles, each checked", () => {
+  const store = { data: {}, get(key, fallback) { return key in this.data ? this.data[key] : fallback; }, set(key, value) { this.data[key] = value; } };
+  assert.deepEqual(warmup.readSettings(store), { mode: "popular", count: 20, sites: [], auto: false });
+  store.set("warmup", { mode: "mine", count: "7", sites: ["avito.ma", "nonsense", "https://le360.ma/"], auto: true });
+  assert.deepEqual(warmup.readSettings(store), { mode: "mine", count: 7, sites: ["https://avito.ma/", "https://le360.ma/"], auto: true });
+  store.set("warmup", { mode: "other", count: 1000, sites: "hespress.com", auto: "yes" });
+  assert.deepEqual(warmup.readSettings(store), { mode: "popular", count: 200, sites: [], auto: true });
+  store.set("warmup", { count: 0 });
+  assert.equal(warmup.readSettings(store).count, 20);
+  store.set("warmup", { count: -5 });
+  assert.equal(warmup.readSettings(store).count, 1);
+  // Saving keeps what isn't changed.
+  const saver = new warmup.Warmup({ store });
+  store.set("warmup", { mode: "mine", count: 30, sites: ["a.ma"], auto: false });
+  assert.deepEqual(saver.saveSettings({ auto: true }), { mode: "mine", count: 30, sites: ["https://a.ma/"], auto: true });
+  assert.deepEqual(saver.saveSettings({ mode: "popular", count: 55, sites: "b.ma\nc.ma" }), { mode: "popular", count: 55, sites: ["https://b.ma/", "https://c.ma/"], auto: true });
+  assert.deepEqual(store.data.warmup, { mode: "popular", count: 55, sites: ["https://b.ma/", "https://c.ma/"], auto: true });
+});

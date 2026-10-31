@@ -1,7 +1,7 @@
 "use strict";
 const { app, Menu, dialog, clipboard, shell } = require("electron");
 const { Shields } = require("./shields");
-const { SETTINGS_URL, LIBRARY_URL, isWebPage } = require("./address");
+const { SETTINGS_URL, LIBRARY_URL, COOKIES_URL, isWebPage } = require("./address");
 
 const KIND_TITLES = {
   canvas: "Canvas", webGL: "WebGL", audio: "Audio", clientRects: "ClientRects", screen: "Screen Size", hardware: "Processor & Memory",
@@ -94,6 +94,7 @@ class Menus {
     }));
     items.push({ type: "separator" });
     items.push({ label: "Collect Cookies…", click: () => browser.newTab({ url: SETTINGS_URL + "#cookies" }) });
+    items.push({ label: "See Cookies", click: () => browser.newTab({ url: COOKIES_URL }) });
     items.push({ label: "New Profile…", click: () => this.newProfile() });
     if (browser.profiles.all().length > 1) {
       items.push({ label: "Delete All Profiles…", click: () => this.confirmDeleteAllProfiles() });

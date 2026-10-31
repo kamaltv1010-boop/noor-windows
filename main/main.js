@@ -14,10 +14,11 @@ const { Browser, CHROME_PARTITION } = require("./tabs");
 const { Extensions, STORE_URL } = require("./extensions");
 const { storeExtensionID, storeTitle } = require("./crx");
 const { Menus } = require("./menus");
-const { ENGINES, APP_ORIGIN, ERROR_URL, isAppPage, isWebPage } = require("./address");
+const { ENGINES, APP_ORIGIN, ERROR_URL, COOKIES_URL, isAppPage, isWebPage } = require("./address");
 const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages, userAgentMetadata } = require("./useragent");
 const { BrowserDebugger } = require("./browser-debugger");
 const { Warmup, FAST } = require("./warmup");
+const { cookieTools } = require("./cookies");
 const iphone = require("./iphone");
 
 /// Noor iPhone (see main/iphone.js): every profile is an iPhone to sites.
@@ -638,7 +639,7 @@ const makeWarmup = (target) => {
   warmup.onChange((status) => {
     for (const tab of target.allTabs) {
       if (!tab.webContents.isDestroyed() && isAppPage(tab.webContents.getURL())) {
-        tab.webContents.send("noor:warmup", { ...status, clearOnQuit: target.clearOnQuit() });
+        tab.webContents.send("noor:warmup", { ...status, clearOnQuit: target.clearOnQuit(), settings: warmup.settings() });
       }
     }
     if (status.running && !wasRunning) {
@@ -650,6 +651,13 @@ const makeWarmup = (target) => {
   });
   return warmup;
 };
+
+/// A profile by its id, or the one in use.
+const profileFor = (id) => context.profiles.find(String(id || "")) || browser.profile;
+
+/// The profiles' cookies (see main/cookies.js): each profile's normal
+/// session, the one its tabs use.
+const cookies = cookieTools((profile) => session.fromPartition(browser.partitionFor(false, profile)));
 
 const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit"]);
 
@@ -766,8 +774,52 @@ const registerIPC = () => {
   handle("profiles:deleteAll", async () => { await browser.menus.confirmDeleteAllProfiles(); return settingsSnapshot(); });
   handle("session:new", () => browser.menus.confirmNewSession());
   handle("warmup:get", () => browser.warmup.snapshot());
-  handle("warmup:start", (event, count) => browser.warmup.start([10, 20, 40].includes(Number(count)) ? Number(count) : 20));
+  // The settings as the page has them, saved, and the visits started.
+  handle("warmup:save", (event, settings) => {
+    browser.warmup.saveSettings(settings && typeof settings === "object" ? settings : {});
+    return browser.warmup.snapshot();
+  });
+  handle("warmup:start", (event, settings) => {
+    if (settings && typeof settings === "object") {
+      browser.warmup.saveSettings(settings);
+    }
+    return browser.warmup.start();
+  });
   handle("warmup:stop", () => browser.warmup.stop());
+  // The Cookies page: every profile's cookies, by site.
+  handle("cookies:open", () => { browser.newTab({ url: COOKIES_URL }); });
+  handle("cookies:profiles", () => ({ profiles: context.profiles.all(), current: browser.profile.id }));
+  handle("cookies:list", (event, id) => cookies.list(profileFor(id)));
+  handle("cookies:remove", async (event, id, site) => {
+    const profile = profileFor(id);
+    const { response } = await dialog.showMessageBox(browser.win, {
+      type: "warning",
+      buttons: ["Cancel", "Delete Cookies"],
+      defaultId: 0,
+      cancelId: 0,
+      message: `Delete the cookies of ${String(site)} in “${profile.name}”?`,
+      detail: "The site forgets this profile: you may have to sign in to it again.",
+    });
+    if (response === 1) {
+      await cookies.removeSite(profile, String(site));
+    }
+    return cookies.list(profile);
+  });
+  handle("cookies:export", async (event, id) => {
+    const profile = profileFor(id);
+    const { canceled, filePath } = await dialog.showSaveDialog(browser.win, {
+      title: `The cookies of “${profile.name}”`,
+      defaultPath: `cookies-${profile.name.replace(/[^\w.-]+/g, "-")}.txt`,
+      filters: [{ name: "cookies.txt (Netscape)", extensions: ["txt"] }, { name: "JSON", extensions: ["json"] }],
+    });
+    if (canceled || !filePath) {
+      return null;
+    }
+    const { count, text } = await cookies.exported(profile, /\.json$/i.test(filePath) ? "json" : "txt");
+    fs.writeFileSync(filePath, text);
+    browser.toast(`${count} cookies saved`);
+    return { count, file: filePath };
+  });
   handle("chrome:height", (event, height) => browser.setChromeHeight(height));
   handle("find", (event, text, options) => browser.find(String(text || ""), options || {}));
   handle("find:stop", () => browser.stopFind());
@@ -882,7 +934,7 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(browser.menus.application());
   registerIPC();
   if (process.env.NOOR_TEST) {
-    global.noorTest = { browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, warmup: browser.warmup };
+    global.noorTest = { browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, warmup: browser.warmup, cookies };
   }
 
   app.on("second-instance", (event, argv) => {

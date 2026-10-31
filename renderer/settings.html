@@ -28,13 +28,36 @@
   <div class="card">
     <div class="row">
       <div class="label">Collect cookies<small id="warmupstatus"></small></div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <select id="warmupcount"><option value="10">10 sites</option><option value="20" selected>20 sites</option><option value="40">40 sites</option></select>
-        <button class="button small" id="warmupstart">Collect</button>
-      </div>
+      <button class="button small" id="warmupstart">Collect</button>
+    </div>
+    <div class="row">
+      <div class="label">Sites to visit<small id="warmupmodehint"></small></div>
+      <select id="warmupmode"><option value="popular">Popular sites</option><option value="mine">My sites</option></select>
+    </div>
+    <div class="row" id="warmupcountrow">
+      <div class="label">How many sites<small>From 1 to 200. Each takes about 20 seconds.</small></div>
+      <input type="number" id="warmupcount" min="1" max="200" step="1">
+    </div>
+    <div class="row column" id="warmupsitesrow">
+      <div class="label">My sites<small id="warmupsiteshint">One per line: an address (hespress.com) or a page (https://www.youtube.com/). They are visited in a new order each time.</small></div>
+      <textarea id="warmupsites" rows="7" spellcheck="false" placeholder="hespress.com&#10;avito.ma&#10;https://www.youtube.com/"></textarea>
+    </div>
+    <div class="row">
+      <div class="label">Collect in every new profile<small>A profile collects cookies as soon as it is made, with these settings.</small></div>
+      <input type="checkbox" id="warmupauto">
+    </div>
+    <div class="row">
+      <div class="label"><small id="warmupsaved"></small></div>
+      <button class="button secondary small" id="warmupsave">Save</button>
     </div>
   </div>
-  <p class="footer" id="warmupfooter">So that a site that checks finds a profile in daily use, not an empty one: Noor visits popular sites in a tab you don't see, in the profile in use, with its fingerprints and shields. It reads each page a little, scrolls, accepts the cookie banner, and sometimes opens another page of the site, as a person would. The sites are the world's and those of the country of your time zone, in a new random mix each time. It never signs in or out, buys or downloads anything, and nothing goes into the history; your tabs stay as they are.</p>
+  <div class="card">
+    <div class="row">
+      <div class="label">See cookies<small>Every cookie a profile keeps, site by site: look for one, delete a site's, or save them all as a cookies.txt file.</small></div>
+      <button class="button secondary small" id="cookiessee">See Cookies</button>
+    </div>
+  </div>
+  <p class="footer" id="warmupfooter">So that a site that checks finds a profile in daily use, not an empty one: Noor visits sites in a tab you don't see, in the profile in use, with its fingerprints and shields. It reads each page a little, scrolls, accepts the cookie banner, and sometimes opens another page of the site, as a person would. Popular sites are the world's and those of the country of your time zone, in a new random mix each time. It never signs in or out, buys or downloads anything, and nothing goes into the history; your tabs stay as they are.</p>
 
   <h3 id="extensions">Extensions</h3>
   <div class="card" id="extensionlist"></div>
