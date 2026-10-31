@@ -96,6 +96,7 @@ class Menus {
     items.push({ label: "Collect Cookies…", click: () => browser.newTab({ url: SETTINGS_URL + "#cookies" }) });
     items.push({ label: "See Cookies", click: () => browser.newTab({ url: COOKIES_URL }) });
     items.push({ label: "New Profile…", click: () => this.newProfile() });
+    items.push({ label: "Create Multiple Profiles…", click: () => this.newProfiles() });
     if (browser.profiles.all().length > 1) {
       items.push({ label: "Delete All Profiles…", click: () => this.confirmDeleteAllProfiles() });
     }
@@ -104,6 +105,11 @@ class Menus {
 
   profile() {
     this.popup(this.profileItems());
+  }
+
+  /// How many profiles to make at once, asked in the toolbar.
+  newProfiles() {
+    this.browser.prompt({ title: "How many profiles?", placeholder: "10", value: "10", action: "profiles:createMany", button: "Create" });
   }
 
   newProfile() {

@@ -407,33 +407,30 @@ const TIMING = {
 /// TIMING, quicker (the tests').
 const FAST = Object.assign({}, TIMING, { load: 10000, settle: [150, 300], between: [100, 250], afterBanner: [150, 250] });
 
-class Warmup {
-  /// `sites`: the addresses to visit instead of popular ones (tests);
-  /// `timing`: TIMING's values to change; `random`: what picks.
-  constructor(browser, { sites = null, timing = null, random = Math.random } = {}) {
-    this.browser = browser;
-    this.sites = Array.isArray(sites) && sites.length ? sites.slice() : null;
-    this.timing = Object.assign({}, TIMING, timing || {});
-    this.random = random;
-    this.listeners = [];
+/// One profile's visits: the tab nobody sees they happen in (that
+/// profile's, with its fingerprints), and how far they are. They go on
+/// whichever profile is in use (see Warmup).
+class Collection {
+  constructor(warmup, profile, list, { mine = false, region = "" } = {}) {
+    this.warmup = warmup;
+    this.browser = warmup.browser;
+    this.profile = profile;
+    this.list = list;
+    this.timing = warmup.timing;
+    this.random = warmup.random;
+    this.ses = warmup.session(profile);
     this.tab = null;
     this.wake = null;
-    /// The visits under way, and their end (see start).
-    this.task = null;
-    this.starting = false;
     /// Counts the cookies every few seconds while visiting.
     this.ticker = null;
     /// Where the mouse was last (not Noor iPhone's).
     this.mouse = null;
-    this.state = { running: false, finished: false, stopped: false, profileId: null, total: 0, done: 0, failed: 0, current: "", region: "", mine: false, cookies: 0, domains: 0, before: 0 };
-  }
-
-  onChange(listener) {
-    this.listeners.push(listener);
-  }
-
-  get running() {
-    return this.state.running;
+    /// Settled once the visits have ended.
+    this.ended = Promise.resolve();
+    this.state = {
+      running: false, waiting: false, finished: false, stopped: false, profileId: profile.id, profileName: profile.name,
+      total: list.length, done: 0, failed: 0, current: "", region, mine, cookies: 0, domains: 0, before: 0,
+    };
   }
 
   status() {
@@ -442,119 +439,26 @@ class Warmup {
   }
 
   emit() {
-    const status = this.status();
-    for (const listener of this.listeners) {
-      try {
-        listener(status);
-      } catch (error) {
-        // A listener's trouble isn't the visits'.
-      }
+    this.warmup.emit(this.profile.id);
+  }
+
+  count(ses = this.ses) {
+    return this.warmup.count(ses);
+  }
+
+  /// Starts the visits (the hidden tab made, the cookies counted); they go
+  /// on after this returns.
+  async begin() {
+    const counted = await this.count();
+    if (this.state.stopped) {
+      return;
     }
-  }
-
-  /// The saved settings (see readSettings).
-  settings() {
-    return readSettings(this.browser.store);
-  }
-
-  /// Saves what `next` changes of the settings, checked; the settings now.
-  saveSettings(next = {}) {
-    const current = this.settings();
-    const saved = {
-      mode: next.mode === "mine" || next.mode === "popular" ? next.mode : current.mode,
-      count: next.count !== undefined ? clampCount(next.count) : current.count,
-      sites: next.sites !== undefined ? normalizeSites(next.sites) : current.sites,
-      auto: next.auto !== undefined ? Boolean(next.auto) : current.auto,
-    };
-    this.browser.store.set("warmup", saved);
-    return saved;
-  }
-
-  /// The profile's normal session (its cookies).
-  session() {
-    return require("electron").session.fromPartition(this.browser.partitionFor(false));
-  }
-
-  /// How many cookies the session keeps, and for how many sites.
-  async count(ses = this.session()) {
-    try {
-      const cookies = await ses.cookies.get({});
-      const sites = new Set(cookies.map((cookie) => siteKey(String(cookie.domain || "").replace(/^\./, ""))));
-      return { cookies: cookies.length, domains: sites.size };
-    } catch (error) {
-      return { cookies: 0, domains: 0 };
-    }
-  }
-
-  /// What the settings show: the visits under way or last made in this
-  /// profile, or else how many cookies it has.
-  async snapshot() {
-    const profileId = this.browser.profile.id;
-    if (!this.state.running && this.state.profileId !== profileId) {
-      this.state = { ...this.state, finished: false, stopped: false, profileId, total: 0, done: 0, failed: 0, current: "", before: 0 };
-    }
-    if (!this.state.running) {
-      Object.assign(this.state, await this.count());
-      if (!this.state.finished) {
-        this.state.before = this.state.cookies;
-      }
-    }
-    return this.view();
-  }
-
-  /// The status, with what the settings page shows beside it.
-  view() {
-    return { ...this.status(), clearOnQuit: this.browser.clearOnQuit(), settings: this.settings() };
-  }
-
-  /// Visits sites in the profile in use, as the settings say (`count`:
-  /// that many popular ones instead); what is under way shows through
-  /// onChange, and the visits go on after this returns.
-  async start(count = null) {
-    if (this.state.running || this.starting) {
-      return this.snapshot();
-    }
-    this.starting = true;
-    try {
-      // Visits stopped a moment ago end first.
-      if (this.task) {
-        await this.task;
-      }
-      return await this.begin(count);
-    } finally {
-      this.starting = false;
-    }
-  }
-
-  async begin(count) {
-    const browser = this.browser;
-    const settings = this.settings();
-    const zone = (browser.timezone && browser.timezone.current) || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    // The user's own sites, in a new order each time; or popular ones.
-    const mine = count == null && settings.mode === "mine" && settings.sites.length > 0;
-    const regions = mine ? [] : regionsFor(zone);
-    let list;
-    if (mine) {
-      list = shuffled(settings.sites, this.random);
-    } else if (this.sites) {
-      // The tests' sites, in place of the popular ones.
-      list = this.sites.slice(0, Math.max(1, Number(count) || this.sites.length));
-    } else {
-      list = pickSites(count == null ? settings.count : count, zone, this.random);
-    }
-    const ses = this.session();
-    const counted = await this.count(ses);
     // The hidden tab first: if it can't be made, nothing is under way.
-    this.tab = browser.backgroundTab();
-    this.mouse = null;
-    this.state = {
-      running: true, finished: false, stopped: false, profileId: browser.profile.id, total: list.length, done: 0, failed: 0,
-      current: "", region: regions.length ? REGION_NAMES[regions[0]] || "" : "", mine,
-      cookies: counted.cookies, domains: counted.domains, before: counted.cookies,
-    };
+    this.tab = this.browser.backgroundTab(this.profile);
+    Object.assign(this.state, { running: true, cookies: counted.cookies, domains: counted.domains, before: counted.cookies });
     // The count goes up as the pages give cookies, not only between sites.
     this.ticker = setInterval(() => {
-      this.count(ses).then((now) => {
+      this.count().then((now) => {
         if (this.state.running) {
           Object.assign(this.state, now);
           this.emit();
@@ -567,27 +471,24 @@ class Warmup {
         item.cancel();
       }
     };
-    ses.on("will-download", this.refuseDownloads);
+    this.ses.on("will-download", this.refuseDownloads);
     this.emit();
-    this.task = this.run(list, ses).catch(() => {}).then(() => this.finish(ses)).catch(() => {}).then(() => {
-      this.task = null;
-    });
-    return this.view();
+    this.ended = this.run(this.list, this.ses).catch(() => {}).then(() => this.finish(this.ses)).catch(() => {});
   }
 
   /// Ends the visits now: the hidden tab closes, and they show as stopped
   /// (what they collected is counted again as they end).
   stop() {
-    if (this.state.running) {
-      Object.assign(this.state, { running: false, stopped: true, finished: true, current: "" });
-      this.stopTicker();
-      this.close();
-      if (this.wake) {
-        this.wake();
-      }
+    const was = this.state.running;
+    Object.assign(this.state, { running: false, stopped: true, finished: true, current: "" });
+    this.stopTicker();
+    this.close();
+    if (this.wake) {
+      this.wake();
+    }
+    if (was) {
       this.emit();
     }
-    return this.view();
   }
 
   stopTicker() {
@@ -618,7 +519,6 @@ class Warmup {
       // Chromium writes them out by itself in a while.
     }
     Object.assign(this.state, await this.count(ses), { running: false, finished: true, current: "" });
-    this.emit();
   }
 
   async run(list, ses) {
@@ -782,21 +682,44 @@ class Warmup {
   }
 
   /// Sends the hidden tab's page input, through its debugger, as a
-  /// person's: the page gets it as the user's own (trusted) events.
+  /// person's: the page gets it as the user's own (trusted) events. Never
+  /// waited on for long: the visits go on without what doesn't answer.
   async send(method, params) {
     const tab = this.tab;
     if (!tab || tab.webContents.isDestroyed() || this.state.stopped) {
       return;
     }
+    let timer = null;
     try {
-      await tab.webContents.debugger.sendCommand(method, params);
+      await Promise.race([
+        tab.webContents.debugger.sendCommand(method, params),
+        new Promise((resolve) => {
+          timer = setTimeout(resolve, 5000);
+        }),
+      ]);
     } catch (error) {
       // The page went on without it.
+    } finally {
+      clearTimeout(timer);
     }
   }
 
   wait(ms) {
     return this.pause([ms, ms]);
+  }
+
+  /// Mouse input, as the system sends it to the page (not waited on: the
+  /// debugger's own mouse input waits a frame's worth for each move).
+  pointer(event) {
+    const tab = this.tab;
+    if (!tab || tab.webContents.isDestroyed() || this.state.stopped) {
+      return;
+    }
+    try {
+      tab.webContents.sendInputEvent(event);
+    } catch (error) {
+      // The page went on without it.
+    }
   }
 
   /// A tap where `x`, `y` is in the page's window (CSS pixels): in Noor
@@ -810,9 +733,9 @@ class Warmup {
       return;
     }
     await this.moveMouse(x, y);
-    await this.send("Input.dispatchMouseEvent", { type: "mousePressed", x, y, button: "left", buttons: 1, clickCount: 1 });
+    this.pointer({ type: "mouseDown", x, y, button: "left", clickCount: 1 });
     await this.wait(50 + Math.round(this.random() * 70));
-    await this.send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", buttons: 0, clickCount: 1 });
+    this.pointer({ type: "mouseUp", x, y, button: "left", clickCount: 1 });
   }
 
   /// The mouse moved to `x`, `y` in a few steps, slowing down at the end.
@@ -822,7 +745,7 @@ class Warmup {
     for (let i = 1; i <= steps; i++) {
       const t = i / steps;
       const eased = t * t * (3 - 2 * t);
-      await this.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: Math.round(from.x + (x - from.x) * eased), y: Math.round(from.y + (y - from.y) * eased), buttons: 0 });
+      this.pointer({ type: "mouseMove", x: Math.round(from.x + (x - from.x) * eased), y: Math.round(from.y + (y - from.y) * eased) });
       await this.wait(12 + Math.round(this.random() * 18));
     }
     this.mouse = { x, y };
@@ -845,9 +768,24 @@ class Warmup {
       await this.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
       return;
     }
+    // The wheel's turns, a notch of about 100 pixels at a time.
     const y = Math.round(height * (0.55 + this.random() * 0.2));
-    this.mouse = { x, y };
-    await this.send("Input.synthesizeScrollGesture", { x, y, yDistance: -Math.round(distance), speed: 900, gestureSourceType: "mouse" });
+    await this.moveMouse(x, y);
+    const before = await this.inPage("scrollY");
+    let left = Math.round(distance);
+    while (left > 0 && this.tab && !this.state.stopped) {
+      const notch = Math.min(left, 100 + Math.round(this.random() * 20));
+      this.pointer({ type: "mouseWheel", x, y, deltaX: 0, deltaY: -notch });
+      left -= notch;
+      await this.wait(30 + Math.round(this.random() * 50));
+    }
+    // Turns the page didn't take (it wasn't ready for them, now and then):
+    // the wheel once more, through the debugger, which waits for it.
+    await this.wait(150);
+    const after = await this.inPage("scrollY");
+    if (typeof before === "number" && typeof after === "number" && after - before < 10) {
+      await this.send("Input.dispatchMouseEvent", { type: "mouseWheel", x, y, deltaX: 0, deltaY: Math.round(distance) });
+    }
   }
 
   /// Accepts the page's cookie banner, if it shows one: tapped again if it
@@ -884,7 +822,245 @@ class Warmup {
   }
 }
 
+/// How many profiles collect at once; the others wait their turn.
+const AT_ONCE = 2;
+
+/// A profile's status when nothing was collected in it yet.
+const IDLE = {
+  running: false, waiting: false, finished: false, stopped: false, total: 0, done: 0, failed: 0, current: "", region: "",
+  mine: false, cookies: 0, domains: 0, before: 0, added: 0,
+};
+
+/// Collecting cookies, profile by profile: each profile's visits happen in
+/// a tab of its own that nobody sees, with its own fingerprints, whichever
+/// profile is in use (switching to another doesn't stop them); AT_ONCE at
+/// a time, the others waiting their turn; and what each profile's last
+/// visits did.
+class Warmup {
+  /// `sites`: the addresses to visit instead of popular ones (tests);
+  /// `timing`: TIMING's values to change; `random`: what picks.
+  constructor(browser, { sites = null, timing = null, random = Math.random } = {}) {
+    this.browser = browser;
+    this.sites = Array.isArray(sites) && sites.length ? sites.slice() : null;
+    this.timing = Object.assign({}, TIMING, timing || {});
+    this.random = random;
+    this.listeners = [];
+    /// The collections under way, by profile id.
+    this.active = new Map();
+    /// The profiles waiting their turn: { profile, count }.
+    this.waiting = [];
+    /// What each profile's last collection did, by profile id.
+    this.results = new Map();
+  }
+
+  onChange(listener) {
+    this.listeners.push(listener);
+  }
+
+  /// Tells the listeners what changed for the profile `id`.
+  emit(id) {
+    const status = this.status(id);
+    for (const listener of this.listeners) {
+      try {
+        listener(status);
+      } catch (error) {
+        // A listener's trouble isn't the visits'.
+      }
+    }
+  }
+
+  /// Whether any profile is collecting or waiting to.
+  get running() {
+    return this.active.size > 0 || this.waiting.length > 0;
+  }
+
+  /// The saved settings (see readSettings).
+  settings() {
+    return readSettings(this.browser.store);
+  }
+
+  /// Saves what `next` changes of the settings, checked; the settings now.
+  saveSettings(next = {}) {
+    const current = this.settings();
+    const saved = {
+      mode: next.mode === "mine" || next.mode === "popular" ? next.mode : current.mode,
+      count: next.count !== undefined ? clampCount(next.count) : current.count,
+      sites: next.sites !== undefined ? normalizeSites(next.sites) : current.sites,
+      auto: next.auto !== undefined ? Boolean(next.auto) : current.auto,
+    };
+    this.browser.store.set("warmup", saved);
+    return saved;
+  }
+
+  /// A profile's normal session (its cookies), the profile in use's if none.
+  session(profile = this.browser.profile) {
+    return require("electron").session.fromPartition(this.browser.partitionFor(false, profile));
+  }
+
+  /// How many cookies the session keeps, and for how many sites.
+  async count(ses = this.session()) {
+    try {
+      const cookies = await ses.cookies.get({});
+      const sites = new Set(cookies.map((cookie) => siteKey(String(cookie.domain || "").replace(/^\./, ""))));
+      return { cookies: cookies.length, domains: sites.size };
+    } catch (error) {
+      return { cookies: 0, domains: 0 };
+    }
+  }
+
+  profileOf(id) {
+    return (id && this.browser.profiles.find(id)) || this.browser.profile;
+  }
+
+  /// What is under way, waits, or was last done in the profile `id` (the
+  /// one in use if none).
+  status(id = this.browser.profile.id) {
+    const active = this.active.get(id);
+    if (active) {
+      return active.status();
+    }
+    const profile = this.profileOf(id);
+    const at = this.waiting.findIndex((entry) => entry.profile.id === id);
+    if (at !== -1) {
+      return { ...IDLE, waiting: true, position: at + 1, profileId: id, profileName: profile.name };
+    }
+    const last = this.results.get(id);
+    return last ? { ...last, added: Math.max(0, last.cookies - last.before) } : { ...IDLE, profileId: id, profileName: profile.name };
+  }
+
+  /// The profiles collecting, and those waiting their turn.
+  overview() {
+    return {
+      running: [...this.active.values()].map((c) => ({ id: c.profile.id, name: c.profile.name, done: c.state.done, total: c.state.total })),
+      waiting: this.waiting.map((entry) => ({ id: entry.profile.id, name: entry.profile.name })),
+    };
+  }
+
+  /// What the pages show of the profile `id` (the one in use if none), at
+  /// once: its status, the settings, and the other profiles collecting.
+  view(id = this.browser.profile.id) {
+    return { ...this.status(id), clearOnQuit: this.browser.clearOnQuit(), settings: this.settings(), overview: this.overview() };
+  }
+
+  /// The same, with how many cookies the profile has now if it isn't
+  /// collecting.
+  async snapshot(id = this.browser.profile.id) {
+    const profile = this.profileOf(id);
+    const view = this.view(profile.id);
+    if (!view.running) {
+      const counted = await this.count(this.session(profile));
+      const last = this.results.get(profile.id);
+      if (last) {
+        Object.assign(last, counted);
+      }
+      Object.assign(view, counted, { before: last ? last.before : counted.cookies });
+      view.added = Math.max(0, view.cookies - view.before);
+    }
+    return view;
+  }
+
+  /// Collects the cookies of `profile` (the one in use if none), with the
+  /// settings (`count`: that many popular sites instead): now if fewer
+  /// than AT_ONCE profiles are collecting, else once their turn comes.
+  async start(count = null, profile = this.browser.profile) {
+    if (!profile || this.active.has(profile.id) || this.waiting.some((entry) => entry.profile.id === profile.id)) {
+      return this.snapshot(profile && profile.id);
+    }
+    this.results.delete(profile.id);
+    this.waiting.push({ profile, count });
+    this.emit(profile.id);
+    await this.next();
+    return this.snapshot(profile.id);
+  }
+
+  /// Starts what waits, while fewer than AT_ONCE are under way.
+  async next() {
+    while (this.active.size < AT_ONCE && this.waiting.length) {
+      const { profile, count } = this.waiting.shift();
+      if (!this.browser.profiles.find(profile.id)) {
+        continue;
+      }
+      const collection = this.collectionFor(profile, count);
+      this.active.set(profile.id, collection);
+      try {
+        await collection.begin();
+      } catch (error) {
+        collection.stop();
+      }
+      collection.ended.then(() => this.ended(collection));
+      for (const entry of this.waiting) {
+        this.emit(entry.profile.id);
+      }
+    }
+  }
+
+  /// A profile's collection over: its result kept, the next one started.
+  ended(collection) {
+    const id = collection.profile.id;
+    const current = this.active.get(id);
+    if (current === collection) {
+      this.active.delete(id);
+    }
+    if (current === collection || (!this.active.has(id) && !this.waiting.some((entry) => entry.profile.id === id))) {
+      this.results.set(id, collection.status());
+    }
+    this.emit(id);
+    this.next().catch(() => {});
+  }
+
+  /// The visits of `profile`: its own sites in a new order each time, or
+  /// popular ones (the tests' sites in their place).
+  collectionFor(profile, count) {
+    const settings = this.settings();
+    const browser = this.browser;
+    const zone = (browser.timezone && browser.timezone.current) || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const mine = count == null && settings.mode === "mine" && settings.sites.length > 0;
+    const regions = mine ? [] : regionsFor(zone);
+    let list;
+    if (mine) {
+      list = shuffled(settings.sites, this.random);
+    } else if (this.sites) {
+      list = this.sites.slice(0, Math.max(1, Number(count) || this.sites.length));
+    } else {
+      list = pickSites(count == null ? settings.count : count, zone, this.random);
+    }
+    return new Collection(this, profile, list, { mine, region: regions.length ? REGION_NAMES[regions[0]] || "" : "" });
+  }
+
+  /// Stops the collection of the profile `id` (the one in use if none), or
+  /// takes it out of the line; what it collected is kept.
+  stop(id = this.browser.profile.id) {
+    const at = this.waiting.findIndex((entry) => entry.profile.id === id);
+    if (at !== -1) {
+      this.waiting.splice(at, 1);
+      this.emit(id);
+    }
+    const active = this.active.get(id);
+    if (active) {
+      active.stop();
+      this.active.delete(id);
+      this.results.set(id, active.status());
+      this.emit(id);
+      this.next().catch(() => {});
+    }
+    return this.view(id);
+  }
+
+  /// Stops every collection, and empties the line.
+  stopAll() {
+    const waiting = this.waiting.map((entry) => entry.profile.id);
+    this.waiting = [];
+    for (const id of waiting) {
+      this.emit(id);
+    }
+    for (const id of [...this.active.keys()]) {
+      this.stop(id);
+    }
+  }
+}
+
 module.exports = {
   Warmup, SITES, REGION_NAMES, regionsFor, siteKey, pickSites, pickLink, consentScript, LINKS_SCRIPT,
   CONSENT_SELECTORS, CONSENT_WORDS, CONSENT_ABOUT, TIMING, FAST, MAX_SITES, DEFAULT_SETTINGS, normalizeSites, readSettings,
+  Collection, AT_ONCE,
 };

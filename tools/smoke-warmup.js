@@ -33,6 +33,7 @@ const page = (site, port) => `<!doctype html><html><head><meta charset="utf-8"><
   set("ua", navigator.userAgent);
   set("vis", document.visibilityState);
   set("webdriver", String(navigator.webdriver));
+  set("screen", screen.width + "x" + screen.height);
   document.getElementById("onetrust-accept-btn-handler").addEventListener("click", (event) => {
     set("consent", event.isTrusted ? "trusted" : "untrusted");
     document.getElementById("onetrust-banner-sdk").remove();
@@ -84,7 +85,7 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), "noor-warmup-"));
   const app = await electron.launch({
     executablePath: require(path.join(root, "node_modules", "electron")),
-    args: [root, "--no-sandbox", "--host-resolver-rules=MAP *.test 127.0.0.1"].concat(process.env.SMOKE_VERBOSE ? ["--enable-logging=stderr"] : []),
+    args: [root, "--no-sandbox", "--host-resolver-rules=MAP *.test 127.0.0.1"].concat(process.env.SMOKE_EXTRA ? [process.env.SMOKE_EXTRA] : []).concat(process.env.SMOKE_VERBOSE ? ["--enable-logging=stderr"] : []),
     env: {
       ...process.env,
       NOOR_TEST: "1",
@@ -196,6 +197,53 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
     return { shown, rows, shot, exported: exported.text.startsWith("# Netscape HTTP Cookie File") && exported.text.includes("warm-c.test\tFALSE\t/\tFALSE"), removed, left: left.total };
   });
   fs.writeFileSync(path.join(userData, "cookies.png"), Buffer.from(viewer.shot, "base64"));
+  // Several profiles at once, from the settings page: the profile in use
+  // stays, and each new one collects its cookies in the background, two at
+  // a time, with its own fingerprints, not the profile in use's.
+  const many = await main(async (electron, sites) => {
+    const browser = global.noorTest.browser;
+    const warmup = global.noorTest.warmup;
+    warmup.saveSettings({ mode: "mine", sites: sites.join("\n"), auto: true });
+    const inUse = browser.profile;
+    const before = global.noorTest.context.profiles.all().length;
+    const tab = browser.newTab({ url: "noor://app/settings.html" });
+    await new Promise((r) => setTimeout(r, 1500));
+    await tab.webContents.executeJavaScript("document.getElementById('manycount').value = '3'; document.getElementById('manyname').value = 'Farm'; document.getElementById('manycreate').click();");
+    let twoAndWaiting = false;
+    let most = 0;
+    for (let i = 0; i < 1200 && (warmup.running || i < 10); i++) {
+      const now = warmup.overview();
+      most = Math.max(most, now.running.length);
+      if (now.running.length === 2 && now.waiting.length >= 1) twoAndWaiting = true;
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    const listed = await tab.webContents.executeJavaScript("[...document.querySelectorAll('#profiles .row .label')].map((l) => l.firstChild.textContent)");
+    browser.close(tab);
+    const all = global.noorTest.context.profiles.all();
+    const made = all.filter((p) => /^Farm \d+$/.test(p.name));
+    const farms = [];
+    for (const profile of made) {
+      const got = await electron.session.fromPartition(browser.partitionFor(false, profile)).cookies.get({});
+      const value = (name) => { const c = got.find((x) => x.name === name); return c ? decodeURIComponent(c.value) : null; };
+      farms.push({ name: profile.name, status: warmup.status(profile.id), ua: value("ua_b"), screen: value("screen_b"), mine: global.noorTest.shownOf(profile.id) });
+    }
+    const own = await global.noorTest.cookies.list(inUse);
+    return { added: all.length - before, names: made.map((p) => p.name), listed, stayed: browser.profile.id === inUse.id, inUseClean: !own.sites.some((s) => s.site === "warm-b.test"), twoAndWaiting, most, farms };
+  }, [`http://warm-b.test:${port}/`]);
+  // A profile's collection goes on when another profile is opened.
+  const switching = await main(async (electron, sites) => {
+    const browser = global.noorTest.browser;
+    const warmup = global.noorTest.warmup;
+    warmup.saveSettings({ mode: "mine", sites: sites.join("\n"), auto: false });
+    const home = browser.profile;
+    const other = global.noorTest.context.profiles.all().find((p) => p.id !== home.id);
+    await warmup.start();
+    browser.switchProfile(other.id);
+    const right = { status: warmup.status(home.id), inUse: browser.profile.id === other.id };
+    for (let i = 0; i < 600 && warmup.running; i++) await new Promise((r) => setTimeout(r, 100));
+    const listed = await global.noorTest.cookies.list(home);
+    return { right, status: warmup.status(home.id), sites: listed.sites.map((s) => s.site) };
+  }, [`http://warm-a.test:${port}/mine-switch`, `http://warm-c.test:${port}/mine-switch`]);
   await app.close();
   server.close();
 
@@ -227,6 +275,10 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
   check("the Cookies page lists the profile's cookies by site", viewer.shown.profile === "Auto" && viewer.shown.sites.includes("warm-c.test") && viewer.shown.summary === "1 cookie from 1 site." && viewer.rows === 2, { shown: viewer.shown, rows: viewer.rows });
   check("a site's cookies taken away, and all saved as cookies.txt", viewer.exported && viewer.removed === 1 && viewer.left === 0, { exported: viewer.exported, removed: viewer.removed, left: viewer.left });
   console.log("cookies page screenshot:", path.join(userData, "cookies.png"));
+  check("several profiles at once, from the settings; the profile in use stays and keeps its cookies", many.added === 3 && many.names.join() === "Farm 1,Farm 2,Farm 3" && many.names.every((name) => many.listed.includes(name)) && many.stayed && many.inUseClean, { added: many.added, names: many.names, stayed: many.stayed, inUseClean: many.inUseClean });
+  check("each new profile collects in the background, two at a time", many.twoAndWaiting && many.most === 2 && many.farms.every((f) => f.status.finished && !f.status.stopped && f.status.done === 1), { twoAndWaiting: many.twoAndWaiting, most: many.most, farms: many.farms.map((f) => f.status) });
+  check("a profile collecting in the background shows its own fingerprints", many.farms.every((f) => f.ua === f.mine.userAgent && f.screen === f.mine.screen), many.farms.map((f) => ({ name: f.name, ua: f.ua, screen: f.screen, mine: f.mine })));
+  check("a profile's collection goes on when another profile is opened", switching.right.inUse && switching.right.status.running && !switching.status.stopped && switching.status.finished && switching.status.done === 2 && switching.sites.includes("warm-a.test") && switching.sites.includes("warm-c.test"), switching);
   console.log(JSON.stringify({ iphone, status, hits: hits.length, failures }, null, 2));
   process.exit(failures.length ? 1 : 0);
 })().catch((error) => {

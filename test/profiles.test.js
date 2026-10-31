@@ -43,3 +43,30 @@ test("a broken saved list still gives the default profile", () => {
   store.set("profiles", [{ id: 5 }, { id: "x", name: "X" }]);
   assert.deepEqual(profiles.all().map((p) => p.name), ["Personal", "X"]);
 });
+
+test("several profiles at once: numbered after the profiles there are, each name once, the one in use kept", () => {
+  const store = tempStore();
+  const profiles = new Profiles(store);
+  const second = profiles.add("Profile 2");
+  profiles.select(second.id);
+  const made = profiles.addMany(3);
+  assert.deepEqual(made.map((p) => p.name), ["Profile 3", "Profile 4", "Profile 5"]);
+  assert.ok(made.every((p) => !p.isDefault && typeof p.id === "string"));
+  assert.equal(new Set(made.map((p) => p.id)).size, 3);
+  assert.equal(profiles.all().length, 5);
+  assert.equal(profiles.current().id, second.id);
+  // A name of one's own, numbered from 1, and on from its highest number.
+  assert.deepEqual(profiles.addMany(2, "  Insta  ").map((p) => p.name), ["Insta 1", "Insta 2"]);
+  assert.deepEqual(profiles.addMany(2, "Insta 9").map((p) => p.name), ["Insta 3", "Insta 4"]);
+  // A name taken already is passed over.
+  profiles.add("Shop 2");
+  assert.deepEqual(profiles.addMany(3, "Shop").map((p) => p.name), ["Shop 3", "Shop 4", "Shop 5"]);
+  assert.deepEqual(profiles.addMany(1, "a.b (c)").map((p) => p.name), ["a.b (c) 1"]);
+  // At most MAX_AT_ONCE; nothing for nothing.
+  const { MAX_AT_ONCE } = require("../main/profiles");
+  assert.equal(profiles.addMany(1000).length, MAX_AT_ONCE);
+  assert.deepEqual(profiles.addMany(0), []);
+  assert.deepEqual(profiles.addMany("ten"), []);
+  // Kept as any profile is.
+  assert.equal(new Profiles(store).all().length, profiles.all().length);
+});

@@ -5,6 +5,9 @@ const crypto = require("crypto");
 /// earlier versions, and can't be deleted.
 const DEFAULT_ID = "default";
 
+/// The most profiles made at once.
+const MAX_AT_ONCE = 100;
+
 /// Browsing profiles: each has its own cookies and website data (a
 /// Chromium partition), history, open tabs and fingerprints, so one
 /// person's accounts, or one purpose, stay apart from another's.
@@ -46,6 +49,38 @@ class Profiles {
     const profile = { id: crypto.randomUUID(), name };
     this.saveOthers(this.all().filter((p) => !p.isDefault).concat([profile]));
     return { ...profile, isDefault: false };
+  }
+
+  /// `count` new profiles at once (MAX_AT_ONCE at most), named `name 1`,
+  /// `name 2`… ("Profile 3", "Profile 4"… after the profiles there are),
+  /// with numbers no profile has yet: the new ones.
+  addMany(count, name = "Profile") {
+    const wanted = Math.max(0, Math.min(MAX_AT_ONCE, Math.floor(Number(count)) || 0));
+    const base = String(name == null ? "" : name).trim().replace(/\s+\d+$/, "").slice(0, 40) || "Profile";
+    const all = this.all();
+    const taken = new Set(all.map((p) => p.name));
+    const numbered = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (\\d+)$`);
+    let highest = 0;
+    for (const profile of all) {
+      const match = numbered.exec(profile.name);
+      if (match) {
+        highest = Math.max(highest, Number(match[1]));
+      }
+    }
+    let number = Math.max(highest + 1, base === "Profile" ? all.length + 1 : 1);
+    const made = [];
+    while (made.length < wanted) {
+      const candidate = `${base} ${number}`;
+      number += 1;
+      if (!taken.has(candidate)) {
+        taken.add(candidate);
+        made.push({ id: crypto.randomUUID(), name: candidate });
+      }
+    }
+    if (made.length) {
+      this.saveOthers(all.filter((p) => !p.isDefault).concat(made));
+    }
+    return made.map((profile) => ({ ...profile, isDefault: false }));
   }
 
   saveOthers(list) {
@@ -93,4 +128,4 @@ class Profiles {
   }
 }
 
-module.exports = { Profiles, DEFAULT_ID };
+module.exports = { Profiles, DEFAULT_ID, MAX_AT_ONCE };

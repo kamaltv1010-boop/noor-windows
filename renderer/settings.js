@@ -65,24 +65,50 @@
     showMode();
   };
 
+  // The profiles collecting, and those waiting their turn.
+  const showOverview = (overview) => {
+    const running = (overview && overview.running) || [];
+    const waiting = (overview && overview.waiting) || [];
+    const busy = running.length + waiting.length > 0;
+    const all = $("warmupall");
+    all.textContent = busy ? "Stop All" : "Collect in All";
+    all.className = "button small " + (busy ? "danger" : "secondary");
+    $("warmupallhint").textContent = busy
+      ? [
+        running.length ? `Collecting: ${running.map((r) => `${r.name} (${Math.min(r.done + 1, r.total)} of ${r.total})`).join(", ")}.` : "",
+        waiting.length ? `Waiting their turn: ${waiting.map((w) => w.name).join(", ")}.` : "",
+      ].join(" ").trim()
+      : "Every profile collects its cookies, two at a time, each in the background with its own fingerprints, while you use any profile.";
+  };
+
   const showWarmup = (next) => {
     if (!next) {
+      return;
+    }
+    if (next.overview) {
+      showOverview(next.overview);
+    }
+    // Another profile's collection: only the overview changes here.
+    if (settings && settings.profile && next.profileId && next.profileId !== settings.profile.id) {
       return;
     }
     warmup = next;
     if (savedForm === null && warmup.settings) {
       fillForm(warmup.settings);
     }
+    const busy = warmup.running || warmup.waiting;
     const start = $("warmupstart");
-    start.textContent = warmup.running ? "Stop" : "Collect";
-    start.className = "button small" + (warmup.running ? " danger" : "");
+    start.textContent = busy ? "Stop" : "Collect";
+    start.className = "button small" + (busy ? " danger" : "");
     for (const id of ["warmupmode", "warmupcount", "warmupsites", "warmupauto"]) {
-      $(id).disabled = warmup.running;
+      $(id).disabled = busy;
     }
     const where = warmup.mine ? " of your sites" : "";
     const region = warmup.region ? ` Sites of the world and of ${warmup.region}.` : "";
     let text;
-    if (warmup.running) {
+    if (warmup.waiting) {
+      text = `Waiting its turn (${warmup.position} in line): two profiles collect at a time.`;
+    } else if (warmup.running) {
       text = `Visiting ${Math.min(warmup.done + 1, warmup.total)} of ${warmup.total}${where}${warmup.current ? `: ${warmup.current}` : ""}. ${plural(warmup.cookies, "cookie")} (+${warmup.added}).${region}`;
     } else if (warmup.finished) {
       const opened = warmup.done - warmup.failed;
@@ -144,6 +170,7 @@
       if (profile.id === settings.profile.id) {
         const mark = document.createElement("span");
         mark.className = "value";
+        mark.style.whiteSpace = "nowrap";
         mark.textContent = "In use";
         controls.append(mark);
       } else {
@@ -286,10 +313,22 @@
     }
   });
   $("deleteall").addEventListener("click", () => noor.invoke("profiles:deleteAll").then(apply));
+  $("manycreate").addEventListener("click", () => {
+    const count = Math.floor(Number($("manycount").value));
+    if (!(count >= 1 && count <= 100)) {
+      $("manycount").focus();
+      return;
+    }
+    noor.invoke("profiles:createMany", count, $("manyname").value.trim()).then(apply);
+  });
   $("changeall").addEventListener("click", () => noor.invoke("fingerprint:new", null).then(apply));
   $("newsession").addEventListener("click", () => noor.invoke("session:new"));
+  $("warmupall").addEventListener("click", () => {
+    const busy = $("warmupall").textContent === "Stop All";
+    noor.invoke(busy ? "warmup:stopAll" : "warmup:startAll").then(showWarmup).catch(() => {});
+  });
   $("warmupstart").addEventListener("click", () => {
-    if (warmup && warmup.running) {
+    if (warmup && (warmup.running || warmup.waiting)) {
       noor.invoke("warmup:stop").then(showWarmup).catch(() => {});
       return;
     }

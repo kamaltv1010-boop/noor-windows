@@ -16,8 +16,9 @@ const WORKERS = new Set(["shared_worker", "service_worker"]);
 /// until that window's own session lets it go: so pages come here too, and
 /// each is let go at once and left.
 class BrowserDebugger {
-  /// `scriptFor(url)`: the protection for a worker whose script is at
-  /// `url`, as text, or null to leave the worker alone. `Socket` is the
+  /// `scriptFor(url, browserContextId)`: the protection for a worker whose
+  /// script is at `url`, in that browser context (a profile's session), as
+  /// text, or null to leave the worker alone. `Socket` is the
   /// WebSocket to use (tests give a stand-in).
   constructor({ port, scriptFor, Socket = globalThis.WebSocket, fetch = globalThis.fetch }) {
     this.port = port;
@@ -152,7 +153,7 @@ class BrowserDebugger {
       await this.send("Target.detachFromTarget", { sessionId }).catch(() => {});
       return;
     }
-    const script = this.scriptFor(targetInfo.url || "");
+    const script = this.scriptFor(targetInfo.url || "", targetInfo.browserContextId);
     if (script) {
       try {
         const global = await this.send("Runtime.evaluate", { expression: "globalThis", silent: true }, sessionId);

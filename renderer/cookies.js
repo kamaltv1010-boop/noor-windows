@@ -113,7 +113,32 @@
     data = next;
     render();
   };
-  const load = () => noor.invoke("cookies:list", $("profile").value).then(show).catch(() => {});
+  const load = () => {
+    noor.invoke("warmup:get", $("profile").value).then(showCollect).catch(() => {});
+    return noor.invoke("cookies:list", $("profile").value).then(show).catch(() => {});
+  };
+
+  // Collecting cookies in the profile shown (see main/warmup.js), whichever
+  // profile is in use.
+  let collecting = null;
+  const showCollect = (status) => {
+    if (!status) {
+      return;
+    }
+    collecting = status;
+    const busy = status.running || status.waiting;
+    $("collectbutton").textContent = busy ? "Stop" : "Collect";
+    $("collectbutton").className = "button small" + (busy ? " danger" : "");
+    $("collect").textContent = status.waiting
+      ? `Waiting its turn (${status.position} in line): two profiles collect at a time.`
+      : status.running
+        ? `Visiting ${Math.min(status.done + 1, status.total)} of ${status.total}${status.current ? `: ${status.current}` : ""}. ${plural(status.cookies, "cookie")} (+${status.added}).`
+        : "Noor visits sites in this profile in the background, with its own fingerprints, while you use any profile (Settings › Cookies says which sites).";
+  };
+  $("collectbutton").addEventListener("click", () => {
+    const busy = collecting && (collecting.running || collecting.waiting);
+    noor.invoke(busy ? "warmup:stop" : "warmup:start", ...(busy ? [$("profile").value] : [null, $("profile").value])).then(showCollect).catch(() => {});
+  });
 
   noor.invoke("cookies:profiles").then(({ profiles, current }) => {
     for (const profile of profiles) {
@@ -133,7 +158,11 @@
   // Fresh when shown again, and once cookies have been collected.
   window.addEventListener("focus", load);
   noor.on("warmup", (status) => {
-    if (status && !status.running) {
+    if (!status || status.profileId !== $("profile").value) {
+      return;
+    }
+    showCollect(status);
+    if (!status.running && !status.waiting) {
       load();
     }
   });

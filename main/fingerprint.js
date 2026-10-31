@@ -39,9 +39,20 @@ class Fingerprint {
     return `protection.${kind}`;
   }
 
-  /// The key of a kind's seed, in the profile in use.
+  /// The key of a kind's seed, in the profile in use (or the one this is
+  /// for, see forProfile).
   seedKey(kind) {
-    return this.profiles.key(`seed.${kind}`);
+    return this.profiles.key(`seed.${kind}`, this.boundProfile || undefined);
+  }
+
+  /// The same fingerprints, for `profile` whichever profile is in use: its
+  /// seeds, with the switches and this PC's values everyone shares (a tab
+  /// that collects a profile's cookies in the background, see
+  /// main/warmup.js, shows that profile's).
+  forProfile(profile) {
+    const bound = Object.create(this);
+    bound.boundProfile = profile;
+    return bound;
   }
 
   /// Every protection is on at first but audio and ClientRects: on a PC

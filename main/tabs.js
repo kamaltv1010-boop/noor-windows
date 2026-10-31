@@ -37,10 +37,13 @@ const sameSite = (a, b) => {
 /// what the toolbar shows of it. `webContents`: the page a site opened as a
 /// window (see Browser.openWindow), shown in this tab.
 class Tab {
-  constructor(browser, { isPrivate = false, partition = null, webPreferences = null, opener = null, webContents = null, background = false } = {}) {
+  constructor(browser, { isPrivate = false, partition = null, webPreferences = null, opener = null, webContents = null, background = false, profile = null } = {}) {
     this.browser = browser;
     this.id = nextTabId++;
     this.isPrivate = isPrivate;
+    /// The profile whose tab this is (a tab nobody sees may be another's
+    /// than the profile in use).
+    this.profile = profile || browser.profile;
     /// A tab nobody sees (see Browser.backgroundTab and main/warmup.js):
     /// its pages go into no history, open no window and show nothing of
     /// themselves in the toolbar or to the extensions.
@@ -75,6 +78,9 @@ class Tab {
     this.emulated = Boolean(webContents);
     this.watch();
     this.guardWorkers();
+    if (browser.tabMade) {
+      browser.tabMade(this);
+    }
     this.setTimezone(browser.timezone ? browser.timezone.current : null);
     if (browser.isIPhone) {
       this.emulate();
@@ -84,6 +90,11 @@ class Tab {
     if (browser.extensions && !background) {
       browser.extensions.tabCreated(this);
     }
+  }
+
+  /// The fingerprints this tab's pages show: its profile's.
+  get fingerprint() {
+    return this.profile.id === this.browser.profile.id ? this.browser.fingerprint : this.browser.fingerprint.forProfile(this.profile);
   }
 
   /// The time zone this tab's pages see (see main/timezone.js), or null
@@ -112,7 +123,7 @@ class Tab {
     if (!this.debugging || !this.browser.screenFor || this.browser.isIPhone) {
       return;
     }
-    const screen = this.browser.screenFor(url || "");
+    const screen = this.browser.screenFor(url || "", this.fingerprint);
     const shown = screen ? `${screen.width}x${screen.height}` : "";
     if (shown === (this.shownScreen || "")) {
       return;
@@ -140,7 +151,7 @@ class Tab {
       this.emulation = Promise.resolve(false);
       return;
     }
-    const device = this.browser.fingerprint.iphone();
+    const device = this.fingerprint.iphone();
     const language = this.browser.iphoneLanguage();
     const agent = iphone.userAgent(device);
     this.device = device;
@@ -668,13 +679,16 @@ class Browser {
     const { width, height } = this.win.getContentBounds();
     const top = this.fullScreen ? 0 : this.chromeHeight;
     this.chrome.setBounds({ x: 0, y: 0, width, height: top });
-    const page = (tab) => (this.isIPhone ? this.phoneBounds(tab, width, height, top) : { x: 0, y: top, width, height: Math.max(0, height - top) });
+    const area = { x: 0, y: top, width, height: Math.max(0, height - top) };
+    let shown = null;
     if (this.selected) {
-      this.selected.view.setBounds(page(this.selected));
+      shown = this.isIPhone ? this.phoneBounds(this.selected, width, height, top) : area;
+      this.selected.view.setBounds(shown);
     }
-    // Where the shown tab is, under it.
+    // Where the shown tab is, under it, so no edge of one shows; another
+    // profile's iPhone keeps the page area of its own (see Tab.emulate).
     for (const tab of this.backgroundTabs) {
-      tab.view.setBounds(page(tab));
+      tab.view.setBounds(shown || area);
     }
   }
 
@@ -834,10 +848,10 @@ class Browser {
   /// the extensions' scripts), for main/warmup.js: under the shown tab,
   /// where it is, so its pages have a shown page's size and are drawn and
   /// run as a shown tab's are, with no sound and no dialog.
-  backgroundTab() {
-    const partition = this.partitionFor(false);
+  backgroundTab(profile = this.profile) {
+    const partition = this.partitionFor(false, profile);
     const webPreferences = Object.assign(this.webPreferences(partition), { backgroundThrottling: false, disableDialogs: true });
-    const tab = new Tab(this, { partition, webPreferences, background: true });
+    const tab = new Tab(this, { partition, webPreferences, background: true, profile });
     tab.webContents.setAudioMuted(true);
     this.backgroundTabs.push(tab);
     this.layout();
@@ -1117,9 +1131,6 @@ class Browser {
     if (!profile || profile.id === this.profile.id) {
       return;
     }
-    if (this.warmup) {
-      this.warmup.stop();
-    }
     this.saveTabs();
     this.destroyTabs();
     this.profiles.select(id);
@@ -1134,11 +1145,27 @@ class Browser {
   createProfile(name) {
     const profile = this.profiles.add(name);
     this.switchProfile(profile.id);
-    // Cookies from the start, where the settings say so (see main/warmup.js).
-    if (this.warmup && this.warmup.settings().auto) {
-      this.warmup.start().catch(() => {});
-    }
+    this.collectInNew([profile]);
     return profile;
+  }
+
+  /// `count` new profiles at once, named after `name` (see Profiles.addMany),
+  /// each with its own cookies and fingerprints; the profile in use stays.
+  createProfiles(count, name) {
+    const made = this.profiles.addMany(count, name);
+    this.collectInNew(made);
+    this.pushState();
+    return made;
+  }
+
+  /// New profiles collect their cookies, each in the background, where
+  /// the settings say so (see main/warmup.js).
+  collectInNew(profiles) {
+    if (this.warmup && this.warmup.settings().auto) {
+      for (const profile of profiles) {
+        this.warmup.start(null, profile).catch(() => {});
+      }
+    }
   }
 
   /// Deletes a profile with everything it kept. Deleting the profile in
@@ -1147,6 +1174,9 @@ class Browser {
     const profile = this.profiles.find(id);
     if (!profile || profile.isDefault) {
       return;
+    }
+    if (this.warmup) {
+      this.warmup.stop(profile.id);
     }
     if (profile.id === this.profile.id) {
       this.switchProfile(DEFAULT_ID);
@@ -1187,7 +1217,7 @@ class Browser {
   /// and opens an empty tab. Other profiles and bookmarks are kept.
   async startNewSession() {
     if (this.warmup) {
-      this.warmup.stop();
+      this.warmup.stop(this.profile.id);
     }
     this.destroyTabs();
     this.shields.httpOnlyHosts.clear();

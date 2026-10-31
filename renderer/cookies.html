@@ -30,9 +30,10 @@
     <input type="search" id="q" placeholder="Search sites and cookies">
     <button class="button secondary small" id="export">Save as File…</button>
   </div>
+  <div class="card"><div class="row"><div class="label">Collect cookies<small id="collect"></small></div><button class="button small" id="collectbutton">Collect</button></div></div>
   <p class="summary" id="summary"></p>
   <div class="card" id="sites" hidden></div>
-  <p class="empty" id="empty" hidden>No cookies in this profile yet. Collect some in Settings › Cookies, or browse a little.</p>
+  <p class="empty" id="empty" hidden>No cookies in this profile yet: press Collect above, or browse a little.</p>
   <p class="footer">Each site keeps its cookies in the profile: who you are to it (an id, a sign-in), what you chose (a language, a cookie banner), what its trackers know. A site sees its own cookies only. Click a site to see its cookies, and a value to copy it. "Save as File…" writes every cookie of the profile as a cookies.txt file (or JSON), as the "Get cookies.txt" extensions do.</p>
 </div>
 <script src="cookies.js"></script>

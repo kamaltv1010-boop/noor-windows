@@ -216,7 +216,7 @@ const setUpSession = (ses) => {
     }
     if (IPHONE) {
       // As Safari on the profile's iPhone sends them (see main/iphone.js).
-      const current = context ? context.fingerprint.iphone() : iphone.IPHONES[0];
+      const current = context ? fingerprintOfSession(ses).iphone() : iphone.IPHONES[0];
       return callback({ requestHeaders: iphone.safariHeaders(details.requestHeaders, { type: details.resourceType, iphone: current, language: iphoneLanguage() }) });
     }
     const headers = withClientHints(details);
@@ -405,18 +405,53 @@ const userAgentOverride = (highEntropy) => ({
 const LOOKALIKE_MARK = crypto.randomBytes(8).toString("hex");
 const REALM_KEY = "_" + crypto.randomBytes(12).toString("hex");
 
+/// Which profile a session is, and a browser context (as Chromium's
+/// debugging names a session), as their tabs tell (see registerTab): the
+/// pages and workers of a profile collecting cookies in the background
+/// show its own fingerprints, not those of the profile in use.
+const sessionProfiles = new Map();
+const contextProfiles = new Map();
+
+/// The fingerprints of the profile `id`: the profile in use's, or another's.
+const fingerprintFor = (id) => {
+  if (!id || !browser || id === browser.profile.id) {
+    return context.fingerprint;
+  }
+  const profile = context.profiles.find(id);
+  return profile ? context.fingerprint.forProfile(profile) : context.fingerprint;
+};
+const fingerprintOfSession = (ses) => fingerprintFor(ses ? sessionProfiles.get(ses) : null);
+
+/// A new tab tells which profile its session and browser context are.
+const registerTab = (tab) => {
+  try {
+    sessionProfiles.set(tab.webContents.session, tab.profile.id);
+  } catch (error) {
+    return;
+  }
+  if (tab.debugging) {
+    tab.webContents.debugger.sendCommand("Target.getTargetInfo").then((answer) => {
+      const id = answer && answer.targetInfo && answer.targetInfo.browserContextId;
+      if (id) {
+        contextProfiles.set(id, tab.profile.id);
+      }
+    }).catch(() => {});
+  }
+};
+
 /// What a page's script gets for the page at `top`: the fingerprint for
-/// it, Chrome's brands, and the marks of the run.
-const configFor = (top) => {
+/// it (`fingerprint`: its profile's), Chrome's brands, and the marks of
+/// the run.
+const configFor = (top, fingerprint = context.fingerprint) => {
   const protections = context.shields.areUp(top);
   const realDevice = Shields.isSignInSite(top);
-  const config = context.fingerprint.config({ protections, realDevice });
+  const config = fingerprint.config({ protections, realDevice });
   if (IPHONE) {
     // The profile's iPhone, on every site: Chromium shows its screen (see
     // Tab.emulate), frames of other sites get it here, with no taskbar;
     // Safari's single language; and the rest an iPhone is and lacks (see
     // scripts/parts/iphone.js).
-    const current = context.fingerprint.iphone();
+    const current = fingerprint.iphone();
     config.screen = { width: current.width, height: current.height, availHeight: current.height };
     config.languages = [iphoneLanguage()];
     config.iphone = iphone.pageConfig(current);
@@ -437,11 +472,11 @@ const configFor = (top) => {
 
 /// The screen Chromium itself shows a tab's page at `url` (see
 /// Tab.showScreen), or null for the real one.
-const screenFor = (url) => {
+const screenFor = (url, fingerprint) => {
   if (IPHONE || !context || !isWebPage(url)) {
     return null;
   }
-  return configFor(url).screen || null;
+  return configFor(url, fingerprint || context.fingerprint).screen || null;
 };
 
 const pageConfig = (event) => {
@@ -462,7 +497,7 @@ const pageConfig = (event) => {
   if (!isWebPage(top) && tab && tab.opener && !tab.opener.webContents.isDestroyed() && isWebPage(tab.opener.webContents.getURL())) {
     top = tab.opener.webContents.getURL();
   }
-  const config = configFor(top);
+  const config = configFor(top, fingerprintOfSession(event.sender.session));
   config.tabId = tab ? tab.id : null;
   try {
     if (isWebPage(top)) {
@@ -481,11 +516,11 @@ const WORKER_SCRIPT_NAME = crypto.randomBytes(6).toString("hex") + ".js";
 /// page, or a service worker's own address): the page's, with its host,
 /// since a worker held before its first line has no location yet (and
 /// reading it ends the renderer), and the name its script goes by.
-const workerConfig = (url) => {
+const workerConfig = (url, fingerprint) => {
   if (!context || !isWebPage(url)) {
     return null;
   }
-  const config = configFor(url);
+  const config = configFor(url, fingerprint || context.fingerprint);
   try {
     config.host = new URL(url).hostname;
   } catch (error) {
@@ -517,7 +552,7 @@ const workerSource = (config) => {
 /// config. `hidden` when the script will run as the inspector's own code,
 /// whose frames no stack shows (see Tab.injectWorker).
 const workerScript = (tab, hidden) => {
-  const config = workerConfig(tab.webContents.isDestroyed() ? "" : tab.webContents.getURL());
+  const config = workerConfig(tab.webContents.isDestroyed() ? "" : tab.webContents.getURL(), tab.fingerprint);
   if (config && hidden) {
     config.framesHidden = true;
   }
@@ -528,8 +563,8 @@ const workerScript = (tab, hidden) => {
 /// target (see main/browser-debugger.js): each gets the protection for its
 /// own address, as the inspector's code.
 let browserDebugger = null;
-const debuggedWorkerScript = (url) => {
-  const config = workerConfig(url);
+const debuggedWorkerScript = (url, browserContextId) => {
+  const config = workerConfig(url, fingerprintFor(contextProfiles.get(browserContextId)));
   if (config) {
     config.framesHidden = true;
   }
@@ -563,7 +598,7 @@ const guardServiceWorkers = (ses) => {
     }
     guardedWorkers.add(worker);
     worker.ipc.on("noor:sw-config", (event, url) => {
-      event.returnValue = browserDebugger && browserDebugger.active ? null : workerConfig(typeof url === "string" ? url : "");
+      event.returnValue = browserDebugger && browserDebugger.active ? null : workerConfig(typeof url === "string" ? url : "", fingerprintOfSession(ses));
     });
   });
 };
@@ -635,19 +670,23 @@ const makeWarmup = (target) => {
     timing.follow = Number(process.env.NOOR_TEST_WARMUP_FOLLOW);
   }
   const warmup = new Warmup(target, { sites, timing });
-  let wasRunning = false;
+  // Each profile's collection, as it starts and ends.
+  const wasRunning = new Map();
   warmup.onChange((status) => {
+    const view = { ...warmup.view(status.profileId), ...status };
     for (const tab of target.allTabs) {
       if (!tab.webContents.isDestroyed() && isAppPage(tab.webContents.getURL())) {
-        tab.webContents.send("noor:warmup", { ...status, clearOnQuit: target.clearOnQuit(), settings: warmup.settings() });
+        tab.webContents.send("noor:warmup", view);
       }
     }
-    if (status.running && !wasRunning) {
-      target.toast("Collecting cookies in the background…");
-    } else if (!status.running && wasRunning) {
-      target.toast(status.stopped ? `Stopped: ${status.added} new cookies` : `Cookies collected: ${status.added} new, from ${status.done - status.failed} sites`);
+    const before = wasRunning.get(status.profileId) || false;
+    const name = `“${status.profileName}”`;
+    if (status.running && !before) {
+      target.toast(`Collecting cookies in ${name}…`);
+    } else if (!status.running && before) {
+      target.toast(status.stopped ? `${name}: stopped, ${status.added} new cookies` : `${name}: ${status.added} new cookies from ${status.done - status.failed} sites`);
     }
-    wasRunning = status.running;
+    wasRunning.set(status.profileId, status.running);
   });
   return warmup;
 };
@@ -770,22 +809,43 @@ const registerIPC = () => {
     return settingsSnapshot();
   });
   handle("profiles:switch", (event, id) => { browser.switchProfile(String(id)); return settingsSnapshot(); });
+  // Several profiles at once (the settings, or the ⋯ menu's prompt).
+  handle("profiles:createMany", (event, count, name) => {
+    const made = browser.createProfiles(count, name);
+    if (made.length) {
+      const range = made.length > 1 ? `${made[0].name} to ${made[made.length - 1].name}` : made[0].name;
+      browser.toast(`${made.length} ${made.length === 1 ? "profile" : "profiles"} made: ${range}` + (browser.warmup.settings().auto ? ". Each collects cookies the first time you open it." : ""));
+    }
+    return settingsSnapshot();
+  });
   handle("profiles:delete", async (event, id) => { await browser.menus.confirmDeleteProfile(String(id)); return settingsSnapshot(); });
   handle("profiles:deleteAll", async () => { await browser.menus.confirmDeleteAllProfiles(); return settingsSnapshot(); });
   handle("session:new", () => browser.menus.confirmNewSession());
-  handle("warmup:get", () => browser.warmup.snapshot());
+  // A profile's collection (the one in use if no id is given).
+  handle("warmup:get", (event, id) => browser.warmup.snapshot(id ? profileFor(id).id : undefined));
   // The settings as the page has them, saved, and the visits started.
   handle("warmup:save", (event, settings) => {
     browser.warmup.saveSettings(settings && typeof settings === "object" ? settings : {});
     return browser.warmup.snapshot();
   });
-  handle("warmup:start", (event, settings) => {
+  handle("warmup:start", (event, settings, id) => {
     if (settings && typeof settings === "object") {
       browser.warmup.saveSettings(settings);
     }
-    return browser.warmup.start();
+    return browser.warmup.start(null, profileFor(id));
   });
-  handle("warmup:stop", () => browser.warmup.stop());
+  handle("warmup:stop", (event, id) => browser.warmup.stop(profileFor(id).id));
+  // Every profile, two at a time, the others waiting their turn.
+  handle("warmup:startAll", async () => {
+    for (const profile of context.profiles.all()) {
+      await browser.warmup.start(null, profile);
+    }
+    return browser.warmup.snapshot();
+  });
+  handle("warmup:stopAll", () => {
+    browser.warmup.stopAll();
+    return browser.warmup.snapshot();
+  });
   // The Cookies page: every profile's cookies, by site.
   handle("cookies:open", () => { browser.newTab({ url: COOKIES_URL }); });
   handle("cookies:profiles", () => ({ profiles: context.profiles.all(), current: browser.profile.id }));
@@ -908,6 +968,7 @@ app.whenReady().then(async () => {
   await browserDebugger.connect(2500).catch(() => false);
 
   Browser.prototype.workerScript = workerScript;
+  Browser.prototype.tabMade = registerTab;
   Browser.prototype.screenFor = screenFor;
   Browser.prototype.extensions = extensions;
   browser = new Browser(context);
@@ -934,7 +995,15 @@ app.whenReady().then(async () => {
   Menu.setApplicationMenu(browser.menus.application());
   registerIPC();
   if (process.env.NOOR_TEST) {
-    global.noorTest = { browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, warmup: browser.warmup, cookies };
+    global.noorTest = {
+      browser, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, warmup: browser.warmup, cookies, fingerprintFor,
+      // What pages of the profile `id` are shown: its user agent and screen.
+      shownOf: (id) => {
+        const fingerprint = fingerprintFor(id);
+        const screen = IPHONE ? fingerprint.iphone() : fingerprint.screen();
+        return { userAgent: IPHONE ? iphone.userAgent(fingerprint.iphone()) : userAgent(), screen: `${screen.width}x${screen.height}` };
+      },
+    };
   }
 
   app.on("second-instance", (event, argv) => {
@@ -961,7 +1030,7 @@ app.on("before-quit", () => {
   if (browser) {
     browser.saveTabs();
     if (browser.warmup) {
-      browser.warmup.stop();
+      browser.warmup.stopAll();
     }
   }
 });
