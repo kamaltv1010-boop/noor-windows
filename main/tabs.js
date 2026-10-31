@@ -11,6 +11,8 @@ const PRELOAD = path.join(__dirname, "..", "scripts", "preload.js");
 const CHROME_PRELOAD = path.join(__dirname, "..", "scripts", "chrome-preload.js");
 const CHROME_PARTITION = "persist:noor-chrome";
 const CHROME_URL = "noor://app/chrome.html";
+/// The window's menus, drawn over it (see Browser.showMenu).
+const MENU_URL = "noor://app/menu.html";
 /// The tab strip and the toolbar, in CSS pixels.
 const CHROME_HEIGHT = 86;
 /// The room Noor iPhone leaves around the iPhone's page, and the shortest
@@ -578,6 +580,12 @@ class Browser {
     this.shown = new Promise((resolve) => {
       this.markShown = resolve;
     });
+    /// The menu open (see showMenu): what it is made from, where its button
+    /// is, and what its items do.
+    this.menu = null;
+    this.menuActions = null;
+    this.menuShown = false;
+    this.overlay = null;
     this.makeWindow(bounds);
     this.restoreTabs();
     this.applyPrivacySettings();
@@ -704,7 +712,14 @@ class Browser {
     this.chrome.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     this.chrome.webContents.on("will-navigate", (event) => event.preventDefault());
     for (const event of ["resize", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "restore"]) {
-      this.win.on(event, () => this.layout());
+      this.win.on(event, () => {
+        this.hideMenu();
+        this.layout();
+      });
+    }
+    // A menu closes as the window loses the front, as Chrome's do.
+    for (const event of ["blur", "minimize"]) {
+      this.win.on(event, () => this.hideMenu());
     }
     this.win.on("focus", () => {
       if (this.windows) {
@@ -727,18 +742,118 @@ class Browser {
       for (const tab of this.allTabs.concat(this.backgroundTabs)) {
         tab.close();
       }
-      try {
-        if (!this.chrome.webContents.isDestroyed()) {
-          this.chrome.webContents.close();
+      for (const view of [this.chrome, this.overlay]) {
+        try {
+          if (view && !view.webContents.isDestroyed()) {
+            view.webContents.close();
+          }
+        } catch (error) {
+          // Gone with the window.
         }
-      } catch (error) {
-        // Gone with the window.
       }
       if (this.windows) {
         this.windows.closed(this);
       }
     });
     this.layout();
+  }
+
+  // MARK: - Menus
+
+  /// Shows a menu as Chrome draws its own (the ⋯ menu, the profile's, the
+  /// shields'): a page over the whole window (renderer/menu.html) with the
+  /// items `build` makes, under `anchor` (its button, in the window's
+  /// pixels), lined up by `align` ("end", "start" or "center"). An item
+  /// chosen runs its `click`; one with `keepOpen` (the zoom, a switch) leaves
+  /// the menu open, made again. A click outside closes it.
+  showMenu(build, anchor = null, align = "end") {
+    if (this.win.isDestroyed() || this.closing) {
+      return;
+    }
+    this.menu = { build, anchor, align };
+    this.renderMenu(false);
+  }
+
+  /// The page menus are drawn on, made once: transparent, so the window
+  /// shows through around the menu.
+  menuOverlay() {
+    if (this.overlay && !this.overlay.webContents.isDestroyed()) {
+      return this.overlay;
+    }
+    this.overlay = new WebContentsView({ webPreferences: { preload: CHROME_PRELOAD, sandbox: false, contextIsolation: false, nodeIntegration: false, partition: CHROME_PARTITION, spellcheck: false } });
+    this.overlay.setBackgroundColor("#00000000");
+    this.overlay.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    this.overlay.webContents.on("will-navigate", (event) => event.preventDefault());
+    this.overlayReady = new Promise((resolve) => this.overlay.webContents.once("did-finish-load", resolve));
+    this.overlay.webContents.loadURL(MENU_URL);
+    return this.overlay;
+  }
+
+  renderMenu(update) {
+    if (!this.menu || this.win.isDestroyed()) {
+      return;
+    }
+    const { items, actions } = serializeMenu(this.menu.build());
+    this.menuActions = actions;
+    const overlay = this.menuOverlay();
+    const { width, height } = this.win.getContentBounds();
+    overlay.setBounds({ x: 0, y: 0, width, height });
+    if (!this.menuShown) {
+      this.win.contentView.addChildView(overlay);
+      this.menuShown = true;
+    }
+    const menu = { items, anchor: this.menu.anchor, align: this.menu.align, update, private: Boolean(this.selected && this.selected.isPrivate) };
+    this.overlayReady.then(() => {
+      if (this.menuShown && this.overlay === overlay && !overlay.webContents.isDestroyed()) {
+        overlay.webContents.send("noor:menu", menu);
+        overlay.webContents.focus();
+      }
+    });
+  }
+
+  /// What the menu's item `id` does.
+  chooseMenu(id) {
+    const action = this.menuActions && this.menuActions.get(id);
+    if (!action) {
+      return;
+    }
+    if (!action.keepOpen) {
+      this.hideMenu();
+    }
+    try {
+      action.click();
+    } finally {
+      if (action.keepOpen && this.menuShown) {
+        this.renderMenu(true);
+      }
+    }
+  }
+
+  hideMenu() {
+    if (!this.menuShown) {
+      return;
+    }
+    this.menuShown = false;
+    this.menu = null;
+    this.menuActions = null;
+    try {
+      if (!this.win.isDestroyed()) {
+        this.win.contentView.removeChildView(this.overlay);
+      }
+    } catch (error) {
+      // The window is going.
+    }
+    if (this.selected && !this.selected.webContents.isDestroyed()) {
+      this.selected.webContents.focus();
+    }
+  }
+
+  /// Prints the shown page (the system's print dialog).
+  print() {
+    const tab = this.selected;
+    if (tab && !tab.webContents.isDestroyed() && isWebPage(tab.url)) {
+      tab.webContents.print({ printBackground: true }, () => {});
+    }
   }
 
   /// Shows the window in front of the others.
@@ -990,6 +1105,9 @@ class Browser {
       }
       return;
     }
+    // Another tab shown (a page opened one) closes the menu, which it would
+    // otherwise cover.
+    this.hideMenu();
     if (this.selected && !this.selected.webContents.isDestroyed()) {
       this.win.contentView.removeChildView(this.selected.view);
     }
@@ -1383,4 +1501,41 @@ class Browser {
   }
 }
 
-module.exports = { Browser, Tab, CHROME_HEIGHT, PRELOAD, CHROME_PARTITION };
+/// A menu's items as the menu page gets them: each `click` (and each of a
+/// row's `actions`, the zoom's buttons) kept here under an id the page sends
+/// back when it is chosen.
+const serializeMenu = (items) => {
+  const actions = new Map();
+  let next = 0;
+  const keep = (click, keepOpen) => {
+    const id = `m${next++}`;
+    actions.set(id, { click, keepOpen: Boolean(keepOpen) });
+    return id;
+  };
+  const walk = (list) => (Array.isArray(list) ? list : []).filter(Boolean).map((item) => {
+    const out = { ...item };
+    delete out.click;
+    delete out.actions;
+    delete out.keepOpen;
+    if (typeof item.click === "function") {
+      out.id = keep(item.click, item.keepOpen);
+    }
+    if (item.actions && typeof item.actions === "object") {
+      out.ids = {};
+      for (const [name, action] of Object.entries(item.actions)) {
+        if (typeof action === "function") {
+          out.ids[name] = keep(action, true);
+        } else if (action && typeof action.click === "function") {
+          out.ids[name] = keep(action.click, action.keepOpen !== false);
+        }
+      }
+    }
+    if (item.submenu) {
+      out.submenu = walk(item.submenu);
+    }
+    return out;
+  });
+  return { items: walk(items), actions };
+};
+
+module.exports = { Browser, Tab, CHROME_HEIGHT, PRELOAD, CHROME_PARTITION, serializeMenu };

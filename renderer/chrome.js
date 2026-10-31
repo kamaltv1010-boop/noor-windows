@@ -161,10 +161,15 @@
   $("back").addEventListener("click", () => noor.invoke("nav:back"));
   $("forward").addEventListener("click", () => noor.invoke("nav:forward"));
   $("reload").addEventListener("click", () => noor.invoke(state && state.loading ? "nav:stop" : "nav:reload"));
-  $("shields").addEventListener("click", () => noor.invoke("menu:shields"));
+  // A menu opens under its button (see renderer/menu.html).
+  const rectOf = (element) => {
+    const r = element.getBoundingClientRect();
+    return { x: r.left, y: r.top, width: r.width, height: r.height };
+  };
+  $("shields").addEventListener("click", () => noor.invoke("menu:shields", rectOf($("shields"))));
   $("bookmark").addEventListener("click", () => noor.invoke("bookmark:toggle"));
-  $("profile").addEventListener("click", () => noor.invoke("menu:profile"));
-  $("more").addEventListener("click", () => noor.invoke("menu:more"));
+  $("profile").addEventListener("click", () => noor.invoke("menu:profile", rectOf($("profile"))));
+  $("more").addEventListener("click", () => noor.invoke("menu:more", rectOf($("more"))));
   $("tabstrip").addEventListener("dblclick", (event) => {
     if (event.target === $("tabs") || event.target === $("tabstrip")) {
       noor.invoke("tabs:new", { isPrivate: Boolean(state && state.isPrivate) });

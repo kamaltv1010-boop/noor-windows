@@ -768,9 +768,29 @@ const registerIPC = () => {
   on("history:list", (at, event, query) => query ? at.history.search(query, 200) : at.history.all().slice(0, 500));
   on("history:remove", (at, event, url) => at.history.remove(url));
   on("history:clear", (at) => at.history.clear());
-  on("menu:more", (at) => at.menus.more());
-  on("menu:profile", (at) => at.menus.profile());
-  on("menu:shields", (at) => at.menus.shields());
+  // The toolbar's menus, drawn over the window under their button (`rect`,
+  // in the pixels of the page the button is on), as Chrome's (see
+  // Browser.showMenu); what is chosen in one, and closing it.
+  const anchorOf = (at, event, rect) => {
+    if (!rect || typeof rect !== "object") {
+      return null;
+    }
+    const number = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
+    const anchor = { x: number(rect.x), y: number(rect.y), width: number(rect.width), height: number(rect.height) };
+    // A button on a page (the start page's): the page's place in the window.
+    const tab = at.tabFor(event.sender);
+    if (tab) {
+      const bounds = tab.view.getBounds();
+      anchor.x += bounds.x;
+      anchor.y += bounds.y;
+    }
+    return anchor;
+  };
+  on("menu:more", (at, event, rect) => at.menus.more(anchorOf(at, event, rect)));
+  on("menu:profile", (at, event, rect, align) => at.menus.profile(anchorOf(at, event, rect), ["start", "center", "end"].includes(align) ? align : "end"));
+  on("menu:shields", (at, event, rect) => at.menus.shields(anchorOf(at, event, rect)));
+  on("menu:choose", (at, event, id) => at.chooseMenu(String(id)));
+  on("menu:close", (at) => at.hideMenu());
   on("menu:tab", (at, event, id) => { const tab = at.tabWithId(id); if (tab) at.menus.tab(tab); });
   on("start:state", (at) => ({
     profile: at.profile,

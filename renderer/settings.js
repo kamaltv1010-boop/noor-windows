@@ -409,4 +409,107 @@
   ]);
   window.addEventListener("focus", refresh);
   refresh().then(scrollToHash);
+
+  // As Chrome's settings: an icon by each section and in the sidebar, the
+  // section in view marked there, and a search through every setting.
+  const icons = window.noorIcons;
+  for (const target of document.querySelectorAll("h3[data-icon], .sidebar a[data-icon], .searchicon[data-icon]")) {
+    target.insertAdjacentHTML("afterbegin", icons.svg(target.dataset.icon, 20));
+  }
+  const content = $("content");
+  const headings = [...content.querySelectorAll("h3[id]")];
+  const links = [...document.querySelectorAll(".sidebar a")];
+  const markActive = () => {
+    const shown = headings.filter((heading) => !heading.classList.contains("filtered"));
+    let current = shown[0] || null;
+    for (const heading of shown) {
+      if (heading.getBoundingClientRect().top <= 140) {
+        current = heading;
+      }
+    }
+    // At the very bottom, the last section shown.
+    if (shown.length && innerHeight + scrollY >= document.documentElement.scrollHeight - 4 && document.documentElement.scrollHeight > innerHeight + 8) {
+      current = shown[shown.length - 1];
+    }
+    for (const link of links) {
+      link.classList.toggle("active", Boolean(current) && link.getAttribute("href") === "#" + current.id);
+    }
+  };
+  addEventListener("scroll", markActive, { passive: true });
+  addEventListener("resize", markActive);
+  for (const link of links) {
+    link.addEventListener("click", (event) => {
+      event.preventDefault();
+      const target = document.getElementById(link.getAttribute("href").slice(1));
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        history.replaceState(null, "", link.getAttribute("href"));
+      }
+    });
+  }
+  markActive();
+
+  // The search: the rows whose words match, in their cards and sections;
+  // a section whose title matches, whole.
+  const search = $("settingsearch");
+  const filter = () => {
+    const query = search.value.trim().toLowerCase();
+    const sections = [];
+    for (const node of content.children) {
+      if (node.tagName === "H3") {
+        sections.push({ heading: node, nodes: [] });
+      } else if (sections.length && node.id !== "nomatch") {
+        sections[sections.length - 1].nodes.push(node);
+      }
+    }
+    let anyShown = false;
+    for (const { heading, nodes } of sections) {
+      const titled = Boolean(query) && heading.textContent.toLowerCase().includes(query);
+      let shown = 0;
+      for (const node of nodes) {
+        const rows = node.classList.contains("card") ? [...node.querySelectorAll(".row")] : [];
+        if (rows.length) {
+          let matching = 0;
+          for (const row of rows) {
+            const match = !query || titled || row.textContent.toLowerCase().includes(query);
+            row.classList.toggle("filtered", !match);
+            // The first row shown has no line above it.
+            row.classList.toggle("firstshown", match && !row.hidden && matching === 0);
+            if (match && !row.hidden) {
+              matching += 1;
+            }
+          }
+          node.classList.toggle("filtered", matching === 0 && Boolean(query));
+          shown += matching;
+        } else {
+          const match = !query || titled || node.textContent.toLowerCase().includes(query);
+          node.classList.toggle("filtered", !match);
+          if (match && query && node.textContent.trim()) {
+            shown += 1;
+          }
+        }
+      }
+      heading.classList.toggle("filtered", Boolean(query) && !titled && shown === 0);
+      if (!query || titled || shown > 0) {
+        anyShown = true;
+      }
+    }
+    $("nomatch").hidden = anyShown;
+    markActive();
+  };
+  search.addEventListener("input", filter);
+  search.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && search.value) {
+      search.value = "";
+      filter();
+    }
+  });
+  // Rows filled in later (the profiles, the extensions) are searched too.
+  let filterTimer = null;
+  new MutationObserver(() => {
+    if (search.value.trim()) {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(filter, 50);
+    }
+  }).observe(content, { childList: true, subtree: true });
 })();

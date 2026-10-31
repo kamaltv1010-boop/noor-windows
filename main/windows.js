@@ -114,7 +114,7 @@ class Windows {
       return null;
     }
     const same = (wc) => Boolean(wc) && !wc.isDestroyed() && wc.id === webContents.id;
-    return this.list.find((w) => (w.chrome && same(w.chrome.webContents)) || w.tabFor(webContents) || w.backgroundTabs.some((t) => same(t.webContents))) || null;
+    return this.list.find((w) => (w.chrome && same(w.chrome.webContents)) || (w.overlay && same(w.overlay.webContents)) || w.tabFor(webContents) || w.backgroundTabs.some((t) => same(t.webContents))) || null;
   }
 
   /// The tab a page is (not a tab nobody sees).

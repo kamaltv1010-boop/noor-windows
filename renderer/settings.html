@@ -6,11 +6,25 @@
 <title>Settings</title>
 <link rel="stylesheet" href="app.css">
 </head>
-<body>
-<div class="page">
-  <h1 style="text-align:center">Settings</h1>
+<body class="settingsbody">
+<header class="topbar">
+  <div class="brand"><img src="logo.png" alt=""><span>Settings</span></div>
+  <label class="searchwrap"><span class="searchicon" data-icon="search"></span><input type="search" id="settingsearch" placeholder="Search settings" spellcheck="false" autocomplete="off"></label>
+</header>
+<div class="layout">
+<nav class="sidebar" aria-label="Sections">
+  <a href="#profilessection" data-icon="users">Profiles</a>
+  <a href="#cookies" data-icon="cookie">Cookies</a>
+  <a href="#extensions" data-icon="puzzle">Extensions</a>
+  <a href="#shields" data-icon="shield">Shields</a>
+  <a href="#fingerprint" data-icon="fingerprint">Fingerprint protection</a>
+  <a href="#general" data-icon="sliders">General</a>
+  <a href="#about" data-icon="info">About Noor</a>
+</nav>
+<main class="page settingspage" id="content">
+  <p class="empty" id="nomatch" hidden>No settings match your search.</p>
 
-  <h3>Profiles</h3>
+  <h3 id="profilessection" data-icon="users">Profiles</h3>
   <div class="card" id="profiles"></div>
   <div class="card">
     <div class="row">
@@ -36,7 +50,7 @@
   </div>
   <p class="footer">Each profile opens in a window of its own, as big as the screen, with its own button in the taskbar (its name on its color), and has its own cookies, website data, history, tabs and fingerprints, so accounts stay apart. Open several at once. Bookmarks and settings are shared. The profiles are also in the 👤 menu and on the start page.</p>
 
-  <h3 id="cookies">Cookies</h3>
+  <h3 id="cookies" data-icon="cookie">Cookies</h3>
   <div class="card">
     <div class="row">
       <div class="label">Collect cookies<small id="warmupstatus"></small></div>
@@ -79,7 +93,7 @@
   </div>
   <p class="footer" id="warmupfooter">So that a site that checks finds a profile in daily use, not an empty one: Noor visits sites in a tab you don't see, in the profile's own cookies and with its own fingerprints and shields, while you use this profile or any other (switching doesn't stop it; many profiles collect at the same time, as many as “At once” says, the others waiting their turn). It reads each page a little, scrolls, accepts the cookie banner, and sometimes opens another page of the site, as a person would. Popular sites are the world's and those of the country of your time zone, in a new random mix each time. It never signs in or out, buys or downloads anything, and nothing goes into the history; your tabs stay as they are.</p>
 
-  <h3 id="extensions">Extensions</h3>
+  <h3 id="extensions" data-icon="puzzle">Extensions</h3>
   <div class="card" id="extensionlist"></div>
   <div class="card">
     <div class="row"><div class="label">Chrome Web Store<small>Open an extension's page in the store, then press "Add to Noor" in the toolbar.</small></div><button class="button small" id="extstore">Open Store</button></div>
@@ -87,7 +101,7 @@
   </div>
   <p class="footer" id="extensionsfooter">Chrome web extensions run in every profile's normal tabs and can see and change the pages you open; the store's ones are kept up to date. Private tabs go without them, as Chrome's Incognito windows do. Extensions that block ads or change how pages look usually work; some Chrome-only features don't.</p>
 
-  <h3>Shields</h3>
+  <h3 id="shields" data-icon="shield">Shields</h3>
   <div class="card">
     <div class="row"><div class="label">Block trackers<small>Third-party files from Meta, Google Analytics, TikTok and other trackers never load.</small></div><input type="checkbox" data-setting="blockTrackers"></div>
     <div class="row"><div class="label">Upgrade to HTTPS<small>http:// pages open over https://, and go back to http:// if the site doesn't support it.</small></div><input type="checkbox" data-setting="httpsUpgrade"></div>
@@ -96,7 +110,7 @@
   <div class="card" id="downsites"></div>
   <p class="footer" id="downsitesfooter">Shields are up on every site. Turn them off for one site from the 🛡 button in the address bar.</p>
 
-  <h3>Fingerprint Protection</h3>
+  <h3 id="fingerprint" data-icon="fingerprint">Fingerprint protection</h3>
   <div class="card" id="protections"></div>
   <div class="card">
     <div class="row"><div class="label">Change all fingerprints<small>New values for every protection, in this profile.</small></div><button class="button secondary small" id="changeall">Change All</button></div>
@@ -104,7 +118,7 @@
   <div class="card" id="values"></div>
   <p class="footer" id="fingerprintfooter">Websites see noisy canvas, WebGL and audio values and shifted ClientRects that differ from this PC's but stay the same on a site, another common PC's screen size, processor and memory, and Google Chrome on Windows. Sign-in sites of Meta, Google, Apple and Microsoft see this PC's real screen and hardware.</p>
 
-  <h3>General</h3>
+  <h3 id="general" data-icon="sliders">General</h3>
   <div class="card">
     <div class="row"><div class="label">Search engine</div><select id="searchengine"></select></div>
     <div class="row"><div class="label">Time zone of your IP address<small id="timezonehint"></small></div><input type="checkbox" data-setting="timezoneFromIP"></div>
@@ -116,13 +130,15 @@
     <div class="row"><div class="label">Reset privacy stats</div><button class="button secondary small" id="resetstats">Reset</button></div>
   </div>
 
-  <h3>About</h3>
+  <h3 id="about" data-icon="info">About Noor</h3>
   <div class="card">
     <div class="row"><div class="label" id="appname">Noor for Windows</div><div class="value" id="version"></div></div>
     <div class="row"><div class="label">Chromium</div><div class="value" id="chromium"></div></div>
     <div class="row"><div class="label">Source code</div><div class="value"><a href="https://github.com/kamaltv1010-boop/noor-windows">github.com/kamaltv1010-boop/noor-windows</a></div></div>
   </div>
+</main>
 </div>
+<script src="icons.js"></script>
 <script src="settings.js"></script>
 </body>
 </html>

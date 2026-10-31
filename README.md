@@ -28,7 +28,9 @@
 - **جلسة جديدة 🔥**: كتمسح الـ cookies والبيانات والسجل ديال البروفايل المحلول، كتسد الـ onglets ديالو، وكتعطيه بصمات جديدة. **مسح كل شيء عند الخروج** فالإعدادات: البيانات كتبقى غير فالذاكرة، وكل تشغيل كيبدا بجلسة جديدة.
 - **Onglets خاصة 🕶️**: `Ctrl+Shift+N`. ما كيتسجلوش فالسجل، والبيانات ديالهم كتمشي ملي تسد آخر onglet خاص.
 - **المفضلة والسجل 📚**: ☆ فالشريط، صفحة البداية كتبيّن المفضلة، و`Ctrl+H` كيحل المكتبة.
-- **الوضع الليلي 🌙**، **Zoom**، **بحث فالصفحة** `Ctrl+F`، **Developer Tools** `F12`.
+- **القوائم بحال Chrome 📋**: القائمة ⋯ والقوائم ديال 👤 و🛡 مرسومين بحال ديال Chrome: **أيقونة صغيرة حدا كل حاجة**، الاختصار على اليمين (`Ctrl+T`، `Ctrl+Shift+N`، `Ctrl+H`، `Ctrl+F`، `Ctrl+P`…)، والقوائم الفرعية كيتحلو على الجنب. فيها سطر ديال البروفايل بلونو (والبروفايلات كاملين بالحرف واللون ديالهم)، سطر ديال الـ **Zoom** (− 100% + والشاشة الكاملة) اللي كيبقى محلول ملي تكبّر ولا تصغّر، switch ديال **الوضع الليلي**، **Print…** و**Exit**. كيخدمو حتى بالكلافيي (الأسهم، Enter، Escape)، وكيتسدو ملي تكليكي برا.
+- **الإعدادات بحال Chrome ⚙️**: شريط لفوق فيه **البحث**، والأقسام على اليسار بالأيقونات ديالهم (Profiles، Cookies، Extensions، Shields، Fingerprint protection، General، About Noor)؛ الكليك على قسم كيدّيك ليه، والقسم اللي كتشوف كيبان ملوّن. البحث كيخلي غير الإعدادات اللي فيها الكلمة اللي كتبتي (مع القسم ديالها)، و`Escape` كيمسحو. الخيارات اللي كتشعل وتطفى ولاو **switches** بحال Chrome.
+- **الوضع الليلي 🌙**، **Zoom**، **بحث فالصفحة** `Ctrl+F`، **الطباعة** `Ctrl+P`، **Developer Tools** `F12`.
 - **الأذونات**: الكاميرا، الميكرو، الموقع والإشعارات مرفوضين تلقائياً.
 
 ## Noor iPhone 📱
@@ -51,6 +53,7 @@
 - **الحماية**: `scripts/preload.js` كيخدم فكل frame قبل أي script ديال الصفحة (sandboxed، فنفس العالم ديال الصفحة). كيسوّل الـ main process على الإعدادات ديال الصفحة (`noor:page-config`): البذور (seeds) ديال البروفايل، الشاشة، الـ hardware، والـ brands، وكيطبّق `protectPage(window, config)`. الحماية كتتصاوب داخل frame خاوي ومخبّي (كيتحيّد قبل أول script ديال الصفحة)، باش الـ functions ديالها ما يبانوش فالـ stack ديال الأخطاء اللي كتقرا الصفحة (بحال الـ functions الأصلية ديال المتصفح)، وما يبانش المسار ديال الملف اللي فيه سمية المستخدم. فالـ Web Workers كتدخل ككود داخلي ديال DevTools، اللي حتى هو ما كيبانش؛ والـ Shared Workers والـ Service Workers كيتشدّو قبل أول سطر ديالهم من الـ target ديال Chromium نفسو (`main/browser-debugger.js`، بـ debugging port عشوائي على هاد الـ PC بوحدو). العلامات اللي كتعرف بيها الحماية الـ functions ديالها والـ frame المخبّي كيتبدلو مع كل تشغيل، فحتى صفحة ما تقدر تعرفهم ولا تقلّدهم. الصفحات ديال التطبيق نفسو (`noor://app/…`) كياخدو `window.noor` باش يهضرو مع الـ main process.
 - **البروفايلات**: كل بروفايل عندو partition `persist:noor-<id>` (ملف `settings.json` كيحفظ القائمة، البذور، والـ onglets المفتوحة بمفاتيح `profile.<id>.…`)، وملف سجل بوحدو. الحذف كيمسح البيانات بـ `clearStorageData` وكيحيّد المجلد ديال الـ partition فالتشغيل الجاي. البروفايل اللي كيتعوّض ملي يتسد كياخد `id` جديد (partition جديد، بصمات جديدة) والسمية اللي من بعد فالسلسلة ديالو (`Profiles.nextInSeries`)، ولكن كيبقى عندو `slot` ديال اللي قبلو، باش الزر ديالو فالـ taskbar والزر المثبّت يبقاو هوما هوما.
 - **الدروع**: `session.webRequest.onBeforeRequest` كيحجب الملفات ديال المتتبعين، و`onBeforeSendHeaders` كيصلّح `Sec-CH-UA`. الـ HTTPS والروابط النقية كيتطبقو قبل كل تنقل.
+- **القوائم**: القوائم ⋯ و👤 و🛡 مرسومين فصفحة شفافة (`renderer/menu.html`) كتغطي النافذة كاملة (`WebContentsView`) غير ملي تكون شي قائمة محلولة. الـ main process كيصيفط ليها شنو فيها والبلاصة ديال الزر (`noor:menu`، `main/menus.js`)، وكيتسنى شنو تختار (`menu:choose`)؛ الـ functions ديال القائمة كيبقاو فالـ main process. الأيقونات (`renderer/icons.js`) خطوط SVG بلون النص. قائمة الكليك اليمين باقية ديال Windows.
 
 ## الفرق مع تطبيق iPhone 📱
 
@@ -73,18 +76,21 @@
 | `main/warmup.js` | جمع الكوكيز: المواقع حسب المنطقة، المواقع ديالك والإعدادات المحفوظة، الزيارات فـ onglet مخفي، البانرات، الروابط اللي كيتبعها واللي كيتجنبها |
 | `main/cookies.js`, `renderer/cookies.html` | صفحة الكوكيز: التجميع حسب الموقع، الحذف، والحفظ بصيغة `cookies.txt` ولا JSON |
 | `main/menus.js`, `main/address.js` | القوائم والاختصارات، وشنو كيتحل ملي تكتب فشريط العنوان |
+| `renderer/menu.html`, `renderer/menu.js`, `renderer/menu.css` | القوائم المرسومة بحال Chrome: الأيقونات، الاختصارات، القوائم الفرعية، الـ Zoom، الـ switches، الكلافيي |
+| `renderer/icons.js` | الأيقونات الصغيرة ديال القوائم والإعدادات |
 | `scripts/preload.js`, `scripts/protect.js` | الحماية المحقونة فالصفحات (مولّدين من `FingerprintProtection.swift` ديال iPhone بـ `tools/extract_from_ios.py`) |
 | `scripts/parts/chrome.js` | الجزء الخاص بـ Chromium: `userAgentData` و`chrome.app/csi/loadTimes` |
 | `main/iphone.js` | Noor iPhone: الـ iPhones، الـ user agent والـ headers ديال Safari، الشاشة اللي كيوريها Chromium |
 | `scripts/parts/iphone.js`, `scripts/parts/iphone-surface.js`, `scripts/parts/iphone-fonts.js` | شنو كتشوف الصفحة فـ Noor iPhone: اللي عند Safari واللي ماعندوش، الخطوط |
 | `main/extensions.js`, `main/extension-bridge.js` | الإضافات، والقنطرة اللي كتعطي الـ background ديالها الـ API (Electron ما كيخدّمش preload فالـ service worker ديال إضافة) |
-| `renderer/` | الشريط، صفحة البداية، الإعدادات، المكتبة، صفحة الخطأ |
+| `renderer/` | الشريط، صفحة البداية، الإعدادات (بحال Chrome: الأقسام، البحث)، المكتبة، صفحة الخطأ |
 | `rules/trackers.json` | المتتبعين المحجوبين (نفس قائمة iPhone) |
 | `test/` | tests ديال Node (`npm test`) |
 | `tools/smoke-electron.js` | كيشغّل التطبيق بصح وكيتأكد من الأساسيات (Playwright) |
 | `tools/smoke-iphone.js` | كيشغّل Noor iPhone بحال مستخدم وكيتأكد أن الصفحة، الـ frames، الـ workers والنوافذ كيشوفو iPhone |
 | `tools/smoke-warmup.js` | كيجرّب جمع الكوكيز على مواقع محلية: الكوكيز، البانر، السكرول، المقالات، المواقع ديالك، البروفايل الجديد، صفحة الكوكيز، وشنو ما خاصوش يدير |
 | `tools/smoke-windows.js` | كيجرّب النوافذ: نافذة لكل بروفايل، الأيقونة والزر ديالها، الكوكيز بوحدهم، التعويض ملي يتسد، الحذف، والنوافذ اللي كيتحلو من جديد |
+| `tools/smoke-menu.js` | كيجرّب القوائم (البلاصة، الأيقونات، الاختصارات، الـ Zoom، القوائم الفرعية، Escape والكليك برا) وصفحة الإعدادات (الأقسام، البحث، الـ switches)، وكيصوّرهم |
 | `tools/build-iphone.js` | كيبني الـ `.exe` ديال Noor iPhone |
 | `tools/dump-surface.js`, `tools/iphone_surface.js` | كيولّدو `scripts/parts/iphone-surface.js` (شنو كاين فـ Chromium وماكاينش فـ Safari) |
 | `.github/workflows/build.yml` | البناء ديال `.exe` على Windows |
@@ -101,6 +107,7 @@ npm run dist:iphone    # كيبني .exe ديال Noor iPhone
 xvfb-run -a node tools/smoke-iphone.js   # test كامل ديال Noor iPhone
 xvfb-run -a node tools/smoke-warmup.js [iphone]   # test ديال جمع الكوكيز
 xvfb-run -a node tools/smoke-windows.js [iphone]  # test ديال النوافذ ديال البروفايلات
+xvfb-run -a node tools/smoke-menu.js [iphone]     # test ديال القوائم والإعدادات
 ```
 
 باش تجدّد الحماية من كود iPhone:

@@ -74,7 +74,10 @@
       noor.invoke("nav:go", text);
     }
   });
-  $("profile").addEventListener("click", () => noor.invoke("menu:profile"));
+  $("profile").addEventListener("click", () => {
+    const r = $("profile").getBoundingClientRect();
+    noor.invoke("menu:profile", { x: r.left, y: r.top, width: r.width, height: r.height }, "center");
+  });
   window.addEventListener("focus", refresh);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) {

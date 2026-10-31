@@ -2,6 +2,8 @@
 const { app, Menu, dialog, clipboard, shell } = require("electron");
 const { Shields } = require("./shields");
 const { SETTINGS_URL, LIBRARY_URL, COOKIES_URL, isWebPage } = require("./address");
+const { STORE_URL } = require("./crx");
+const { iconLook } = require("./profile-icon");
 
 const KIND_TITLES = {
   canvas: "Canvas", webGL: "WebGL", audio: "Audio", clientRects: "ClientRects", screen: "Screen Size", hardware: "Processor & Memory",
@@ -20,28 +22,72 @@ class Menus {
     Menu.buildFromTemplate(template).popup({ window: this.browser.win });
   }
 
-  more() {
-    const browser = this.browser;
-    this.popup([
-      { label: "New Tab", accelerator: "CmdOrCtrl+T", click: () => browser.newTab() },
-      { label: "New Private Tab", accelerator: "CmdOrCtrl+Shift+N", click: () => browser.newTab({ isPrivate: true }) },
-      { label: "Bookmarks & History", accelerator: "CmdOrCtrl+H", click: () => browser.newTab({ url: LIBRARY_URL }) },
-      { type: "separator" },
-      { label: "Zoom", submenu: this.zoomItems() },
-      { label: "Night Mode", type: "checkbox", checked: browser.nightMode, click: (item) => (browser.windows ? browser.windows.setNightMode(item.checked) : browser.setNightMode(item.checked)) },
-      { label: "Find on Page", accelerator: "CmdOrCtrl+F", click: () => browser.findOnPage() },
-      { type: "separator" },
-      { label: `Profile: ${browser.profile.name}`, submenu: this.profileItems() },
-      { label: "Fingerprint", submenu: this.fingerprintItems() },
-      { type: "separator" },
-      { label: "Extensions", click: () => browser.newTab({ url: SETTINGS_URL + "#extensions" }) },
-      { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => browser.newTab({ url: SETTINGS_URL }) },
-      { label: "New Session…", click: () => this.confirmNewSession() },
-      { type: "separator" },
-      { label: `${this.browser.isIPhone ? "Noor iPhone" : "Noor"} ${app.getVersion()}`, enabled: false },
-    ]);
+  /// The ⋯ menu, as Chrome's: what opens, the profile, the tools, the
+  /// zoom, the settings; a small icon by each (see Browser.showMenu).
+  more(anchor = null) {
+    this.browser.showMenu(() => this.moreItems(), anchor, "end");
   }
 
+  moreItems() {
+    const browser = this.browser;
+    const tab = browser.selected;
+    const zoom = tab && !tab.webContents.isDestroyed() ? Math.round(tab.webContents.getZoomFactor() * 100) : 100;
+    const warmup = browser.windows && browser.windows.warmup;
+    const status = warmup ? warmup.status(browser.profile.id) : null;
+    const product = browser.isIPhone ? "Noor iPhone" : "Noor";
+    return [
+      { icon: "newTab", label: "New tab", shortcut: "Ctrl+T", click: () => browser.newTab() },
+      { icon: "private", label: "New private tab", shortcut: "Ctrl+Shift+N", click: () => browser.newTab({ isPrivate: true }) },
+      { type: "separator" },
+      {
+        type: "profile",
+        profile: profileLook(browser.profile),
+        label: browser.profile.name,
+        pill: status && (status.running || status.waiting) ? "Collecting cookies" : "",
+        submenu: this.profileItems(),
+      },
+      { icon: "history", label: "Bookmarks and history", shortcut: "Ctrl+H", click: () => browser.newTab({ url: LIBRARY_URL }) },
+      { icon: "cookie", label: "Cookies", submenu: this.cookieItems() },
+      { icon: "fingerprint", label: "Fingerprint", submenu: this.fingerprintItems() },
+      {
+        icon: "puzzle",
+        label: "Extensions",
+        submenu: [
+          { icon: "puzzle", label: "Manage extensions", click: () => browser.newTab({ url: SETTINGS_URL + "#extensions" }) },
+          { icon: "store", label: "Visit the Chrome Web Store", click: () => browser.newTab({ url: STORE_URL }) },
+        ],
+      },
+      { icon: "flame", label: "New session…", click: () => this.confirmNewSession() },
+      { type: "separator" },
+      {
+        type: "zoom",
+        label: "Zoom",
+        value: `${zoom}%`,
+        enabled: Boolean(tab),
+        actions: {
+          minus: () => this.zoomBy(1 / 1.1),
+          plus: () => this.zoomBy(1.1),
+          full: { click: () => browser.setFullScreen(!browser.fullScreen), keepOpen: false },
+        },
+      },
+      {
+        type: "toggle",
+        icon: "moon",
+        label: "Night mode",
+        checked: browser.nightMode,
+        keepOpen: true,
+        click: () => (browser.windows ? browser.windows.setNightMode(!browser.nightMode) : browser.setNightMode(!browser.nightMode)),
+      },
+      { icon: "search", label: "Find on page", shortcut: "Ctrl+F", click: () => browser.findOnPage() },
+      { icon: "printer", label: "Print…", shortcut: "Ctrl+P", enabled: Boolean(tab && isWebPage(tab.url)), click: () => browser.print() },
+      { type: "separator" },
+      { icon: "settings", label: "Settings", shortcut: "Ctrl+,", click: () => browser.newTab({ url: SETTINGS_URL }) },
+      { icon: "info", label: `About ${product}`, detail: app.getVersion(), click: () => browser.newTab({ url: SETTINGS_URL + "#about" }) },
+      { icon: "exit", label: "Exit", click: () => app.quit() },
+    ];
+  }
+
+  /// Zoom as a list (the application menu's shortcuts zoom by steps).
   zoomItems() {
     const tab = this.browser.selected;
     return [0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2].map((zoom) => ({
@@ -52,16 +98,19 @@ class Menus {
     }));
   }
 
+  /// New values for one kind of fingerprint, or for all.
   fingerprintItems() {
     const browser = this.browser;
     const items = browser.fingerprint.kinds.map((kind) => (kind === "device" ? {
+      icon: "refresh",
       label: "New iPhone",
       click: () => {
         browser.newFingerprint([kind]);
         browser.toast(`Now an ${browser.fingerprint.iphone().name}`);
       },
     } : {
-      label: `New ${KIND_TITLES[kind]} Fingerprint`,
+      icon: "refresh",
+      label: `New ${KIND_TITLES[kind]} fingerprint`,
       enabled: browser.fingerprint.isEnabled(kind),
       click: () => {
         browser.newFingerprint([kind]);
@@ -70,46 +119,69 @@ class Menus {
     }));
     items.push({ type: "separator" });
     items.push({
-      label: "Change All",
+      icon: "fingerprint",
+      label: "Change all",
       click: () => {
         browser.newFingerprint(browser.fingerprint.kinds);
         browser.toast("All fingerprints changed");
       },
     });
+    items.push({ icon: "settings", label: "Fingerprint settings", click: () => browser.newTab({ url: SETTINGS_URL + "#fingerprint" }) });
     return items;
   }
 
-  /// The profiles: each opens in a window of its own (or its window comes
-  /// to the front); this window's is checked.
+  /// Collecting cookies, and seeing them.
+  cookieItems() {
+    const browser = this.browser;
+    return [
+      { icon: "cookie", label: "Collect cookies…", click: () => browser.newTab({ url: SETTINGS_URL + "#cookies" }) },
+      { icon: "list", label: "See cookies", click: () => browser.newTab({ url: COOKIES_URL }) },
+    ];
+  }
+
+  /// The profiles, each with its initial on its color: each opens in a
+  /// window of its own (or its window comes to the front); this window's
+  /// is checked. Then making profiles, their cookies, deleting them.
   profileItems() {
     const browser = this.browser;
     const windows = browser.windows;
     const items = browser.profiles.all().map((profile) => {
-      const elsewhere = profile.id !== browser.profile.id && Boolean(windows && windows.forProfile(profile.id));
+      const here = profile.id === browser.profile.id;
+      const elsewhere = !here && Boolean(windows && windows.forProfile(profile.id));
       return {
-        label: profile.name + (elsewhere ? "   (open)" : ""),
-        type: "radio",
-        checked: profile.id === browser.profile.id,
+        type: "profileItem",
+        profile: profileLook(profile),
+        label: profile.name,
+        checked: here,
+        note: elsewhere ? "Open" : "",
         click: () => {
-          if (profile.id !== browser.profile.id && windows) {
+          if (!here && windows) {
             windows.open(profile);
           }
         },
       };
     });
     items.push({ type: "separator" });
-    items.push({ label: "Collect Cookies…", click: () => browser.newTab({ url: SETTINGS_URL + "#cookies" }) });
-    items.push({ label: "See Cookies", click: () => browser.newTab({ url: COOKIES_URL }) });
-    items.push({ label: "New Profile…", click: () => this.newProfile() });
-    items.push({ label: "Create Multiple Profiles…", click: () => this.newProfiles() });
+    items.push({ icon: "userPlus", label: "New profile…", click: () => this.newProfile() });
+    items.push({ icon: "users", label: "Create multiple profiles…", click: () => this.newProfiles() });
+    items.push({ type: "separator" });
+    items.push(...this.cookieItems());
     if (browser.profiles.all().length > 1) {
-      items.push({ label: "Delete All Profiles…", click: () => this.confirmDeleteAllProfiles() });
+      items.push({ type: "separator" });
+      items.push({ icon: "trash", label: "Delete all profiles…", danger: true, click: () => this.confirmDeleteAllProfiles() });
     }
     return items;
   }
 
-  profile() {
-    this.popup(this.profileItems());
+  /// The profile button's menu: this window's profile, then every profile
+  /// and what to do with them.
+  profile(anchor = null, align = "end") {
+    const browser = this.browser;
+    this.browser.showMenu(() => [
+      { type: "header", profile: profileLook(browser.profile), title: browser.profile.name, subtitle: "This window's profile. Each profile opens in a window of its own." },
+      { type: "separator" },
+      ...this.profileItems(),
+    ], anchor, align);
   }
 
   /// How many profiles to make at once, asked in the toolbar.
@@ -174,23 +246,49 @@ class Menus {
     }
   }
 
-  shields() {
+  /// The shields' menu, for the shown page's site: up or down, what they
+  /// blocked, and its fingerprints.
+  shields(anchor = null) {
+    this.browser.showMenu(() => this.shieldItems(), anchor, "start");
+  }
+
+  shieldItems() {
     const browser = this.browser;
     const tab = browser.selected;
     const site = tab ? Shields.site(tab.url) : null;
     if (!site || !isWebPage(tab.url)) {
-      this.popup([{ label: "Shields protect websites", enabled: false }]);
-      return;
+      return [
+        { type: "header", icon: "shield", title: "Shields protect websites", subtitle: "Open a site to see what they block there." },
+        { type: "separator" },
+        { icon: "settings", label: "Shields settings", click: () => browser.newTab({ url: SETTINGS_URL + "#shields" }) },
+      ];
     }
     const up = browser.shields.areUp(tab.url);
-    this.popup([
-      { label: `Shields ${up ? "up" : "down"} for ${site}`, enabled: false },
-      { label: `${tab.trackersBlocked} trackers blocked on this page`, enabled: false },
+    return [
+      {
+        type: "header",
+        icon: up ? "shieldCheck" : "shieldOff",
+        title: up ? `Shields are up for ${site}` : `Shields are down for ${site}`,
+        subtitle: up ? `${tab.trackersBlocked} trackers blocked on this page` : "Trackers can load, and the site sees this PC as it is.",
+      },
       { type: "separator" },
-      { label: `Shields for ${site}`, type: "checkbox", checked: up, click: (item) => browser.setShieldsUp(item.checked) },
+      {
+        type: "toggle",
+        icon: "shield",
+        label: `Shields for ${site}`,
+        checked: up,
+        keepOpen: true,
+        click: () => {
+          browser.setShieldsUp(!up);
+          if (browser.windows) {
+            browser.windows.applyPrivacySettings();
+          }
+        },
+      },
+      { icon: "fingerprint", label: "Fingerprint", submenu: this.fingerprintItems() },
       { type: "separator" },
-      { label: "Fingerprint", submenu: this.fingerprintItems() },
-    ]);
+      { icon: "settings", label: "Shields settings", click: () => browser.newTab({ url: SETTINGS_URL + "#shields" }) },
+    ];
   }
 
   tab(tab) {
@@ -273,6 +371,7 @@ class Menus {
           { label: "New Tab", accelerator: "CmdOrCtrl+T", click: () => browser.newTab() },
           { label: "New Private Tab", accelerator: "CmdOrCtrl+Shift+N", click: () => browser.newTab({ isPrivate: true }) },
           { label: "Close Tab", accelerator: "CmdOrCtrl+W", click: () => tab() && browser.close(tab()) },
+          { label: "Print…", accelerator: "CmdOrCtrl+P", click: () => browser.print() },
           { type: "separator" },
           { label: "Quit", accelerator: "CmdOrCtrl+Q", role: "quit" },
         ],
@@ -320,4 +419,13 @@ class Menus {
   }
 }
 
-module.exports = { Menus, KIND_TITLES };
+/// A profile as the menus show it: its initial (or its number) on its
+/// color, the color of its window's icon in the taskbar.
+const profileLook = (profile) => {
+  const name = String((profile && profile.name) || "");
+  const number = /(\d+)\s*$/.exec(name);
+  const initial = number ? number[1].slice(-3) : (name.trim()[0] || "?").toUpperCase();
+  return { color: profile && profile.isDefault ? "#5b3df5" : iconLook(name).colors[0], initial };
+};
+
+module.exports = { Menus, KIND_TITLES, profileLook };

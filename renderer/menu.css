@@ -1,0 +1,91 @@
+/* The window's menus (the ⋯ menu, the profile's, the shields'), as Chrome
+   draws its own: a panel with a small icon by each item, its shortcut on the
+   right, flyout submenus, and rows of their own (the zoom, a switch, the
+   profile). Drawn on a page over the window (see Browser.showMenu). */
+:root {
+  --menu: #ffffff; --fg: #1f1f1f; --muted: #5f6368; --icon: #444746; --line: #e3e1dc;
+  --hover: rgba(31, 31, 31, 0.07); --press: rgba(31, 31, 31, 0.12); --accent: #5b3df5;
+  --tint: rgba(91, 61, 245, 0.09); --pill: rgba(91, 61, 245, 0.14); --danger: #c5221f;
+  --shadow: 0 4px 10px 3px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.24);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --menu: #2b2a27; --fg: #ece7dc; --muted: #a49d90; --icon: #cdc7ba; --line: #3e3b34;
+    --hover: rgba(255, 255, 255, 0.07); --press: rgba(255, 255, 255, 0.12); --accent: #b39dff;
+    --tint: rgba(179, 157, 255, 0.12); --pill: rgba(179, 157, 255, 0.2); --danger: #f28b82;
+    --shadow: 0 4px 12px 3px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.5);
+  }
+}
+body.private {
+  --menu: #2e2546; --fg: #ece7f5; --muted: #b3a8d1; --icon: #d4cbee; --line: #43395f;
+  --hover: rgba(255, 255, 255, 0.07); --press: rgba(255, 255, 255, 0.12); --accent: #b39dff;
+  --tint: rgba(179, 157, 255, 0.14); --pill: rgba(179, 157, 255, 0.22);
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; font: 14px/1.25 "Segoe UI", system-ui, sans-serif; color: var(--fg); user-select: none; }
+#layer { position: fixed; inset: 0; }
+
+.panel {
+  position: fixed; width: 320px; padding: 8px 0; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--menu); border-radius: 12px; box-shadow: var(--shadow); outline: none;
+  scrollbar-width: thin;
+}
+.panel.sub { width: 288px; z-index: 2; }
+.panel.appear { animation: appear 110ms ease-out; }
+@keyframes appear { from { opacity: 0; transform: translateY(-4px) scale(0.99); } to { opacity: 1; transform: none; } }
+
+.item {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 36px; padding: 0 16px 0 18px;
+  border: 0; background: none; color: var(--fg); font: inherit; text-align: left; cursor: default; outline: none;
+}
+.item:hover:not(:disabled), .item:focus-visible, .item.open { background: var(--hover); }
+.item:active:not(:disabled) { background: var(--press); }
+.item:disabled { opacity: 0.42; }
+.item .icon { width: 20px; height: 20px; flex: none; color: var(--icon); display: flex; }
+.item .label { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.item .shortcut, .item .detail { color: var(--muted); font-size: 13px; flex: none; }
+.item .more { width: 18px; height: 18px; color: var(--muted); margin-right: -4px; flex: none; display: flex; }
+.item.danger, .item.danger .icon { color: var(--danger); }
+.separator { height: 1px; background: var(--line); margin: 8px 0; }
+
+/* The profile, as Chrome shows who is signed in. */
+.item.profilerow { margin: 2px 8px 4px; width: calc(100% - 16px); min-height: 44px; padding: 0 10px; border-radius: 12px; background: var(--tint); }
+.item.profilerow:hover, .item.profilerow.open { background: var(--pill); }
+.item.profilerow .label { font-weight: 600; }
+.pill { flex: none; padding: 3px 10px; border-radius: 999px; background: var(--pill); color: var(--accent); font-size: 12px; font-weight: 600; }
+.avatar {
+  width: 24px; height: 24px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 11px; font-weight: 700; letter-spacing: -0.02em;
+}
+.item .note { color: var(--muted); font-size: 12px; flex: none; }
+.item .tick { width: 18px; height: 18px; color: var(--accent); flex: none; display: flex; }
+
+/* The zoom: − 100% + and full screen, as Chrome's. */
+.item.zoomrow { cursor: default; }
+.item.zoomrow:hover { background: none; }
+.zoomgroup { display: flex; align-items: center; gap: 4px; flex: none; }
+.round {
+  width: 32px; height: 32px; border: 0; border-radius: 50%; background: var(--hover); color: var(--icon);
+  display: flex; align-items: center; justify-content: center; cursor: default; outline: none; padding: 0;
+}
+.round:hover { background: var(--press); }
+.round:focus-visible { outline: 2px solid var(--accent); }
+.round:disabled { opacity: 0.4; }
+.zoomvalue { min-width: 52px; text-align: center; font-size: 13px; }
+.vsep { width: 1px; height: 24px; background: var(--line); margin: 0 6px; }
+
+/* A switch, as Chrome's settings have. */
+.switch { width: 34px; height: 20px; flex: none; border-radius: 10px; background: color-mix(in srgb, var(--muted) 45%, transparent); position: relative; transition: background 120ms; }
+.switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); transition: left 120ms; }
+.switch.on { background: var(--accent); }
+.switch.on::after { left: 17px; }
+
+/* A heading: who or what the menu is about. */
+.header { display: flex; align-items: center; gap: 12px; padding: 8px 18px 10px; }
+.header .icon { width: 28px; height: 28px; color: var(--accent); display: flex; flex: none; }
+.header .avatar { width: 36px; height: 36px; font-size: 15px; }
+.header .texts { min-width: 0; }
+.header .title { font-weight: 600; font-size: 15px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.header .subtitle { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.caption { padding: 6px 18px 4px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.footer { padding: 6px 18px 2px; color: var(--muted); font-size: 12px; }
