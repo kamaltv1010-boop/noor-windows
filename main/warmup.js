@@ -1,16 +1,19 @@
 "use strict";
 
-/// Cookies for the profile in use, as a profile in daily use has them: in a
-/// tab nobody sees (see Browser.backgroundTab), with everything the
-/// profile's own tabs have (its fingerprints, its iPhone in Noor iPhone, its
-/// shields and time zone, its extensions), Noor visits a random mix of
+/// Cookies for a profile, as a profile in daily use has them: in a tab
+/// nobody sees (see Browser.backgroundTab), with everything the profile's
+/// own tabs have (its fingerprints, its iPhone in Noor iPhone, its shields
+/// and time zone, its extensions), Noor visits a random mix of
 /// popular sites, the world's and those of the country of the time zone
 /// pages see, and the profile keeps the cookies they give. A visit reads
 /// the page for a while, scrolls it as a person does, accepts the cookie
 /// banner where one asks, and sometimes goes on to another page of the
 /// same site. It never follows a link that signs in or out, buys, deletes
 /// or downloads; nothing it opens becomes a window, plays aloud, shows a
-/// dialog or goes into the history.
+/// dialog or goes into the history. Many profiles collect at once, each
+/// in its own tab (see Warmup).
+
+const os = require("os");
 
 /// Popular sites, by where their visitors are: the world's, and a
 /// country's (or the Arab world's). A visit starts at the home page.
@@ -193,10 +196,30 @@ const pickSites = (count, zone, random = Math.random) => {
 const MAX_SITES = 200;
 
 /// What "Collect cookies" does when nothing is saved: 20 popular sites,
-/// and nothing by itself in a new profile.
-const DEFAULT_SETTINGS = { mode: "popular", count: 20, sites: [], auto: false };
+/// nothing by itself in a new profile, and every profile at once (as many
+/// as this PC can take, see machineLimit).
+const DEFAULT_SETTINGS = { mode: "popular", count: 20, sites: [], auto: false, parallel: 0 };
 
 const clampCount = (value) => Math.max(1, Math.min(MAX_SITES, Math.floor(Number(value)) || DEFAULT_SETTINGS.count));
+
+/// The most profiles that ever collect at once.
+const MAX_AT_ONCE = 50;
+
+/// How many profiles at once a setting says: a number, or 0 for as many as
+/// this PC can take.
+const clampParallel = (value) => {
+  const wanted = Math.floor(Number(value));
+  return Number.isFinite(wanted) && wanted > 0 ? Math.min(MAX_AT_ONCE, wanted) : 0;
+};
+
+/// As many profiles as this PC can collect in at once: each loads pages
+/// as an open tab does, about 400 MB of memory (3 GB left for the rest)
+/// and a quarter of a processor (its pages are read more than loaded).
+const machineLimit = (totalBytes = os.totalmem(), processors = os.cpus().length) => Math.max(2, Math.min(
+  MAX_AT_ONCE,
+  Math.floor((totalBytes / 2 ** 30 - 3) / 0.4),
+  Math.max(1, processors) * 4,
+));
 
 /// Sites as a person writes them, one per line ("hespress.com",
 /// "https://www.youtube.com/"), as addresses to visit: https:// where no
@@ -233,8 +256,8 @@ const normalizeSites = (input) => {
 
 /// The saved settings (store key "warmup"), each value checked: which
 /// sites ("popular", a new random mix each time, or "mine", the user's
-/// list), how many popular ones, the user's list, and whether a new
-/// profile collects by itself.
+/// list), how many popular ones, the user's list, whether a new profile
+/// collects by itself, and how many profiles collect at once.
 const readSettings = (store) => {
   const saved = (store && store.get("warmup", null)) || {};
   return {
@@ -242,6 +265,7 @@ const readSettings = (store) => {
     count: clampCount(saved.count),
     sites: normalizeSites(Array.isArray(saved.sites) ? saved.sites : []),
     auto: Boolean(saved.auto),
+    parallel: clampParallel(saved.parallel),
   };
 };
 
@@ -394,6 +418,9 @@ const WORLD = 1729;
 /// goes; how many scrolls a page gets, and the odds of going on to another
 /// page of the site.
 const TIMING = {
+  // Before the first site: profiles started together begin within a few
+  // seconds of each other, not all in the same one.
+  start: [0, 5000],
   load: 25000,
   settle: [1500, 3200],
   between: [900, 2600],
@@ -405,7 +432,7 @@ const TIMING = {
 };
 
 /// TIMING, quicker (the tests').
-const FAST = Object.assign({}, TIMING, { load: 10000, settle: [150, 300], between: [100, 250], afterBanner: [150, 250] });
+const FAST = Object.assign({}, TIMING, { start: [0, 200], load: 10000, settle: [150, 300], between: [100, 250], afterBanner: [150, 250] });
 
 /// One profile's visits: the tab nobody sees they happen in (that
 /// profile's, with its fingerprints), and how far they are. They go on
@@ -522,6 +549,7 @@ class Collection {
   }
 
   async run(list, ses) {
+    await this.pause(this.timing.start);
     for (const url of list) {
       if (this.state.stopped || !this.tab) {
         break;
@@ -822,9 +850,6 @@ class Collection {
   }
 }
 
-/// How many profiles collect at once; the others wait their turn.
-const AT_ONCE = 2;
-
 /// A profile's status when nothing was collected in it yet.
 const IDLE = {
   running: false, waiting: false, finished: false, stopped: false, total: 0, done: 0, failed: 0, current: "", region: "",
@@ -833,9 +858,9 @@ const IDLE = {
 
 /// Collecting cookies, profile by profile: each profile's visits happen in
 /// a tab of its own that nobody sees, with its own fingerprints, whichever
-/// profile is in use (switching to another doesn't stop them); AT_ONCE at
-/// a time, the others waiting their turn; and what each profile's last
-/// visits did.
+/// profile is in use (switching to another doesn't stop them); all at once
+/// (as many as the settings say, see atOnce), the rest waiting their turn;
+/// and what each profile's last visits did.
 class Warmup {
   /// `sites`: the addresses to visit instead of popular ones (tests);
   /// `timing`: TIMING's values to change; `random`: what picks.
@@ -887,8 +912,13 @@ class Warmup {
       count: next.count !== undefined ? clampCount(next.count) : current.count,
       sites: next.sites !== undefined ? normalizeSites(next.sites) : current.sites,
       auto: next.auto !== undefined ? Boolean(next.auto) : current.auto,
+      parallel: next.parallel !== undefined ? clampParallel(next.parallel) : current.parallel,
     };
     this.browser.store.set("warmup", saved);
+    // More at once: those waiting start now.
+    if (this.waiting.length) {
+      this.next().catch(() => {});
+    }
     return saved;
   }
 
@@ -928,9 +958,18 @@ class Warmup {
     return last ? { ...last, added: Math.max(0, last.cookies - last.before) } : { ...IDLE, profileId: id, profileName: profile.name };
   }
 
+  /// How many profiles collect at once: as the settings say, or as many
+  /// as this PC can take.
+  atOnce() {
+    const parallel = this.settings().parallel;
+    return parallel > 0 ? parallel : machineLimit();
+  }
+
   /// The profiles collecting, and those waiting their turn.
   overview() {
     return {
+      atOnce: this.atOnce(),
+      machine: machineLimit(),
       running: [...this.active.values()].map((c) => ({ id: c.profile.id, name: c.profile.name, done: c.state.done, total: c.state.total })),
       waiting: this.waiting.map((entry) => ({ id: entry.profile.id, name: entry.profile.name })),
     };
@@ -961,36 +1000,51 @@ class Warmup {
 
   /// Collects the cookies of `profile` (the one in use if none), with the
   /// settings (`count`: that many popular sites instead): now if fewer
-  /// than AT_ONCE profiles are collecting, else once their turn comes.
+  /// profiles than atOnce are collecting, else once their turn comes.
   async start(count = null, profile = this.browser.profile) {
-    if (!profile || this.active.has(profile.id) || this.waiting.some((entry) => entry.profile.id === profile.id)) {
-      return this.snapshot(profile && profile.id);
+    if (profile) {
+      await this.startMany([profile], count);
     }
-    this.results.delete(profile.id);
-    this.waiting.push({ profile, count });
-    this.emit(profile.id);
-    await this.next();
-    return this.snapshot(profile.id);
+    return this.snapshot(profile && profile.id);
   }
 
-  /// Starts what waits, while fewer than AT_ONCE are under way.
+  /// Collects the cookies of each of `profiles` (those not collecting or
+  /// waiting already), all together: as many at once as atOnce, the rest
+  /// once their turn comes.
+  async startMany(profiles, count = null) {
+    const added = [];
+    for (const profile of profiles) {
+      if (profile && !this.active.has(profile.id) && !this.waiting.some((entry) => entry.profile.id === profile.id)) {
+        this.results.delete(profile.id);
+        this.waiting.push({ profile, count });
+        added.push(profile);
+      }
+    }
+    for (const profile of added) {
+      this.emit(profile.id);
+    }
+    await this.next();
+  }
+
+  /// Starts what waits, all of it together, while fewer than atOnce are
+  /// under way.
   async next() {
-    while (this.active.size < AT_ONCE && this.waiting.length) {
+    const limit = this.atOnce();
+    const starting = [];
+    while (this.active.size < limit && this.waiting.length) {
       const { profile, count } = this.waiting.shift();
       if (!this.browser.profiles.find(profile.id)) {
         continue;
       }
       const collection = this.collectionFor(profile, count);
       this.active.set(profile.id, collection);
-      try {
-        await collection.begin();
-      } catch (error) {
-        collection.stop();
-      }
-      collection.ended.then(() => this.ended(collection));
-      for (const entry of this.waiting) {
-        this.emit(entry.profile.id);
-      }
+      starting.push(collection.begin().catch(() => collection.stop()).then(() => {
+        collection.ended.then(() => this.ended(collection));
+      }));
+    }
+    await Promise.all(starting);
+    for (const entry of this.waiting) {
+      this.emit(entry.profile.id);
     }
   }
 
@@ -1062,5 +1116,5 @@ class Warmup {
 module.exports = {
   Warmup, SITES, REGION_NAMES, regionsFor, siteKey, pickSites, pickLink, consentScript, LINKS_SCRIPT,
   CONSENT_SELECTORS, CONSENT_WORDS, CONSENT_ABOUT, TIMING, FAST, MAX_SITES, DEFAULT_SETTINGS, normalizeSites, readSettings,
-  Collection, AT_ONCE,
+  Collection, MAX_AT_ONCE, machineLimit, clampParallel,
 };

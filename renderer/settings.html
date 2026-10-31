@@ -18,7 +18,7 @@
       <button class="button" id="newprofile">New Profile</button>
     </div>
     <div class="row">
-      <div class="label">Create multiple profiles<small>As many as you say at once (up to 100), each with its own cookies and fingerprints: “Profile 3”, “Profile 4”… or the name you give, numbered.</small></div>
+      <div class="label">Create multiple profiles<small>As many as you say at once (up to 100), each with its own cookies and fingerprints: “Profile 3”, “Profile 4”… or the name you give, numbered. With “Collect in every new profile” on (Cookies, below), they all collect their cookies at once.</small></div>
       <div style="display:flex;gap:6px;align-items:center">
         <input type="number" id="manycount" min="1" max="100" step="1" value="10" title="How many">
         <input type="text" id="manyname" placeholder="Profile" style="width:110px" title="Name">
@@ -43,6 +43,10 @@
       <button class="button secondary small" id="warmupall">Collect in All</button>
     </div>
     <div class="row">
+      <div class="label">At once<small id="warmupparallelhint">How many profiles collect at the same time; the others wait their turn.</small></div>
+      <select id="warmupparallel" title="Profiles at once"></select>
+    </div>
+    <div class="row">
       <div class="label">Sites to visit<small id="warmupmodehint"></small></div>
       <select id="warmupmode"><option value="popular">Popular sites</option><option value="mine">My sites</option></select>
     </div>
@@ -55,7 +59,7 @@
       <textarea id="warmupsites" rows="7" spellcheck="false" placeholder="hespress.com&#10;avito.ma&#10;https://www.youtube.com/"></textarea>
     </div>
     <div class="row">
-      <div class="label">Collect in every new profile<small>A new profile collects cookies the first time it is opened, with these settings.</small></div>
+      <div class="label">Collect in every new profile<small>A new profile starts collecting as soon as it is made, in the background, with these settings; profiles made together collect together.</small></div>
       <input type="checkbox" id="warmupauto">
     </div>
     <div class="row">
@@ -69,7 +73,7 @@
       <button class="button secondary small" id="cookiessee">See Cookies</button>
     </div>
   </div>
-  <p class="footer" id="warmupfooter">So that a site that checks finds a profile in daily use, not an empty one: Noor visits sites in a tab you don't see, in the profile's own cookies and with its own fingerprints and shields, while you use this profile or any other (switching doesn't stop it; two profiles collect at a time, the others wait their turn). It reads each page a little, scrolls, accepts the cookie banner, and sometimes opens another page of the site, as a person would. Popular sites are the world's and those of the country of your time zone, in a new random mix each time. It never signs in or out, buys or downloads anything, and nothing goes into the history; your tabs stay as they are.</p>
+  <p class="footer" id="warmupfooter">So that a site that checks finds a profile in daily use, not an empty one: Noor visits sites in a tab you don't see, in the profile's own cookies and with its own fingerprints and shields, while you use this profile or any other (switching doesn't stop it; many profiles collect at the same time, as many as “At once” says, the others waiting their turn). It reads each page a little, scrolls, accepts the cookie banner, and sometimes opens another page of the site, as a person would. Popular sites are the world's and those of the country of your time zone, in a new random mix each time. It never signs in or out, buys or downloads anything, and nothing goes into the history; your tabs stay as they are.</p>
 
   <h3 id="extensions">Extensions</h3>
   <div class="card" id="extensionlist"></div>

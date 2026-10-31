@@ -151,21 +151,92 @@ test("sites as a person writes them: addresses or pages, each once, https:// whe
   assert.equal(warmup.normalizeSites(many).length, warmup.MAX_SITES);
 });
 
-test("the settings kept: popular sites or the user's, how many, and new profiles, each checked", () => {
-  const store = { data: {}, get(key, fallback) { return key in this.data ? this.data[key] : fallback; }, set(key, value) { this.data[key] = value; } };
-  assert.deepEqual(warmup.readSettings(store), { mode: "popular", count: 20, sites: [], auto: false });
-  store.set("warmup", { mode: "mine", count: "7", sites: ["avito.ma", "nonsense", "https://le360.ma/"], auto: true });
-  assert.deepEqual(warmup.readSettings(store), { mode: "mine", count: 7, sites: ["https://avito.ma/", "https://le360.ma/"], auto: true });
-  store.set("warmup", { mode: "other", count: 1000, sites: "hespress.com", auto: "yes" });
-  assert.deepEqual(warmup.readSettings(store), { mode: "popular", count: 200, sites: [], auto: true });
-  store.set("warmup", { count: 0 });
+const memoryStore = () => ({ data: {}, get(key, fallback) { return key in this.data ? this.data[key] : fallback; }, set(key, value) { this.data[key] = value; } });
+
+test("the settings kept: popular sites or the user's, how many, new profiles and how many at once, each checked", () => {
+  const store = memoryStore();
+  assert.deepEqual(warmup.readSettings(store), { mode: "popular", count: 20, sites: [], auto: false, parallel: 0 });
+  store.set("warmup", { mode: "mine", count: "7", sites: ["avito.ma", "nonsense", "https://le360.ma/"], auto: true, parallel: "5" });
+  assert.deepEqual(warmup.readSettings(store), { mode: "mine", count: 7, sites: ["https://avito.ma/", "https://le360.ma/"], auto: true, parallel: 5 });
+  store.set("warmup", { mode: "other", count: 1000, sites: "hespress.com", auto: "yes", parallel: 1000 });
+  assert.deepEqual(warmup.readSettings(store), { mode: "popular", count: 200, sites: [], auto: true, parallel: warmup.MAX_AT_ONCE });
+  store.set("warmup", { count: 0, parallel: -3 });
   assert.equal(warmup.readSettings(store).count, 20);
-  store.set("warmup", { count: -5 });
+  assert.equal(warmup.readSettings(store).parallel, 0);
+  store.set("warmup", { count: -5, parallel: "lots" });
   assert.equal(warmup.readSettings(store).count, 1);
+  assert.equal(warmup.readSettings(store).parallel, 0);
   // Saving keeps what isn't changed.
   const saver = new warmup.Warmup({ store });
-  store.set("warmup", { mode: "mine", count: 30, sites: ["a.ma"], auto: false });
-  assert.deepEqual(saver.saveSettings({ auto: true }), { mode: "mine", count: 30, sites: ["https://a.ma/"], auto: true });
-  assert.deepEqual(saver.saveSettings({ mode: "popular", count: 55, sites: "b.ma\nc.ma" }), { mode: "popular", count: 55, sites: ["https://b.ma/", "https://c.ma/"], auto: true });
-  assert.deepEqual(store.data.warmup, { mode: "popular", count: 55, sites: ["https://b.ma/", "https://c.ma/"], auto: true });
+  store.set("warmup", { mode: "mine", count: 30, sites: ["a.ma"], auto: false, parallel: 3 });
+  assert.deepEqual(saver.saveSettings({ auto: true }), { mode: "mine", count: 30, sites: ["https://a.ma/"], auto: true, parallel: 3 });
+  assert.deepEqual(saver.saveSettings({ mode: "popular", count: 55, sites: "b.ma\nc.ma" }), { mode: "popular", count: 55, sites: ["https://b.ma/", "https://c.ma/"], auto: true, parallel: 3 });
+  assert.deepEqual(saver.saveSettings({ parallel: 0 }), { mode: "popular", count: 55, sites: ["https://b.ma/", "https://c.ma/"], auto: true, parallel: 0 });
+  assert.deepEqual(store.data.warmup, { mode: "popular", count: 55, sites: ["https://b.ma/", "https://c.ma/"], auto: true, parallel: 0 });
+});
+
+test("as many profiles at once as the PC's memory and processors take, two at least, fifty at most", () => {
+  const GB = 2 ** 30;
+  assert.equal(warmup.machineLimit(4 * GB, 8), 2);
+  assert.equal(warmup.machineLimit(8 * GB, 8), 12);
+  assert.equal(warmup.machineLimit(16 * GB, 4), 16);
+  assert.equal(warmup.machineLimit(16 * GB, 8), 32);
+  assert.equal(warmup.machineLimit(64 * GB, 32), warmup.MAX_AT_ONCE);
+  assert.equal(warmup.machineLimit(64 * GB, 0), 4);
+  assert.ok(warmup.machineLimit() >= 2 && warmup.machineLimit() <= warmup.MAX_AT_ONCE);
+  assert.deepEqual([0, -1, "x", null, undefined, 1, 2.7, "20", 51].map(warmup.clampParallel), [0, 0, 0, 0, 0, 1, 2, 20, 50]);
+});
+
+test("profiles started together collect together, as many at once as the settings say, the rest in line", async () => {
+  const store = memoryStore();
+  const profiles = ["a", "b", "c", "d", "e"].map((id) => ({ id, name: id.toUpperCase() }));
+  const browser = { store, profile: profiles[0], profiles: { find: (id) => profiles.find((p) => p.id === id) }, clearOnQuit: () => false };
+  const collector = new warmup.Warmup(browser);
+  collector.count = async () => ({ cookies: 0, domains: 0 });
+  collector.session = () => null;
+  // A collection that runs until told to end.
+  const begun = [];
+  collector.collectionFor = (profile) => {
+    const collection = {
+      profile, state: { running: false, done: 0, total: 3, stopped: false, finished: false },
+      begin: async () => {
+        collection.state.running = true;
+        begun.push(profile.id);
+        collection.ended = new Promise((resolve) => { collection.end = resolve; });
+      },
+      stop() { Object.assign(collection.state, { running: false, stopped: true, finished: true }); collection.end(); },
+      status: () => ({ ...collection.state, profileId: profile.id, profileName: profile.name, cookies: 0, before: 0 }),
+    };
+    return collection;
+  };
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+  // Two at once: two start in the same turn, the rest wait in order.
+  store.set("warmup", { parallel: 2 });
+  await collector.startMany(profiles.slice(0, 4));
+  assert.deepEqual(begun, ["a", "b"]);
+  let overview = collector.overview();
+  assert.equal(overview.atOnce, 2);
+  assert.deepEqual(overview.running.map((r) => r.id), ["a", "b"]);
+  assert.deepEqual(overview.waiting.map((w) => w.id), ["c", "d"]);
+  assert.equal(collector.status("d").position, 2);
+  // Asking again changes nothing.
+  await collector.startMany(profiles.slice(0, 4));
+  assert.equal(collector.waiting.length, 2);
+  // One ends: the next takes its place.
+  collector.active.get("a").end();
+  await settle();
+  await settle();
+  assert.deepEqual(begun, ["a", "b", "c"]);
+  // More at once: those waiting start as soon as it is saved.
+  collector.saveSettings({ parallel: 0 });
+  await settle();
+  assert.deepEqual(begun, ["a", "b", "c", "d"]);
+  assert.equal(collector.overview().atOnce, warmup.machineLimit());
+  // All at once: a new one starts at once too.
+  await collector.start(null, profiles[4]);
+  assert.deepEqual([...collector.active.keys()].sort(), ["b", "c", "d", "e"]);
+  collector.stopAll();
+  assert.equal(collector.running, false);
+  assert.ok(["b", "c", "d", "e"].every((id) => collector.status(id).stopped));
 });

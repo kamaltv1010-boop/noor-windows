@@ -198,26 +198,49 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
   });
   fs.writeFileSync(path.join(userData, "cookies.png"), Buffer.from(viewer.shot, "base64"));
   // Several profiles at once, from the settings page: the profile in use
-  // stays, and each new one collects its cookies in the background, two at
-  // a time, with its own fingerprints, not the profile in use's.
+  // stays, and the new ones all collect their cookies at the same time, in
+  // the background, each with its own fingerprints, not the profile in
+  // use's. With one at a time, the others wait their turn.
   const many = await main(async (electron, sites) => {
     const browser = global.noorTest.browser;
     const warmup = global.noorTest.warmup;
-    warmup.saveSettings({ mode: "mine", sites: sites.join("\n"), auto: true });
+    warmup.saveSettings({ mode: "mine", sites: sites.join("\n"), auto: true, parallel: 0 });
     const inUse = browser.profile;
     const before = global.noorTest.context.profiles.all().length;
     const tab = browser.newTab({ url: "noor://app/settings.html" });
     await new Promise((r) => setTimeout(r, 1500));
+    const select = await tab.webContents.executeJavaScript("({ value: document.getElementById('warmupparallel').value, label: document.getElementById('warmupparallel').selectedOptions[0].textContent })");
     await tab.webContents.executeJavaScript("document.getElementById('manycount').value = '3'; document.getElementById('manyname').value = 'Farm'; document.getElementById('manycreate').click();");
-    let twoAndWaiting = false;
+    let waited = false;
     let most = 0;
+    let hint = "";
+    const toasts = new Set();
     for (let i = 0; i < 1200 && (warmup.running || i < 10); i++) {
       const now = warmup.overview();
       most = Math.max(most, now.running.length);
-      if (now.running.length === 2 && now.waiting.length >= 1) twoAndWaiting = true;
+      waited = waited || now.waiting.length > 0;
+      if (i % 4 === 0) {
+        const shown = await tab.webContents.executeJavaScript("document.getElementById('warmupallhint').textContent").catch(() => "");
+        if (/^Collecting in 3 profiles at once/.test(shown)) hint = shown;
+        toasts.add(await browser.chrome.webContents.executeJavaScript("document.getElementById('toast').textContent").catch(() => ""));
+      }
       await new Promise((r) => setTimeout(r, 50));
     }
     const listed = await tab.webContents.executeJavaScript("[...document.querySelectorAll('#profiles .row .label')].map((l) => l.firstChild.textContent)");
+    const farmsMade = global.noorTest.context.profiles.all().filter((p) => /^Farm \d+$/.test(p.name));
+    const firstRun = new Map(farmsMade.map((profile) => [profile.id, warmup.status(profile.id)]));
+    // One at a time: chosen on the page, the second profile waits its turn.
+    await tab.webContents.executeJavaScript("const s = document.getElementById('warmupparallel'); s.value = '1'; s.dispatchEvent(new Event('change'));");
+    await new Promise((r) => setTimeout(r, 500));
+    await warmup.startMany(farmsMade.slice(0, 2));
+    const oneByOne = warmup.overview();
+    const queued = { atOnce: oneByOne.atOnce, running: oneByOne.running.length, waiting: oneByOne.waiting.length, saved: warmup.settings().parallel, second: warmup.status(farmsMade[1].id), text: "" };
+    for (let i = 0; i < 20 && !/Waiting their turn/.test(queued.text); i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      queued.text = await tab.webContents.executeJavaScript("document.getElementById('warmupallhint').textContent");
+    }
+    warmup.stopAll();
+    warmup.saveSettings({ parallel: 0 });
     browser.close(tab);
     const all = global.noorTest.context.profiles.all();
     const made = all.filter((p) => /^Farm \d+$/.test(p.name));
@@ -225,10 +248,10 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
     for (const profile of made) {
       const got = await electron.session.fromPartition(browser.partitionFor(false, profile)).cookies.get({});
       const value = (name) => { const c = got.find((x) => x.name === name); return c ? decodeURIComponent(c.value) : null; };
-      farms.push({ name: profile.name, status: warmup.status(profile.id), ua: value("ua_b"), screen: value("screen_b"), mine: global.noorTest.shownOf(profile.id) });
+      farms.push({ name: profile.name, status: firstRun.get(profile.id), ua: value("ua_b"), screen: value("screen_b"), mine: global.noorTest.shownOf(profile.id) });
     }
     const own = await global.noorTest.cookies.list(inUse);
-    return { added: all.length - before, names: made.map((p) => p.name), listed, stayed: browser.profile.id === inUse.id, inUseClean: !own.sites.some((s) => s.site === "warm-b.test"), twoAndWaiting, most, farms };
+    return { added: all.length - before, names: made.map((p) => p.name), listed, stayed: browser.profile.id === inUse.id, inUseClean: !own.sites.some((s) => s.site === "warm-b.test"), select, waited, most, hint, toasts: [...toasts].filter(Boolean), queued, farms };
   }, [`http://warm-b.test:${port}/`]);
   // A profile's collection goes on when another profile is opened.
   const switching = await main(async (electron, sites) => {
@@ -276,7 +299,9 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
   check("a site's cookies taken away, and all saved as cookies.txt", viewer.exported && viewer.removed === 1 && viewer.left === 0, { exported: viewer.exported, removed: viewer.removed, left: viewer.left });
   console.log("cookies page screenshot:", path.join(userData, "cookies.png"));
   check("several profiles at once, from the settings; the profile in use stays and keeps its cookies", many.added === 3 && many.names.join() === "Farm 1,Farm 2,Farm 3" && many.names.every((name) => many.listed.includes(name)) && many.stayed && many.inUseClean, { added: many.added, names: many.names, stayed: many.stayed, inUseClean: many.inUseClean });
-  check("each new profile collects in the background, two at a time", many.twoAndWaiting && many.most === 2 && many.farms.every((f) => f.status.finished && !f.status.stopped && f.status.done === 1), { twoAndWaiting: many.twoAndWaiting, most: many.most, farms: many.farms.map((f) => f.status) });
+  check("the new profiles all collect at the same time, in the background", !many.waited && many.most === 3 && many.select.value === "0" && /^All \(up to \d+\)$/.test(many.select.label) && many.hint !== "" && many.farms.every((f) => f.status.finished && f.status.done === 1), { waited: many.waited, most: many.most, select: many.select, hint: many.hint, farms: many.farms.map((f) => f.status) });
+  check("one toast for the profiles that start together", many.toasts.some((t) => t === "Collecting cookies in 3 profiles at once…") && !many.toasts.some((t) => /^Collecting cookies in “Farm/.test(t)), many.toasts);
+  check("one at a time when chosen: the others wait their turn", many.queued.saved === 1 && many.queued.atOnce === 1 && many.queued.running === 1 && many.queued.waiting === 1 && many.queued.second.waiting && many.queued.second.position === 1 && /Waiting their turn \(1 at a time\): Farm/.test(many.queued.text), many.queued);
   check("a profile collecting in the background shows its own fingerprints", many.farms.every((f) => f.ua === f.mine.userAgent && f.screen === f.mine.screen), many.farms.map((f) => ({ name: f.name, ua: f.ua, screen: f.screen, mine: f.mine })));
   check("a profile's collection goes on when another profile is opened", switching.right.inUse && switching.right.status.running && !switching.status.stopped && switching.status.finished && switching.status.done === 2 && switching.sites.includes("warm-a.test") && switching.sites.includes("warm-c.test"), switching);
   console.log(JSON.stringify({ iphone, status, hits: hits.length, failures }, null, 2));

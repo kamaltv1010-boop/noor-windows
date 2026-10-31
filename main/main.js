@@ -670,8 +670,34 @@ const makeWarmup = (target) => {
     timing.follow = Number(process.env.NOOR_TEST_WARMUP_FOLLOW);
   }
   const warmup = new Warmup(target, { sites, timing });
-  // Each profile's collection, as it starts and ends.
+  // Each profile's collection, as it starts and ends: one line for the
+  // profiles that start (or end) together.
   const wasRunning = new Map();
+  const news = { started: [], ended: [] };
+  let newsTimer = null;
+  const tell = () => {
+    newsTimer = null;
+    const { started, ended } = news;
+    news.started = [];
+    news.ended = [];
+    const lines = [];
+    if (started.length === 1) {
+      lines.push(`Collecting cookies in “${started[0].profileName}”…`);
+    } else if (started.length > 1) {
+      lines.push(`Collecting cookies in ${started.length} profiles at once…`);
+    }
+    if (ended.length === 1) {
+      const status = ended[0];
+      const name = `“${status.profileName}”`;
+      lines.push(status.stopped ? `${name}: stopped, ${status.added} new cookies` : `${name}: ${status.added} new cookies from ${status.done - status.failed} sites`);
+    } else if (ended.length > 1) {
+      const added = ended.reduce((sum, status) => sum + status.added, 0);
+      lines.push(`${ended.length} profiles ${ended.every((status) => status.stopped) ? "stopped" : "done"}: ${added} new cookies`);
+    }
+    if (lines.length) {
+      target.toast(lines.join(" · "));
+    }
+  };
   warmup.onChange((status) => {
     const view = { ...warmup.view(status.profileId), ...status };
     for (const tab of target.allTabs) {
@@ -680,11 +706,11 @@ const makeWarmup = (target) => {
       }
     }
     const before = wasRunning.get(status.profileId) || false;
-    const name = `“${status.profileName}”`;
-    if (status.running && !before) {
-      target.toast(`Collecting cookies in ${name}…`);
-    } else if (!status.running && before) {
-      target.toast(status.stopped ? `${name}: stopped, ${status.added} new cookies` : `${name}: ${status.added} new cookies from ${status.done - status.failed} sites`);
+    if (status.running !== before) {
+      (status.running ? news.started : news.ended).push(status);
+      if (!newsTimer) {
+        newsTimer = setTimeout(tell, 400);
+      }
     }
     wasRunning.set(status.profileId, status.running);
   });
@@ -814,7 +840,7 @@ const registerIPC = () => {
     const made = browser.createProfiles(count, name);
     if (made.length) {
       const range = made.length > 1 ? `${made[0].name} to ${made[made.length - 1].name}` : made[0].name;
-      browser.toast(`${made.length} ${made.length === 1 ? "profile" : "profiles"} made: ${range}` + (browser.warmup.settings().auto ? ". Each collects cookies the first time you open it." : ""));
+      browser.toast(`${made.length} ${made.length === 1 ? "profile" : "profiles"} made: ${range}` + (browser.warmup.settings().auto ? `, collecting cookies ${made.length === 1 ? "now" : "all at once"}` : ""));
     }
     return settingsSnapshot();
   });
@@ -835,11 +861,10 @@ const registerIPC = () => {
     return browser.warmup.start(null, profileFor(id));
   });
   handle("warmup:stop", (event, id) => browser.warmup.stop(profileFor(id).id));
-  // Every profile, two at a time, the others waiting their turn.
+  // Every profile at once (as many as the settings say, the others
+  // waiting their turn).
   handle("warmup:startAll", async () => {
-    for (const profile of context.profiles.all()) {
-      await browser.warmup.start(null, profile);
-    }
+    await browser.warmup.startMany(context.profiles.all());
     return browser.warmup.snapshot();
   });
   handle("warmup:stopAll", () => {

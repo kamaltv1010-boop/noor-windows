@@ -65,20 +65,46 @@
     showMode();
   };
 
+  // A few names of a long list, and how many more.
+  const some = (list, name) => (list.length > 6 ? `${list.slice(0, 5).map(name).join(", ")} and ${list.length - 5} more` : list.map(name).join(", "));
+
+  // How many profiles collect at once: as many as this PC can take (0), or
+  // the number chosen. Saved as soon as it is chosen.
+  const PARALLEL = [0, 1, 2, 3, 5, 10, 15, 20, 30, 50];
+  const showParallel = (parallel, overview) => {
+    const select = $("warmupparallel");
+    const machine = (overview && overview.machine) || 0;
+    const values = PARALLEL.includes(parallel) ? PARALLEL : PARALLEL.concat(parallel).sort((a, b) => a - b);
+    const labels = values.map((value) => (value === 0 ? `All (up to ${machine})` : value === 1 ? "1 (one by one)" : String(value)));
+    if (select.dataset.labels !== labels.join("|")) {
+      select.textContent = "";
+      values.forEach((value, i) => {
+        const option = document.createElement("option");
+        option.value = String(value);
+        option.textContent = labels[i];
+        select.append(option);
+      });
+      select.dataset.labels = labels.join("|");
+    }
+    select.value = String(parallel);
+    $("warmupparallelhint").textContent = `How many profiles collect at the same time; the others wait their turn.${machine ? ` This PC takes ${machine} well; more may slow it.` : ""}`;
+  };
+
   // The profiles collecting, and those waiting their turn.
   const showOverview = (overview) => {
     const running = (overview && overview.running) || [];
     const waiting = (overview && overview.waiting) || [];
+    const atOnce = (overview && overview.atOnce) || 0;
     const busy = running.length + waiting.length > 0;
     const all = $("warmupall");
     all.textContent = busy ? "Stop All" : "Collect in All";
     all.className = "button small " + (busy ? "danger" : "secondary");
     $("warmupallhint").textContent = busy
       ? [
-        running.length ? `Collecting: ${running.map((r) => `${r.name} (${Math.min(r.done + 1, r.total)} of ${r.total})`).join(", ")}.` : "",
-        waiting.length ? `Waiting their turn: ${waiting.map((w) => w.name).join(", ")}.` : "",
+        running.length ? `Collecting in ${plural(running.length, "profile")} at once: ${some(running, (r) => `${r.name} (${Math.min(r.done + 1, r.total)} of ${r.total})`)}.` : "",
+        waiting.length ? `Waiting their turn (${atOnce} at a time): ${some(waiting, (w) => w.name)}.` : "",
       ].join(" ").trim()
-      : "Every profile collects its cookies, two at a time, each in the background with its own fingerprints, while you use any profile.";
+      : `Every profile collects its cookies at the same time${atOnce ? ` (${atOnce} at most, see “At once”)` : ""}, each in the background with its own fingerprints, while you use any profile.`;
   };
 
   const showWarmup = (next) => {
@@ -87,6 +113,9 @@
     }
     if (next.overview) {
       showOverview(next.overview);
+    }
+    if (next.settings) {
+      showParallel(next.settings.parallel || 0, next.overview);
     }
     // Another profile's collection: only the overview changes here.
     if (settings && settings.profile && next.profileId && next.profileId !== settings.profile.id) {
@@ -107,7 +136,7 @@
     const region = warmup.region ? ` Sites of the world and of ${warmup.region}.` : "";
     let text;
     if (warmup.waiting) {
-      text = `Waiting its turn (${warmup.position} in line): two profiles collect at a time.`;
+      text = `Waiting its turn (${warmup.position} in line): ${warmup.overview ? warmup.overview.atOnce : "some"} profiles collect at a time (see “At once”).`;
     } else if (warmup.running) {
       text = `Visiting ${Math.min(warmup.done + 1, warmup.total)} of ${warmup.total}${where}${warmup.current ? `: ${warmup.current}` : ""}. ${plural(warmup.cookies, "cookie")} (+${warmup.added}).${region}`;
     } else if (warmup.finished) {
@@ -326,6 +355,9 @@
   $("warmupall").addEventListener("click", () => {
     const busy = $("warmupall").textContent === "Stop All";
     noor.invoke(busy ? "warmup:stopAll" : "warmup:startAll").then(showWarmup).catch(() => {});
+  });
+  $("warmupparallel").addEventListener("change", () => {
+    noor.invoke("warmup:save", { parallel: Number($("warmupparallel").value) }).then(showWarmup).catch(() => {});
   });
   $("warmupstart").addEventListener("click", () => {
     if (warmup && (warmup.running || warmup.waiting)) {

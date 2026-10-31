@@ -130,7 +130,7 @@
     $("collectbutton").textContent = busy ? "Stop" : "Collect";
     $("collectbutton").className = "button small" + (busy ? " danger" : "");
     $("collect").textContent = status.waiting
-      ? `Waiting its turn (${status.position} in line): two profiles collect at a time.`
+      ? `Waiting its turn (${status.position} in line): ${status.overview ? status.overview.atOnce : "some"} profiles collect at a time (Settings › Cookies › At once).`
       : status.running
         ? `Visiting ${Math.min(status.done + 1, status.total)} of ${status.total}${status.current ? `: ${status.current}` : ""}. ${plural(status.cookies, "cookie")} (+${status.added}).`
         : "Noor visits sites in this profile in the background, with its own fingerprints, while you use any profile (Settings › Cookies says which sites).";

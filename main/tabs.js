@@ -1158,13 +1158,11 @@ class Browser {
     return made;
   }
 
-  /// New profiles collect their cookies, each in the background, where
-  /// the settings say so (see main/warmup.js).
+  /// New profiles collect their cookies, all at once, each in the
+  /// background, where the settings say so (see main/warmup.js).
   collectInNew(profiles) {
     if (this.warmup && this.warmup.settings().auto) {
-      for (const profile of profiles) {
-        this.warmup.start(null, profile).catch(() => {});
-      }
+      this.warmup.startMany(profiles).catch(() => {});
     }
   }
 
