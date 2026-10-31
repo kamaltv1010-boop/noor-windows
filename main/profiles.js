@@ -8,6 +8,13 @@ const DEFAULT_ID = "default";
 /// The most profiles made at once.
 const MAX_AT_ONCE = 100;
 
+/// A name as a pattern that matches it alone.
+const escaped = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/// The series a profile's name belongs to: the name without its last
+/// number ("Profile" for "Profile 11"), the first 40 letters.
+const seriesOf = (name) => String(name == null ? "" : name).trim().replace(/\s+\d+$/, "").slice(0, 40) || "Profile";
+
 /// Browsing profiles: each has its own cookies and website data (a
 /// Chromium partition), history, open tabs and fingerprints, so one
 /// person's accounts, or one purpose, stay apart from another's.
@@ -69,10 +76,10 @@ class Profiles {
   /// with numbers no profile has yet: the new ones.
   addMany(count, name = "Profile") {
     const wanted = Math.max(0, Math.min(MAX_AT_ONCE, Math.floor(Number(count)) || 0));
-    const base = String(name == null ? "" : name).trim().replace(/\s+\d+$/, "").slice(0, 40) || "Profile";
+    const base = seriesOf(name);
     const all = this.all();
     const taken = new Set(all.map((p) => p.name));
-    const numbered = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (\\d+)$`);
+    const numbered = new RegExp(`^${escaped(base)} (\\d+)$`);
     let highest = 0;
     for (const profile of all) {
       const match = numbered.exec(profile.name);
@@ -140,22 +147,39 @@ class Profiles {
     this.store.set("doomedPartitions", doomed.concat([`noor-${id}`]));
   }
 
-  /// A new profile in the place of `id`: the same name, at the same place
-  /// in the list, with nothing of the old one (its id, partition, values
-  /// and history file are new), which is forgotten as remove() does. The
-  /// new one, or null (the default profile stays).
+  /// The name after `name` in its series: one more than the highest
+  /// number a profile of the series has ("Profile 12" when the highest is
+  /// "Profile 11"; "Work 2" after "Work").
+  nextInSeries(name) {
+    const base = seriesOf(name);
+    const numbered = new RegExp(`^${escaped(base)} (\\d+)$`);
+    let highest = 0;
+    for (const profile of this.all()) {
+      if (profile.name === base) {
+        highest = Math.max(highest, 1);
+      }
+      const match = numbered.exec(profile.name);
+      if (match) {
+        highest = Math.max(highest, Number(match[1]));
+      }
+    }
+    return `${base} ${highest + 1}`;
+  }
+
+  /// A new profile in the place of `id`, which is forgotten as remove()
+  /// does: the next of its series ("Profile 12" when the highest is
+  /// "Profile 11", see nextInSeries), last in the list, with nothing of the
+  /// old one (its id, partition, values and history file are new) but its
+  /// slot. The new one, or null (the default profile stays).
   replace(id) {
-    const others = this.all().filter((p) => !p.isDefault);
-    const index = others.findIndex((p) => p.id === id);
-    if (index === -1) {
+    const old = this.all().find((p) => !p.isDefault && p.id === id);
+    if (!old) {
       return null;
     }
     const wasCurrent = this.store.get("currentProfile") === id;
-    const fresh = { id: crypto.randomUUID(), name: others[index].name, slot: this.slotOf(others[index]) };
+    const fresh = { id: crypto.randomUUID(), name: this.nextInSeries(old.name), slot: this.slotOf(old) };
     this.remove(id);
-    const rest = this.all().filter((p) => !p.isDefault);
-    rest.splice(Math.min(index, rest.length), 0, fresh);
-    this.saveOthers(rest);
+    this.saveOthers(this.all().filter((p) => !p.isDefault).concat([fresh]));
     if (wasCurrent) {
       this.select(fresh.id);
     }

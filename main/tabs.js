@@ -676,17 +676,24 @@ class Browser {
     this.win.contentView.addChildView(this.chrome);
     this.chrome.webContents.loadURL(CHROME_URL);
     // Shown once the taskbar has it as its profile's (its icon, see
-    // Windows.dress), or after a moment anyway; a window that isn't the one
-    // in front by then (one of several opened together) shows without
-    // taking the front.
+    // Windows.dress), or after a moment anyway: Noor's as big as the screen
+    // (Noor iPhone's as big as its iPhone); a window that isn't the one in
+    // front by then (one of several opened together) doesn't take the front.
     this.chrome.webContents.once("did-finish-load", () => {
       const dressed = Promise.resolve(this.dressing);
       Promise.race([dressed, new Promise((resolve) => setTimeout(resolve, 800))]).then(() => {
         if (!this.win.isDestroyed()) {
-          if (this.windows && this.windows.current && this.windows.current !== this) {
-            this.win.showInactive();
-          } else {
+          const inFront = !(this.windows && this.windows.current && this.windows.current !== this);
+          if (!this.isIPhone) {
+            // Shows it too, in front or not.
+            this.win.maximize();
+            if (inFront) {
+              this.win.focus();
+            }
+          } else if (inFront) {
             this.win.show();
+          } else {
+            this.win.showInactive();
           }
           this.pushState();
         }

@@ -151,7 +151,7 @@ test("closing a window: its hidden tabs go on in another, and the profile stays 
   assert.deepEqual(home.backgroundTabs, []);
 });
 
-test("with \"Replace a profile when closed\": deleted as its window closes, a new one of the same name in its place", async () => {
+test("with \"Replace a profile when closed\": deleted as its window closes, a new one with the next number in its place", async () => {
   const { profiles, windows, store, cleared, started, stopped, userData } = made();
   store.set("freshOnClose", true);
   windows.open(profiles.find(DEFAULT_ID));
@@ -161,8 +161,8 @@ test("with \"Replace a profile when closed\": deleted as its window closes, a ne
   window.close();
   await new Promise((resolve) => setImmediate(resolve));
   const names = profiles.all().map((p) => p.name);
-  assert.deepEqual(names, ["Personal", "Temp 1", "Temp 2", "Temp 3"]);
-  const fresh = profiles.all()[2];
+  assert.deepEqual(names, ["Personal", "Temp 1", "Temp 3", "Temp 4"]);
+  const fresh = profiles.all()[3];
   assert.notEqual(fresh.id, two.id);
   // The same taskbar button as the old one, and opened by its pinned one.
   assert.equal(windows.open(fresh).taskbar.appId, window.taskbar.appId);
@@ -190,10 +190,11 @@ test("a profile made new collects its cookies where new profiles do: now, or at 
   store.set("freshOnClose", true);
   windows.warmup.auto = true;
   windows.open(profiles.find(DEFAULT_ID));
-  const shop = profiles.add("Shop");
+  const shop = profiles.add("Shop 11");
   windows.open(shop).close();
   await new Promise((resolve) => setImmediate(resolve));
-  const fresh = profiles.all().find((p) => p.name === "Shop");
+  const fresh = profiles.all().find((p) => p.name === "Shop 12");
+  assert.ok(fresh);
   assert.deepEqual(started, [fresh.id]);
   // The app quitting: its windows close, and the new ones collect next time.
   windows.open(fresh);
@@ -203,8 +204,9 @@ test("a profile made new collects its cookies where new profiles do: now, or at 
     window.close();
   }
   await new Promise((resolve) => setImmediate(resolve));
-  const newer = profiles.all().find((p) => p.name === "Shop");
-  assert.notEqual(newer.id, fresh.id);
+  const newer = profiles.all().find((p) => p.name === "Shop 13");
+  assert.ok(newer);
+  assert.equal(profiles.find(fresh.id), null);
   assert.deepEqual(started, [fresh.id]);
   assert.deepEqual(store.get("collectPending"), [newer.id]);
   // Its window's place at the next launch is the new one's.

@@ -71,7 +71,7 @@ test("several profiles at once: numbered after the profiles there are, each name
   assert.equal(new Profiles(store).all().length, profiles.all().length);
 });
 
-test("a profile replaced: a new one of the same name at the same place, nothing of the old one kept", () => {
+test("a profile replaced: a new one with the next number of its series, last, nothing of the old one kept", () => {
   const store = tempStore();
   const profiles = new Profiles(store);
   const [a, b, c] = profiles.addMany(3, "Shop");
@@ -79,11 +79,11 @@ test("a profile replaced: a new one of the same name at the same place, nothing 
   store.set(profiles.key("seed.canvas", b), 7);
   store.set(profiles.key("openTabs", b), [{ url: "https://example.com/" }]);
   const fresh = profiles.replace(b.id);
-  assert.equal(fresh.name, "Shop 2");
+  assert.equal(fresh.name, "Shop 4");
   assert.equal(fresh.isDefault, false);
   assert.notEqual(fresh.id, b.id);
-  assert.deepEqual(profiles.all().map((p) => p.name), ["Personal", "Shop 1", "Shop 2", "Shop 3"]);
-  assert.deepEqual(profiles.all().map((p) => p.id), [DEFAULT_ID, a.id, fresh.id, c.id]);
+  assert.deepEqual(profiles.all().map((p) => p.name), ["Personal", "Shop 1", "Shop 3", "Shop 4"]);
+  assert.deepEqual(profiles.all().map((p) => p.id), [DEFAULT_ID, a.id, c.id, fresh.id]);
   assert.equal(profiles.find(b.id), null);
   // The one used last is the new one, and nothing of the old one stays.
   assert.equal(profiles.current().id, fresh.id);
@@ -97,17 +97,40 @@ test("a profile replaced: a new one of the same name at the same place, nothing 
   assert.equal(profiles.slotOf(a), a.id);
   assert.equal(profiles.findBySlot(b.id).id, fresh.id);
   const newer = profiles.replace(fresh.id);
+  assert.equal(newer.name, "Shop 5");
   assert.equal(newer.slot, b.id);
   assert.equal(profiles.findBySlot(b.id).id, newer.id);
   assert.equal(profiles.findBySlot(newer.id).id, newer.id);
   assert.equal(profiles.findBySlot(fresh.id), null);
   assert.equal(new Profiles(store).find(newer.id).slot, b.id);
-  // The last one, and one not in use.
+  // One not in use: on to the next number.
   const last = profiles.replace(c.id);
+  assert.equal(last.name, "Shop 6");
   assert.deepEqual(profiles.all().map((p) => p.id), [DEFAULT_ID, a.id, newer.id, last.id]);
+  assert.deepEqual(profiles.all().map((p) => p.name), ["Personal", "Shop 1", "Shop 5", "Shop 6"]);
   assert.equal(profiles.current().id, newer.id);
   // Not the default profile, nor one there isn't.
   assert.equal(profiles.replace(DEFAULT_ID), null);
   assert.equal(profiles.replace("nobody"), null);
   assert.equal(profiles.all().length, 4);
+});
+
+test("the next name of a series: one more than its highest number", () => {
+  const profiles = new Profiles(tempStore());
+  profiles.addMany(10);
+  assert.equal(profiles.all().at(-1).name, "Profile 11");
+  assert.equal(profiles.nextInSeries("Profile 10"), "Profile 12");
+  assert.equal(profiles.nextInSeries("Profile"), "Profile 12");
+  profiles.add("Work");
+  assert.equal(profiles.nextInSeries("Work"), "Work 2");
+  assert.equal(profiles.nextInSeries("Farm 3"), "Farm 1");
+  assert.equal(profiles.nextInSeries("a.b (c) 2"), "a.b (c) 1");
+  // Closing "Profile 10", then the new ones, one after another.
+  const names = [];
+  let closing = profiles.all().find((p) => p.name === "Profile 10");
+  for (let i = 0; i < 3; i++) {
+    closing = profiles.replace(closing.id);
+    names.push(closing.name);
+  }
+  assert.deepEqual(names, ["Profile 12", "Profile 13", "Profile 14"]);
 });

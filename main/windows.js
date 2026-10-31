@@ -80,8 +80,8 @@ class Windows {
     return Boolean(this.store.get("clearOnQuit", false));
   }
 
-  /// Whether a profile is deleted as its window closes, and a new one of
-  /// the same name made in its place.
+  /// Whether a profile is deleted as its window closes, and a new one made
+  /// in its place, the next of its series ("Profile 12" after "Profile 11").
   freshOnClose() {
     return Boolean(this.store.get("freshOnClose", false));
   }
@@ -167,8 +167,9 @@ class Windows {
     return browser;
   }
 
-  /// Where a new window goes: a little right of and below the one in
-  /// front, as big, on its screen.
+  /// Where a new window goes when it isn't as big as the screen (Noor's
+  /// opens maximized, see Browser.makeWindow): a little right of and below
+  /// the one in front, as big, and all of it on that screen.
   nextBounds() {
     const near = this.current && !this.current.closing && !this.current.win.isDestroyed() ? this.current.win.getNormalBounds() : null;
     if (!near) {
@@ -180,13 +181,18 @@ class Windows {
     } catch (error) {
       area = null;
     }
+    if (!area) {
+      return { x: near.x + 32, y: near.y + 32, width: near.width, height: near.height };
+    }
+    const width = Math.min(near.width, Math.max(400, area.width - 48));
+    const height = Math.min(near.height, Math.max(300, area.height - 48));
     let x = near.x + 32;
     let y = near.y + 32;
-    if (area && (x + near.width > area.x + area.width || y + near.height > area.y + area.height)) {
+    if (x < area.x || y < area.y || x + width > area.x + area.width || y + height > area.y + area.height) {
       x = area.x + 24;
       y = area.y + 24;
     }
-    return { x, y, width: near.width, height: near.height };
+    return { x, y, width, height };
   }
 
   /// `browser` is the window in front: its profile is the one used last.
@@ -487,9 +493,10 @@ class Windows {
   }
 
   /// Deletes the profile `id` with everything it kept, and makes a new one
-  /// of the same name in its place (see freshOnClose): its new fingerprints,
-  /// no cookies, and its cookies collected if new profiles collect theirs.
-  /// The new one.
+  /// in its place (see freshOnClose), the next of its series ("Profile 12"
+  /// when the highest is "Profile 11", see Profiles.nextInSeries): its new
+  /// fingerprints, no cookies, and its cookies collected if new profiles
+  /// collect theirs. The new one.
   async replaceProfile(id) {
     const old = this.profiles.find(id);
     if (!old || old.isDefault || this.forProfile(id)) {

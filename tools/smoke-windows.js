@@ -85,8 +85,16 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   });
   check("one window at first, the first profile's, as Noor", first.count === 1 && first.title === product && first.profile === "default" && first.visible && first.taskbar.appId === appId, first);
 
-  // A new profile from the settings page: a window of its own.
+  // A new profile from the settings page: a window of its own, as big as
+  // the screen in Noor (a window manager does it; the test's display has
+  // none, so the request is what is seen).
   const made = await main(async (electron) => {
+    const maximize = electron.BaseWindow.prototype.maximize;
+    global.maximized = [];
+    electron.BaseWindow.prototype.maximize = function () {
+      global.maximized.push(this.id);
+      return maximize.call(this);
+    };
     const w = global.noorTest.windows;
     const home = w.current;
     const tab = home.newTab({ url: "noor://app/settings.html" });
@@ -106,7 +114,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       id: shop.profile.id,
       inFront: w.current === shop,
       visible: shop.win.isVisible() && home.win.isVisible(),
-      apart: JSON.stringify(shop.win.getBounds()) !== JSON.stringify(home.win.getBounds()),
+      maximized: global.maximized.includes(shop.win.id),
+      onScreen: (() => {
+        const area = electron.screen.getDisplayMatching(shop.win.getNormalBounds()).workArea;
+        const b = shop.win.getNormalBounds();
+        return b.x >= area.x && b.y >= area.y && b.x + b.width <= area.x + area.width && b.y + b.height <= area.y + area.height;
+      })(),
       taskbar: shop.taskbar,
       png: png ? png.getSize() : null,
       icon,
@@ -116,7 +129,8 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   });
   const ico = made.icon ? fs.readFileSync(made.icon.ico) : null;
   made.ico = ico ? { reserved: ico.readUInt16LE(0), type: ico.readUInt16LE(2), count: ico.readUInt16LE(4) } : null;
-  check("a new profile opens in a window of its own, in front, shown beside the other", made.count === 2 && made.title === `Shop 7 - ${product}` && made.profile === "Shop 7" && made.inFront && made.visible && made.apart && made.tabs === 1, made);
+  check("a new profile opens in a window of its own, in front, shown with the other", made.count === 2 && made.title === `Shop 7 - ${product}` && made.profile === "Shop 7" && made.inFront && made.visible && made.tabs === 1, made);
+  check(iphone ? "Noor iPhone's window: as big as its iPhone, on the screen" : "Noor's window: as big as the screen", (iphone ? !made.maximized : made.maximized) && made.onScreen, { maximized: made.maximized, onScreen: made.onScreen });
   check("its own icon (an .ico of 8 sizes, 256 the biggest) and its own taskbar button", made.ico && made.ico.reserved === 0 && made.ico.type === 1 && made.ico.count === 8 && made.png && made.png.width === 256 && made.taskbar.appId === `${appId}.profile.${made.id.replace(/-/g, "")}` && made.taskbar.appIconPath && made.taskbar.appIconPath.endsWith(".ico"), { ico: made.ico, png: made.png, taskbar: made.taskbar });
   check("the toolbar shows the profile in its color", made.state.name === "Shop 7" && /^#[0-9a-f]{6}$/.test(made.state.color || ""), made.state);
   if (made.icon) fs.copyFileSync(made.icon.png, path.join(userData, "shop-7-icon.png"));
@@ -186,14 +200,13 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     home.close(tab);
     const before = context.profiles.all();
     const old = before.find((p) => p.name === "Shop 7");
-    const index = before.indexOf(old);
     const shop = w.open(old);
     await new Promise((r) => setTimeout(r, 800));
     shop.win.close();
     for (let i = 0; i < 100 && context.profiles.find(old.id); i++) await new Promise((r) => setTimeout(r, 50));
     await new Promise((r) => setTimeout(r, 300));
     const after = context.profiles.all();
-    const fresh = after[index];
+    const fresh = after[after.length - 1];
     const cookies = await electron.session.fromPartition(w.partitionFor(false, fresh)).cookies.get({});
     return {
       checked, saved: context.store.get("freshOnClose"),
@@ -205,13 +218,13 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     };
   });
   check("the setting is on, from the settings page", replaced.checked && replaced.saved === true, replaced);
-  check("a profile's window closed: deleted, a new one of the same name in its place, with nothing of the old one", replaced.oldGone && replaced.doomed && replaced.fresh.name === "Shop 7" && replaced.fresh.id !== replaced.fresh.old && replaced.fresh.cookies === 0 && JSON.stringify(replaced.names[0]) === JSON.stringify(replaced.names[1]) && replaced.windows === 1, replaced);
+  check("a profile's window closed: deleted, a new one with the next number last, with nothing of the old one", replaced.oldGone && replaced.doomed && replaced.fresh.name === "Shop 8" && replaced.fresh.id !== replaced.fresh.old && replaced.fresh.cookies === 0 && !replaced.names[1].includes("Shop 7") && replaced.names[1].length === replaced.names[0].length && replaced.windows === 1, replaced);
 
   // The first profile is never replaced; deleting a profile closes its window.
   const kept = await main(async () => {
     const w = global.noorTest.windows;
     const context = global.noorTest.context;
-    const shop = w.open(context.profiles.all().find((p) => p.name === "Shop 7"));
+    const shop = w.open(context.profiles.all().find((p) => /^Shop \d+$/.test(p.name)));
     await new Promise((r) => setTimeout(r, 800));
     w.forProfile("default").win.close();
     for (let i = 0; i < 100 && w.list.length > 1; i++) await new Promise((r) => setTimeout(r, 50));
@@ -235,7 +248,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     context.store.set("freshOnClose", false);
     w.open(context.profiles.find("default"));
     await new Promise((r) => setTimeout(r, 800));
-    return { shop: context.profiles.all().find((p) => p.name === "Shop 7").id, open: w.list.map((x) => x.profile.id), last: context.profiles.current().id };
+    return { shop: context.profiles.all().find((p) => /^Shop \d+$/.test(p.name)).id, open: w.list.map((x) => x.profile.id), last: context.profiles.current().id };
   });
   await app.close();
   ({ app, main } = await launch());
@@ -265,7 +278,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const context = global.noorTest.context;
     context.store.set("freshOnClose", true);
     global.noorTest.warmup.saveSettings({ auto: true });
-    const shop = context.profiles.all().find((p) => p.name === "Shop 7");
+    const shop = context.profiles.all().find((p) => /^Shop \d+$/.test(p.name));
     return { id: shop.id, slot: context.profiles.slotOf(shop), appId: global.noorTest.windows.forProfile(shop.id).taskbar.appId };
   });
   await app.close();
@@ -274,7 +287,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const pending = await main(async (electron, old) => {
     const context = global.noorTest.context;
     const w = global.noorTest.windows;
-    const fresh = context.profiles.all().find((p) => p.name === "Shop 7");
+    const fresh = context.profiles.all().find((p) => /^Shop \d+$/.test(p.name));
     const warmup = global.noorTest.warmup;
     for (let i = 0; i < 100 && !warmup.status(fresh.id).running && !warmup.status(fresh.id).finished; i++) await new Promise((r) => setTimeout(r, 50));
     const status = warmup.status(fresh.id);
@@ -283,12 +296,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     return { fresh: fresh.id, old: old.id, gone: !context.profiles.find(old.id), collecting: status.running || status.finished, pending: context.store.get("collectPending"), open: w.list.map((x) => x.profile.name), appId: shown ? shown.taskbar.appId : null, slot: fresh.slot };
   }, quitting);
   check("quitting: the profile made new, collecting at the next launch", pending.gone && pending.fresh !== pending.old && pending.collecting && JSON.stringify(pending.pending) === "[]", pending);
-  check("its pinned button (--profile=<its first id>) opens the profile in its place, the same taskbar button", pending.open.join() === "Shop 7" && pending.appId === quitting.appId && pending.slot === quitting.slot, { pending, quitting });
+  check("its pinned button (--profile=<its first id>) opens the profile in its place, the next number, the same taskbar button", pending.open.join() === "Shop 9" && pending.appId === quitting.appId && pending.slot === quitting.slot, { pending, quitting });
 
   // What the windows look like.
   const shot = await main(async () => {
     const w = global.noorTest.windows;
-    const shop = w.open(global.noorTest.context.profiles.all().find((p) => p.name === "Shop 7"));
+    const shop = w.open(global.noorTest.context.profiles.all().find((p) => /^Shop \d+$/.test(p.name)));
     for (let i = 0; i < 100 && !shop.win.isVisible(); i++) await new Promise((r) => setTimeout(r, 50));
     await new Promise((r) => setTimeout(r, 800));
     return (await shop.chrome.webContents.capturePage()).toPNG().toString("base64");
