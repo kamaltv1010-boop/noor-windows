@@ -89,13 +89,17 @@ const run = async (mode, base) => {
   const electronPath = require(path.join(root, "node_modules", "electron"));
   const app = await electron.launch({ executablePath: electronPath, args: [root, "--no-sandbox", "--host-resolver-rules=MAP *.test 127.0.0.1"], env });
   app.process().stderr.on("data", (data) => { if (process.env.SMOKE_VERBOSE) process.stderr.write("[electron] " + data); });
-  const pid = app.process().pid;
   const exited = new Promise((resolve) => app.process().once("exit", (code, signal) => resolve({ code, signal })));
   const main = (fn, arg) => app.evaluate(fn, arg);
   for (let i = 0; i < 200; i++) {
     if (await main(() => Boolean(global.noorTest && global.noorTest.browser && global.noorTest.browser.selected)).catch(() => false)) break;
     await sleep(100);
   }
+  // Noor's own process, the one its windows are in: on Windows Playwright
+  // starts Electron through a shell (cmd.exe), whose process is the one it
+  // hands over, with no window of its own.
+  const pid = await main(() => process.pid);
+  report.pid = { noor: pid, started: app.process().pid };
   // A second profile in a window of its own, and a page in each window.
   report.opened = await main(async (electron, base) => {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -245,6 +249,21 @@ const run = async (mode, base) => {
   }
   server.close();
   console.log(JSON.stringify(reports, null, 1));
+  // Each way in one line, last (a CI log shows the last lines of a check).
+  for (const r of reports) {
+    const parts = [
+      r.ok ? "ok" : "FAILED",
+      `quit ${r.quitMs === null ? "no" : `in ${r.quitMs} ms`}`,
+      `pid ${JSON.stringify(r.pid)}`,
+      `requests ${JSON.stringify(r.requests)}`,
+      `windows before ${JSON.stringify(r.before || [])}`,
+      `events ${JSON.stringify(r.events)}`,
+      `processes left ${JSON.stringify(r.processesLeft)}`,
+    ];
+    if (r.stillOpen) parts.push(`still open ${JSON.stringify(r.stillOpen)}`);
+    if (r.after) parts.push(`windows after ${JSON.stringify(r.after)}`);
+    console.log(`MODE ${r.mode}: ${parts.join("; ")}`);
+  }
   const failed = reports.filter((r) => !r.ok).map((r) => `${r.mode} (${Object.keys(r.checks).filter((k) => !r.checks[k]).join(", ")})`);
   console.log(failed.length ? `CLOSE SMOKE FAILED: ${failed.join("; ")}` : "CLOSE SMOKE OK");
   process.exit(failed.length ? 1 : 0);

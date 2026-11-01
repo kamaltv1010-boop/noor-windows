@@ -31,6 +31,9 @@ const step = (name, ok, detail) => {
 const finish = () => {
   if (out) fs.writeFileSync(path.join(out, `install-${report.product || "noor"}.json`.replace(/ /g, "-")), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
+  // (Last, what failed: a CI log shows the last lines of a check, and the
+  // report above is long.)
+  console.error("PROBLEMS " + JSON.stringify(report.problems));
   process.exit(report.problems.length ? 1 : 0);
 };
 
