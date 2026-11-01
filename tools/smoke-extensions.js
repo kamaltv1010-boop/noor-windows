@@ -192,21 +192,30 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   results.served = await main(() => global.served);
 
   console.log(JSON.stringify(results, null, 1));
-  const ok = /^[a-p]{32}$/.test(results.folderId) && results.folderRuns === "yes"
-    && results.toolbar.hidden === false && results.toolbar.buttons === 1 && results.toolbar.noIcon === false
-    && results.toolbar.icon.includes(results.folderId) && results.toolbar.iconServed === "200 image/png"
-    && results.popup.length === 1 && results.popup[0].endsWith("/popup.html")
-    && results.popupPlace && results.popupPlace.rightAtButton && results.popupPlace.belowButton
-    && results.popupPlace.insideWindow && results.popupPlace.insideScreen && results.popupPlace.keptOnScreen
-    && results.backgroundTab && results.backgroundTab.url === base + "one" && results.backgroundTab.windows === "object"
-    && results.siteServiceWorker === "none"
-    && results.privateRuns === "no" && results.privateToolbar.extensionsHere === false && results.privateActionsHidden === true
-    && results.optionsTitle === "Sample Options" && results.whenOff === "no" && results.whenOn === "yes"
-    && results.crxId === results.crxIdExpected && results.crxRuns === "yes"
-    && results.storeBefore.storeExtension && results.storeBefore.storeExtension.installed === false && results.storeButton.hidden === false
-    && results.storeAfter.storeExtension.installed === true && results.storeButtonAfter.disabled === true && results.confirmedName === "Store Sample"
-    && results.storeRuns === "yes" && results.listed.length === 1 && results.listed[0].name === "Store Sample" && results.listed[0].version === "2.0.0" && results.listed[0].icon
-    && results.updated === 1 && results.versionAfterUpdate[0] === "2.0.1" && results.runsAfterUpdate === "yes";
+  // Each check by name, so a failure says which (on Windows too, where the
+  // log is all there is to read).
+  const checks = {
+    folderInstalled: /^[a-p]{32}$/.test(results.folderId) && results.folderRuns === "yes",
+    toolbarButton: results.toolbar.hidden === false && results.toolbar.buttons === 1 && results.toolbar.noIcon === false,
+    toolbarIcon: results.toolbar.icon.includes(results.folderId) && results.toolbar.iconServed === "200 image/png",
+    popup: results.popup.length === 1 && results.popup[0].endsWith("/popup.html"),
+    popupPlace: Boolean(results.popupPlace && results.popupPlace.rightAtButton && results.popupPlace.belowButton && results.popupPlace.insideWindow && results.popupPlace.insideScreen && results.popupPlace.keptOnScreen),
+    backgroundTab: Boolean(results.backgroundTab && results.backgroundTab.url === base + "one" && results.backgroundTab.windows === "object"),
+    siteServiceWorker: results.siteServiceWorker === "none",
+    privateTabs: results.privateRuns === "no" && results.privateToolbar.extensionsHere === false && results.privateActionsHidden === true,
+    optionsAndSwitch: results.optionsTitle === "Sample Options" && results.whenOff === "no" && results.whenOn === "yes",
+    crx: results.crxId === results.crxIdExpected && results.crxRuns === "yes",
+    storeButton: Boolean(results.storeBefore.storeExtension && results.storeBefore.storeExtension.installed === false && results.storeButton.hidden === false),
+    storeInstall: results.storeAfter.storeExtension.installed === true && results.storeButtonAfter.disabled === true && results.confirmedName === "Store Sample",
+    storeListed: results.storeRuns === "yes" && results.listed.length === 1 && results.listed[0].name === "Store Sample" && results.listed[0].version === "2.0.0" && Boolean(results.listed[0].icon),
+    storeUpdate: results.updated === 1 && results.versionAfterUpdate[0] === "2.0.1" && results.runsAfterUpdate === "yes",
+  };
+  const failed = Object.keys(checks).filter((name) => !checks[name]);
+  const ok = failed.length === 0;
+  if (!ok) {
+    console.log("FAILED checks: " + failed.join(", "));
+    console.log(JSON.stringify({ folderId: results.folderId, folderRuns: results.folderRuns, toolbar: results.toolbar, popup: results.popup, popupPlace: results.popupPlace }, null, 1));
+  }
   await app.close();
   server.close();
   console.log(ok ? "EXTENSIONS SMOKE OK" : "EXTENSIONS SMOKE FAILED");

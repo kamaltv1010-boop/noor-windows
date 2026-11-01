@@ -46,7 +46,12 @@ const webglHash = (canvas) => {
   return fnv(px);
 };
 const fontWidth = (x, family) => { x.font = "40px " + family; return x.measureText("mmmmmmmmmmlli Noor 123").width; };
-const fonts = (x) => { const base = fontWidth(x, "monospace"); return Object.fromEntries(["DejaVu Sans", "Liberation Mono", "Arial", "Calibri"].map((f) => [f, fontWidth(x, "'" + f + "', monospace") !== base])); };
+// A font is there if text in it differs from any of the three generic
+// families it falls back to, as sites test fonts: one generic family alone
+// may be that very font (in a shared or service worker on Windows,
+// Chromium's monospace is Arial: no page's settings there).
+const GENERIC = ["monospace", "serif", "sans-serif"];
+const fonts = (x) => { const base = GENERIC.map((g) => fontWidth(x, g)); return Object.fromEntries(["DejaVu Sans", "Liberation Mono", "Arial", "Calibri"].map((f) => [f, GENERIC.some((g, i) => fontWidth(x, "'" + f + "', " + g) !== base[i])])); };
 const gpuHere = () => (self.navigator && navigator.gpu ? Promise.race([navigator.gpu.requestAdapter().then((a) => (a ? a.info.vendor + "/" + a.info.architecture : "no adapter"), (e) => "ERR " + e.message), new Promise((r) => setTimeout(() => r("timeout"), 5000))]) : Promise.resolve("none"));
 const valuesHere = (makeCanvas) => {
   const out = {};
@@ -106,7 +111,9 @@ const run = async (settings) => {
   fs.writeFileSync(path.join(userData, "settings.json"), JSON.stringify(settings));
   const env = { ...process.env, NOOR_USER_DATA: userData, NOOR_DEVICE: BUILD, NOOR_TEST_OPEN_WINDOWS: "1" };
   delete env.NOOR_TEST;
-  const args = [...appArgs, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--enable-unsafe-webgpu"];
+  // (WebGPU drawn by SwiftShader where there is no graphics card, as on the
+  // CI's Windows machine.)
+  const args = [...appArgs, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--enable-unsafe-webgpu", "--use-webgpu-adapter=swiftshader"];
   const first = spawn(electronPath, args, { env, stdio: "ignore" });
   await sleep(7000);
   const second = spawn(electronPath, [...args, `http://127.0.0.1:${web.address().port}/probe`], { env, stdio: "ignore" });

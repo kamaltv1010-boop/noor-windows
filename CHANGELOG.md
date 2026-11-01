@@ -21,8 +21,8 @@ Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
   المثبتة، أول تشغيل، بروفايل ثانٍ، العزل، الإعدادات، الإغلاق وإعادة الفتح،
   إزالة التثبيت)، و`tools/probe-built-app.js` (يقود التطبيق المبني عبر
   صفحاته كما يفعل المستخدم)، والكوكيز على القرص (DPAPI)، والـ fuses،
-  والـ workers، ومنفذ التصحيح (الصفحات، العناوين الأخرى، **حساب Windows
-  آخر**: `tools/probe-port-other-user.js`)، وتجربة الـ pipe؛ وNoor iPhone
+  والـ workers، ومنفذ التصحيح (صفحات الويب والعناوين الأخرى)، وتجربة الـ
+  pipe؛ وNoor iPhone
   وNoor Android المبنيين؛ وكل اختبارات Playwright التي كانت تعمل على Linux.
   `tools/run-checks.js` يكتب تقريراً بالعربية لكل اختبار: إصدار Windows،
   إصدار Noor، الأمر، النتيجة، المدة، مكان السجل، والعمليات المتبقية.

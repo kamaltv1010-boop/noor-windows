@@ -20,7 +20,8 @@ const root = path.join(__dirname, "..");
 const BUILD = ["iphone", "android"].includes(process.argv[2]) ? process.argv[2] : "windows";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const READ = "navigator.gpu ? Promise.race([navigator.gpu.requestAdapter().then((a) => a ? { vendor: a.info.vendor, architecture: a.info.architecture, device: a.info.device, description: a.info.description, sub: [a.info.subgroupMinSize, a.info.subgroupMaxSize], format: navigator.gpu.getPreferredCanvasFormat() } : 'no adapter', (e) => 'ERR ' + e.message), new Promise((r) => setTimeout(() => r('timeout'), 6000))]) : Promise.resolve('none')";
+// (The canvas format is read even with no adapter: it needs none.)
+const READ = "navigator.gpu ? Promise.race([navigator.gpu.requestAdapter().then((a) => a ? { vendor: a.info.vendor, architecture: a.info.architecture, device: a.info.device, description: a.info.description, sub: [a.info.subgroupMinSize, a.info.subgroupMaxSize], format: navigator.gpu.getPreferredCanvasFormat() } : { adapter: 'none', format: navigator.gpu.getPreferredCanvasFormat() }, (e) => 'ERR ' + e.message), new Promise((r) => setTimeout(() => r('timeout'), 6000))]) : Promise.resolve('none')";
 const PROBE = `(async () => ({
   page: await (${READ}),
   worker: await new Promise((resolve) => {
@@ -46,7 +47,8 @@ const PROBE = `(async () => ({
   }
   const app = await electron.launch({
     executablePath: require(path.join(root, "node_modules", "electron")),
-    args: [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--enable-unsafe-webgpu"],
+    // (WebGPU drawn by SwiftShader where there is no graphics card.)
+    args: [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--enable-unsafe-webgpu", "--use-webgpu-adapter=swiftshader"],
     env: { ...process.env, NOOR_TEST: "1", NOOR_USER_DATA: userData, NOOR_DEVICE: BUILD, NOOR_TEST_TIMEZONE: "Africa/Casablanca" },
   });
   const main = (fn, arg) => app.evaluate(fn, arg);
@@ -79,14 +81,22 @@ const PROBE = `(async () => ({
   await app.close().catch(() => {});
   web.close();
   const problems = [];
+  const notes = [];
   for (const where of ["page", "worker"]) {
     const value = seen[where];
     if (typeof value !== "object") { problems.push(`${where}: ${value}`); continue; }
+    // A machine with no WebGPU adapter at all (no graphics card, and no
+    // SwiftShader): only the canvas format can be checked; said, not hidden.
+    if (value.adapter === "none") {
+      notes.push(`${where}: no WebGPU adapter on this machine: only the canvas format checked`);
+      if (expected.format && value.format !== expected.format) problems.push(`${where}: format is ${JSON.stringify(value.format)}, not ${JSON.stringify(expected.format)}`);
+      continue;
+    }
     for (const key of Object.keys(expected)) {
       if (JSON.stringify(value[key]) !== JSON.stringify(expected[key])) problems.push(`${where}: ${key} is ${JSON.stringify(value[key])}, not ${JSON.stringify(expected[key])}`);
     }
   }
-  console.log(JSON.stringify({ build: BUILD, expected, seen, problems }, null, 2));
+  console.log(JSON.stringify({ build: BUILD, expected, seen, notes, problems }, null, 2));
   process.exit(problems.length ? 1 : 0);
 })().catch((error) => {
   console.error(error);

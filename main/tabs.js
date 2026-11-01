@@ -1073,16 +1073,23 @@ class Browser {
 
   /// Where a device's build draws a tab's page: the device's page area, at its
   /// size (a CSS pixel to a pixel of the PC's), in the middle under the
-  /// toolbar; on a screen too short for it, as tall as fits (see
-  /// Tab.setPageHeight), and the whole screen's height for a video or page
-  /// shown full screen. An iPad's page on a window too narrow for it is
-  /// drawn smaller, to fit.
+  /// toolbar, and the whole screen's height for a video or page shown full
+  /// screen. A page that doesn't fit the window (an iPad's on a narrow
+  /// window, a phone's on a short screen: 768 px, less Windows' taskbar) is
+  /// drawn smaller, to fit, down to 60% across: the page keeps the device's
+  /// own sizes. (Cut short instead, it showed a height no such device has,
+  /// 642 px on a Galaxy whose Chrome shows at least its page height.) Only
+  /// where even that doesn't fit is it as tall as fits (see
+  /// Tab.setPageHeight).
   phoneBounds(tab, width, height, top) {
     const device = tab.device || this.fingerprint.iphone();
     const margin = this.fullScreen ? 0 : PHONE_MARGIN;
-    const scale = Math.min(1, Math.max(0.25, Math.floor(((width - 2 * margin) / device.pageWidth) * 100) / 100));
+    const wanted = this.fullScreen ? device.fullHeight : device.pageHeight;
+    const across = (width - 2 * margin) / device.pageWidth;
+    const down = (height - top - 2 * margin) / wanted;
+    const scale = Math.min(1, Math.max(0.25, Math.floor(Math.min(across, Math.max(down, 0.6)) * 100) / 100));
     const room = Math.max(MIN_PAGE_HEIGHT, Math.floor((height - top - 2 * margin) / scale));
-    const pageHeight = Math.min(this.fullScreen ? device.fullHeight : device.pageHeight, room);
+    const pageHeight = Math.min(wanted, room);
     tab.setPageHeight(pageHeight, scale);
     const shownWidth = Math.round(device.pageWidth * scale);
     const shownHeight = Math.round(pageHeight * scale);

@@ -305,7 +305,6 @@ main/tabs.js:1715` — عمل مؤجَّل (`pushState` في `setImmediate`) ي�
 **أدوات اختبار Windows:** `tools/run-checks.js` (تقرير عربي: إصدار Windows،
 إصدار Noor، الأمر، النتيجة، المدة، السجل، العمليات المتبقية)،
 `tools/checks/windows-*.json`، `tools/check-install.js` (المثبّت)،
-`tools/probe-port-other-user.js` (حساب Windows آخر)،
 `.github/workflows/windows-checks.yml` (أربع مهام، على الفرع
 `windows-checks` حتى لا يُصدر نسخة).
 

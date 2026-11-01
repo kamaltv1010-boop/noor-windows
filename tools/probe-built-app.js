@@ -158,9 +158,24 @@ const start = async (label, extra = []) => {
 const close = async (app, label) => {
   app.cdp.close();
   const asked = Date.now();
-  if (WINDOWS) spawnSync("taskkill", ["/PID", String(app.child.pid)], { stdio: "ignore" });
-  else app.child.kill("SIGTERM");
-  const how = await Promise.race([app.exited, sleep(30000).then(() => "still running after 30 s")]);
+  let how;
+  if (WINDOWS) {
+    // As the window's X does: its main window is asked to close; then, if
+    // Noor is still there, as taskkill without /F asks every window of it.
+    // What each said is kept (a close Windows didn't deliver isn't Noor's).
+    report.closing = report.closing || {};
+    const asked = spawnSync("powershell", ["-NoProfile", "-Command", `$p = Get-Process -Id ${app.child.pid} -ErrorAction SilentlyContinue; if ($p) { "$($p.MainWindowHandle) $($p.CloseMainWindow())" }`], { encoding: "utf8" });
+    report.closing[label] = { closeMainWindow: (asked.stdout || "").trim() };
+    how = await Promise.race([app.exited, sleep(15000).then(() => "still running after 15 s")]);
+    if (how === "still running after 15 s") {
+      const told = spawnSync("taskkill", ["/PID", String(app.child.pid)], { encoding: "utf8" });
+      report.closing[label].taskkill = ((told.stdout || "") + (told.stderr || "")).trim();
+      how = await Promise.race([app.exited, sleep(15000).then(() => "still running after 30 s")]);
+    }
+  } else {
+    app.child.kill("SIGTERM");
+    how = await Promise.race([app.exited, sleep(30000).then(() => "still running after 30 s")]);
+  }
   let left = running();
   for (let i = 0; i < 50 && left; i++) {
     await sleep(200);
@@ -367,5 +382,8 @@ function finish(app) {
   site.close();
   if (out) fs.writeFileSync(path.join(out, "built-app.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
+  // (The last lines, which a CI log shows: what failed, and how closing went.)
+  console.log("CLOSING " + JSON.stringify(report.closing || {}));
+  console.log("PROBLEMS " + JSON.stringify(report.problems));
   process.exit(report.problems.length ? 1 : 0);
 }
