@@ -148,7 +148,10 @@ class Extensions {
     }
     ses.registerPreloadScript({ id: "noor-crx-mv3-preload", type: "service-worker", filePath: SERVICE_WORKER_PRELOAD });
     bridge.attach(ses, manager);
-    manager.on("browser-action-popup-created", (popup) => keepOnScreen(popup));
+    manager.on("browser-action-popup-created", (popup) => {
+      fromContent(popup);
+      keepOnScreen(popup);
+    });
     this.managers.set(ses, manager);
     ses.extensions.on("extension-loaded", () => this.changed());
     ses.extensions.on("extension-unloaded", () => this.changed());
@@ -483,6 +486,27 @@ class Extensions {
     }
   }
 }
+
+/// The button's place (the popup's anchor) is in the window's content, but
+/// the library adds it to the window's outer bounds, and on Windows these
+/// take in the frame's invisible borders (about 8 px left, right and below):
+/// the popup came 8 px left of its button and 8 px too low. Before each move
+/// the library hands over the place it is about to use ("will-move"); Noor
+/// moves it by the difference, so it is placed once, from the content. Where
+/// the two bounds agree (Linux, no frame) the difference is 0.
+const fromContent = (popup) => {
+  popup.on("will-move", (position) => {
+    const parent = popup.parent;
+    if (!position || !parent || parent.isDestroyed()) {
+      return;
+    }
+    const outer = parent.getBounds();
+    const content = parent.getContentBounds();
+    // Library: x from outer.x; y from outer.y plus (outer.height - content.height).
+    position.x += content.x - outer.x;
+    position.y += content.y + content.height - (outer.y + outer.height);
+  });
+};
 
 /// An extension's popup opens under its button, its right edge at the
 /// button's, as in Chrome; wherever the library puts it, it stays inside

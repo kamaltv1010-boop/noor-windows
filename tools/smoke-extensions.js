@@ -94,14 +94,39 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     popup.updatePosition();
     const bounds = popup.browserWindow.getBounds();
     const win = global.noorTest.browser.win.getContentBounds();
+    const outer = global.noorTest.browser.win.getBounds();
     const area = electron.screen.getDisplayMatching(bounds).workArea;
+    // Just under the button: the library leaves 5 px (on Windows the frame's
+    // invisible border below once added about 8 more).
+    const gap = bounds.y - (win.y + anchor.bottom);
     const place = {
       rightAtButton: Math.abs(bounds.x + bounds.width - (win.x + anchor.right)) <= 2,
-      belowButton: bounds.y >= win.y + anchor.bottom,
+      belowButton: Math.abs(gap - 5) <= 2,
       insideWindow: bounds.x >= win.x && bounds.x + bounds.width <= win.x + win.width,
       insideScreen: bounds.x >= area.x && bounds.y >= area.y && bounds.x + bounds.width <= area.x + area.width && bounds.y + bounds.height <= area.y + area.height,
       bounds,
+      content: win,
+      outer,
+      anchor,
+      gap,
     };
+    // A window with Windows' frame: its outer bounds take in invisible
+    // borders (8 px left, right and below) and a 31 px title bar. Where the
+    // two bounds agree (Linux here), the window says so for one placement,
+    // through the library's own updatePosition; on Windows they are real.
+    const parent = popup.parent;
+    const inner = parent.getContentBounds();
+    const own = Object.getOwnPropertyDescriptor(parent, "getBounds");
+    parent.getBounds = () => ({ x: inner.x - 8, y: inner.y - 31, width: inner.width + 16, height: inner.height + 31 + 8 });
+    try {
+      popup.updatePosition();
+    } finally {
+      if (own) Object.defineProperty(parent, "getBounds", own);
+      else delete parent.getBounds;
+    }
+    const framed = popup.browserWindow.getBounds();
+    place.framed = { bounds: framed, gap: framed.y - (win.y + anchor.bottom) };
+    place.framedPlace = Math.abs(framed.x + framed.width - (win.x + anchor.right)) <= 2 && Math.abs(place.framed.gap - 5) <= 2;
     // Put past the screen's edge, it comes back inside.
     popup.browserWindow.setBounds({ x: area.x + area.width - 40, y: bounds.y, width: 320, height: 240 });
     popup.emit("moved");
@@ -200,6 +225,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     toolbarIcon: results.toolbar.icon.includes(results.folderId) && results.toolbar.iconServed === "200 image/png",
     popup: results.popup.length === 1 && results.popup[0].endsWith("/popup.html"),
     popupPlace: Boolean(results.popupPlace && results.popupPlace.rightAtButton && results.popupPlace.belowButton && results.popupPlace.insideWindow && results.popupPlace.insideScreen && results.popupPlace.keptOnScreen),
+    popupPlaceFramed: Boolean(results.popupPlace && results.popupPlace.framedPlace),
     backgroundTab: Boolean(results.backgroundTab && results.backgroundTab.url === base + "one" && results.backgroundTab.windows === "object"),
     siteServiceWorker: results.siteServiceWorker === "none",
     privateTabs: results.privateRuns === "no" && results.privateToolbar.extensionsHere === false && results.privateActionsHidden === true,
