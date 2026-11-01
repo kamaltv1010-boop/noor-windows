@@ -52,10 +52,69 @@ const IPHONES = [
   ["iPhone 14", 390, 844, 3, true, 664, "26.0", "18_6", "26.0"],
   ["iPhone 14 Pro Max", 430, 932, 3, true, 739, "26.1", "18_6", "26.1"],
   ["iPhone 16 Pro Max", 440, 956, 3, true, 763, "26.2", "18_7", "26.2"],
-].map(([name, width, height, scale, hdr, pageHeight, iOS, uaOS, safari]) => ({ name, width, height, scale, hdr, pageHeight, iOS, uaOS, safari }));
+].map(([name, width, height, scale, hdr, pageHeight, iOS, uaOS, safari]) => ({
+  family: "iphone", name, width, height, scale, hdr, pageWidth: width, pageHeight, fullHeight: height, iOS, uaOS, safari,
+  platform: "iPhone", cores: 4, desktop: false,
+}));
 
-/// Safari's user agent on `iphone`.
-const userAgent = (iphone) => `Mozilla/5.0 (iPhone; CPU iPhone OS ${iphone.uaOS} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${iphone.safari} Mobile/15E148 Safari/604.1`;
+/// What Safari leaves a page of an iPad's screen, in points: the status
+/// bar (20 points on an iPad with a home button, 24 on the others) and
+/// Safari's toolbar.
+const IPAD_TOOLBAR = 50;
+
+/// Real iPads, each with an iPadOS version it runs: its screen in points,
+/// upright (as Safari reports it whichever way the iPad is held), whether
+/// it shows HDR (the XDR and OLED screens), the core count WebKit reports
+/// (8 from 8 cores, 4 below; see WebKit's NavigatorBase.cpp), and whether
+/// it has a home button. Every one is held sideways, as an iPad on a desk
+/// is, which fits a PC's screen. Safari shows every iPad but the minis the
+/// websites a Mac gets ("desktop-class browsing", see WebKit's
+/// WebPageProxyIOS.mm): a Mac's user agent, "MacIntel" for the platform,
+/// and the page as wide as the window, whatever its viewport tag says.
+const IPADS = [
+  ["iPad (9th generation)", 810, 1080, false, 4, true, "17.0.3", "17_0_3", "17.0"],
+  ["iPad Air (4th generation)", 820, 1180, false, 4, false, "17.1.2", "17_1_2", "17.1"],
+  ["iPad mini (5th generation)", 768, 1024, false, 4, true, "17.2.1", "17_2_1", "17.2"],
+  ["iPad Pro 12.9-inch (5th generation)", 1024, 1366, true, 8, false, "17.3.1", "17_3_1", "17.3"],
+  ["iPad (10th generation)", 820, 1180, false, 4, false, "17.4.1", "17_4_1", "17.4"],
+  ["iPad Air 11-inch (M2)", 820, 1180, false, 8, false, "17.5.1", "17_5_1", "17.5"],
+  ["iPad Pro 11-inch (2nd generation)", 834, 1194, false, 8, false, "17.6.1", "17_6_1", "17.6"],
+  ["iPad mini (6th generation)", 744, 1133, false, 4, false, "18.0.1", "18_0_1", "18.0"],
+  ["iPad Pro 11-inch (M4)", 834, 1210, true, 8, false, "18.1.1", "18_1_1", "18.1"],
+  ["iPad Air (5th generation)", 820, 1180, false, 8, false, "18.2.1", "18_2_1", "18.2"],
+  ["iPad mini (A17 Pro)", 744, 1133, false, 4, false, "18.3.2", "18_3_2", "18.3"],
+  ["iPad Pro 12.9-inch (6th generation)", 1024, 1366, true, 8, false, "18.4.1", "18_4_1", "18.4"],
+  ["iPad (A16)", 820, 1180, false, 4, false, "18.5", "18_5", "18.5"],
+  ["iPad Air 13-inch (M2)", 1024, 1366, false, 8, false, "18.6", "18_6", "18.6"],
+  ["iPad Air 11-inch (M3)", 820, 1180, false, 8, false, "18.6.2", "18_6_2", "18.6"],
+  ["iPad Pro 13-inch (M4)", 1032, 1376, true, 8, false, "26.0", "18_6", "26.0"],
+  ["iPad Pro 11-inch (4th generation)", 834, 1194, false, 8, false, "26.1", "18_6", "26.1"],
+  ["iPad Air 13-inch (M3)", 1024, 1366, false, 8, false, "26.2", "18_7", "26.2"],
+].map(([name, width, height, hdr, cores, homeButton, iOS, uaOS, safari]) => {
+  const desktop = !/^iPad mini/.test(name);
+  return {
+    family: "ipad", name, width, height, scale: 2, hdr, cores, homeButton,
+    // Sideways: the page as wide as the screen is long, under the bars.
+    pageWidth: height, pageHeight: width - (homeButton ? 20 : 24) - IPAD_TOOLBAR, fullHeight: width,
+    iOS, uaOS, safari, desktop, platform: desktop ? "MacIntel" : "iPad",
+  };
+});
+
+/// The devices a profile can be, by kind: "iphone" or "ipad".
+const DEVICES = { iphone: IPHONES, ipad: IPADS };
+const FAMILIES = Object.keys(DEVICES);
+
+/// Safari's user agent on `device`: an iPhone's, a Mac's on an iPad that
+/// gets desktop websites, an iPad's on a mini (see WebKit's
+/// UserAgentIOS.mm).
+const userAgent = (device) => {
+  if (device.family === "ipad") {
+    return device.desktop
+      ? `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${device.safari} Safari/605.1.15`
+      : `Mozilla/5.0 (iPad; CPU OS ${device.uaOS} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${device.safari} Mobile/15E148 Safari/604.1`;
+  }
+  return `Mozilla/5.0 (iPhone; CPU iPhone OS ${device.uaOS} like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/${device.safari} Mobile/15E148 Safari/604.1`;
+};
 
 /// Compares iOS versions: below 0 when `a` is older than `b`.
 const compareVersions = (a, b) => {
@@ -167,36 +226,50 @@ const safariHeaders = (headers, { type, iphone, language }) => {
 // MARK: - The page area
 
 /// What Chromium is told to show a tab's page (the debugging protocol's
-/// Emulation.setDeviceMetricsOverride): the iPhone's page area at its pixel
-/// density, as a phone (the page's viewport tag counts, scroll bars are
-/// drawn over the page), its screen, upright. `pageHeight`: the page
-/// area's height, less than Safari's on a short PC screen (as on an iPhone
-/// whose toolbar or keyboard shows).
-const deviceMetrics = (iphone, pageHeight = iphone.pageHeight) => ({
-  width: iphone.width,
+/// Emulation.setDeviceMetricsOverride): the device's page area at its
+/// pixel density and its screen, upright (as Safari reports it), scroll
+/// bars drawn over the page. An iPhone's page is a phone's (its viewport
+/// tag counts), upright; an iPad's, sideways, a phone's on a mini and a
+/// computer's on the others (as wide as the window, whatever its viewport
+/// tag says, as Safari shows an iPad desktop websites). `pageHeight`: the
+/// page area's height, less than Safari's on a short PC screen (as on a
+/// device whose toolbar or keyboard shows); `scale`, how big Chromium draws
+/// the page, smaller on a PC screen too narrow for an iPad's (the page
+/// sees the same sizes).
+const deviceMetrics = (device, pageHeight = device.pageHeight, scale = 1) => ({
+  width: device.pageWidth,
   height: pageHeight,
-  deviceScaleFactor: iphone.scale,
-  mobile: true,
-  scale: 1,
-  screenWidth: iphone.width,
-  screenHeight: iphone.height,
+  deviceScaleFactor: device.scale,
+  mobile: !device.desktop,
+  ...(device.desktop ? { scrollbarType: "overlay" } : {}),
+  scale,
+  screenWidth: device.width,
+  screenHeight: device.height,
   positionX: 0,
   positionY: 0,
-  screenOrientation: { type: "portraitPrimary", angle: 0 },
+  screenOrientation: device.family === "ipad" ? { type: "landscapePrimary", angle: 90 } : { type: "portraitPrimary", angle: 0 },
 });
 
 /// What a page script of Noor iPhone is told (see scripts/parts/iphone.js).
-const pageConfig = (iphone) => ({
-  model: iphone.name,
-  userAgent: userAgent(iphone),
-  iOS: iphone.iOS,
-  safari: iphone.safari,
-  hdr: iphone.hdr,
-  width: iphone.width,
-  height: iphone.height,
+/// The window is the whole screen, held as the device is (WebKit's outer
+/// size is its web view's, which Safari lays under its bars).
+const pageConfig = (device) => ({
+  family: device.family,
+  model: device.name,
+  userAgent: userAgent(device),
+  platform: device.platform,
+  cores: device.cores,
+  desktop: device.desktop,
+  iOS: device.iOS,
+  safari: device.safari,
+  hdr: device.hdr,
+  width: device.width,
+  height: device.height,
+  outerWidth: device.pageWidth,
+  outerHeight: device.fullHeight,
 });
 
 module.exports = {
-  IPHONES, device, isIPhone, userAgent, compareVersions, atLeast, languageTag, acceptLanguage, safariHeaders,
+  IPHONES, IPADS, DEVICES, FAMILIES, device, isIPhone, userAgent, compareVersions, atLeast, languageTag, acceptLanguage, safariHeaders,
   deviceMetrics, pageConfig, ACCEPT_DOCUMENT, ACCEPT_STYLE, ACCEPT_IMAGE_16, ACCEPT_IMAGE_17,
 };

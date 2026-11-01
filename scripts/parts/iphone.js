@@ -1,14 +1,15 @@
 // Noor iPhone: what a page sees of the browser is Safari on the profile's
-// iPhone (config.iphone, see main/iphone.js). Chromium already shows the
-// iPhone's screen, pixel density, touch and Safari's user agent (see
-// Tab.emulate); this does the rest a site reads to tell Safari on an
-// iPhone from Chrome dressed as one: what Safari has and Chromium doesn't
-// (and the other way round, for the iPhone's iOS version), how its
+// iPhone or iPad (config.iphone, see main/iphone.js). Chromium already
+// shows the device's screen, pixel density, touch and Safari's user agent
+// (see Tab.emulate); this does the rest a site reads to tell Safari on an
+// iPhone or iPad from Chrome dressed as one: what Safari has and Chromium
+// doesn't (and the other way round, for the device's iOS version), how its
 // built-ins print, its error messages and clocks, its graphics card, its
 // voices and fonts, and how it answers permission queries. In a worker as
 // in a window.
 {
   const iphone = config.iphone;
+  const isIPad = iphone.family === "ipad";
   const isWindow = Boolean(document) && typeof window.Window === "function";
   const compareVersions = (a, b) => {
     const pa = String(a).split(".").map(Number);
@@ -165,14 +166,15 @@
     }
   }
 
-  // The navigator: Apple's, the core count Safari reports on any iPhone
-  // (WebKit tells 4 below 8 cores), the platform and user agent in every
-  // worker too, home-screen state, and Web Share.
+  // The navigator: Apple's, the core count Safari reports (WebKit tells 4
+  // below 8 cores, 8 from 8: 4 on any iPhone), the platform ("MacIntel" on
+  // an iPad shown desktop websites) and user agent in every worker too,
+  // home-screen state, and Web Share.
   {
     const navigatorProto = (window.Navigator || window.WorkerNavigator).prototype;
     if (window.Navigator) defineGetter(navigatorProto, "vendor", () => "Apple Computer, Inc.");
-    regetter(navigatorProto, "hardwareConcurrency", () => 4);
-    regetter(navigatorProto, "platform", () => "iPhone");
+    regetter(navigatorProto, "hardwareConcurrency", () => iphone.cores || 4);
+    regetter(navigatorProto, "platform", () => iphone.platform || "iPhone");
     if (iphone.userAgent) {
       defineGetter(navigatorProto, "userAgent", () => iphone.userAgent);
       defineGetter(navigatorProto, "appVersion", () => iphone.userAgent.replace(/^Mozilla\//, ""));
@@ -234,11 +236,19 @@
     }
   }
 
-  // The window: an iPhone's is the whole screen (WebKit's outer size is
-  // its web view's, which Safari lays under its bars).
+  // The window: the whole screen, held as the device is (WebKit's outer
+  // size is its web view's, which Safari lays under its bars).
   if (isWindow) {
-    defineGetter(window, "outerWidth", () => iphone.width);
-    defineGetter(window, "outerHeight", () => iphone.height);
+    defineGetter(window, "outerWidth", () => iphone.outerWidth || iphone.width);
+    defineGetter(window, "outerHeight", () => iphone.outerHeight || iphone.height);
+  }
+
+  // An iPad shown desktop websites tells which way it is held as any iPad
+  // does (Chromium tells it only where it shows a phone's page): sideways,
+  // turned left.
+  if (isWindow && iphone.desktop && !("orientation" in window)) {
+    addGetter(window, "orientation", () => 90);
+    addHandler(window, "onorientationchange");
   }
 
   // HDR screens (iPhone XS and later, but the XR, 11 and SE) answer the
@@ -297,7 +307,11 @@
   }
 
   // An iPhone shows a video full screen through the video itself (it has
-  // no Fullscreen API, taken away below), and tells it so.
+  // no Fullscreen API, taken away below), and tells it so; an iPad has
+  // both (and Safari's old name for whether keys reach a page full screen).
+  if (isIPad && isWindow && documentProto && fullscreenElementOf) {
+    addGetter(documentProto, "webkitFullScreenKeyboardInputAllowed", () => false);
+  }
   if (isWindow && window.HTMLVideoElement && requestFullscreen) {
     const videoProto = window.HTMLVideoElement.prototype;
     const mediaProto = window.HTMLMediaElement.prototype;
@@ -873,10 +887,14 @@
     }
   }
 
-  // Last, what an iPhone of this iOS version doesn't have (see
-  // scripts/parts/iphone-surface.js): members first, then the globals
-  // they hang on.
+  // Last, what an iPhone or iPad of this iOS version doesn't have (see
+  // scripts/parts/iphone-surface.js; an iPad's differs where
+  // IPAD_SURFACE says): members first, then the globals they hang on.
   {
+    const specOf = (where, name) => {
+      const own = isIPad ? IPAD_SURFACE[where] : null;
+      return own && Object.prototype.hasOwnProperty.call(own, name) ? own[name] : IPHONE_SURFACE[where][name];
+    };
     const has = (spec) => {
       if (spec === "") return false;
       return String(spec).split("|").some((part) => {
@@ -899,7 +917,7 @@
     // Types stay, for the site's own scripts to use.
     const TRUSTED = ["trustedTypes", "TrustedHTML", "TrustedScript", "TrustedScriptURL", "TrustedTypePolicy", "TrustedTypePolicyFactory"];
     let keepTrusted = false;
-    if (TRUSTED.some((name) => name in globals && !has(globals[name]))) {
+    if (TRUSTED.some((name) => name in globals && !has(specOf(scope, name)))) {
       try {
         const factory = window.trustedTypes;
         if (factory && typeof factory.createPolicy === "function") {
@@ -924,14 +942,14 @@
       if (!target || (typeof target !== "object" && typeof target !== "function")) continue;
       const names = IPHONE_SURFACE[where];
       for (const name of Object.keys(names)) {
-        if (!has(names[name])) {
+        if (!has(specOf(where, name))) {
           try { delete target[name]; } catch (e) {}
         }
       }
     }
     for (const name of Object.keys(globals)) {
       if (keepTrusted && TRUSTED.indexOf(name) !== -1) continue;
-      if (!has(globals[name])) {
+      if (!has(specOf(scope, name))) {
         try { delete window[name]; } catch (e) {}
       }
     }

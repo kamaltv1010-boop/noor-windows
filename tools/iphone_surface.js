@@ -1,7 +1,8 @@
 // Builds scripts/parts/iphone-surface.js: what this app's Chromium shows a
 // page that Safari on an iPhone doesn't, and from which iOS version Safari
 // has it, so Noor iPhone can take away what an iPhone of a given version
-// wouldn't have (see scripts/parts/iphone.js).
+// wouldn't have (see scripts/parts/iphone.js); and where Safari on an iPad
+// differs (the Fullscreen API, MediaSource), what an iPad has.
 //
 // Usage: node tools/iphone_surface.js <surface.json> <browser-compat-data/data.json>
 //
@@ -20,12 +21,18 @@ const out = path.join(__dirname, "..", "scripts", "parts", "iphone-surface.js");
 
 /// iPhone and iPad share BCD's "safari_ios"; what is there on an iPad only
 /// (or only in a web app saved to the home screen) an iPhone's Safari
-/// doesn't have.
-const NOT_ON_IPHONE = /not on iPhone|iPad but not on iPhone|only on iPad|unless the page is a web app saved to the home screen/i;
+/// doesn't have, and what is there on an iPhone only (or only in a web app)
+/// an iPad's doesn't.
+const NOT_ON = {
+  iphone: /not on iPhone|iPad but not on iPhone|only on iPad|unless the page is a web app saved to the home screen/i,
+  ipad: /not on iPad|iPhone but not on iPad|only on iPhone|unless the page is a web app saved to the home screen/i,
+};
+/// The device the tables below are built for: "iphone", then "ipad".
+let device = "iphone";
 
 const textOf = (notes) => [].concat(notes || []).join(" ");
 
-/// When Safari on an iPhone has a feature, as BCD says it: the stretches
+/// When Safari on the device has a feature, as BCD says it: the stretches
 /// of iOS versions it is there in, each [from, until) with "" for open, or
 /// [] for never; null when BCD doesn't say. (A feature BCD shows first in
 /// part and then in full, or moved, is there from its first version on.)
@@ -45,7 +52,7 @@ const stretches = (node) => {
     }
     if (added === null || added === undefined || added === "preview") continue;
     known = true;
-    if (NOT_ON_IPHONE.test(textOf(statement.notes))) continue;
+    if (NOT_ON[device].test(textOf(statement.notes))) continue;
     const from = added === true ? "1" : String(added).replace("≤", "");
     const until = statement.version_removed ? String(statement.version_removed).replace("≤", "") : "";
     list.push([from, until]);
@@ -65,8 +72,8 @@ const stretches = (node) => {
   return merged;
 };
 
-/// The stretches as the page script reads them, for the iPhones in the
-/// list (none older than `OLDEST`): "" for never, "17.4" from 17.4 on,
+/// The stretches as the page script reads them, for the devices in the
+/// lists (none older than `OLDEST`): "" for never, "17.4" from 17.4 on,
 /// "-17.2" until 17.2, "17-18" from 17 until 18, several joined by "|";
 /// null when every one of them has it.
 const OLDEST = "16.6";
@@ -101,10 +108,15 @@ const KEEP = new Set(["MimeType", "Plugin", "PluginArray", "MimeTypeArray", "con
 /// Chromium's), so only the globals go; the plugin list is Safari's too.
 const KEEP_MEMBERS_OF = new Set(["MediaSource", "SourceBuffer", "SourceBufferList", "MimeType", "Plugin", "PluginArray", "MimeTypeArray"]);
 /// Single members kept: cssFloat moved in Safari 26 to the style's own
-/// interface, where a page still reads it on an element's style.
-const KEEP_MEMBER = new Set(["CSSStyleDeclaration.prototype.cssFloat"]);
+/// interface, where a page still reads it on an element's style; and
+/// Error.captureStackTrace (Safari's from 17.2), which Electron's own code
+/// calls in the page's world of every frame (a tab's pages run without
+/// context isolation): without it, a page that makes a frame ends its
+/// renderer.
+const KEEP_MEMBER = new Set(["CSSStyleDeclaration.prototype.cssFloat", "Error.captureStackTrace"]);
 
-/// Chromium's own, which BCD doesn't list (never on an iPhone).
+/// Chromium's own, which BCD doesn't list (never on an iPhone; see
+/// IPAD_HAS for an iPad).
 const CHROMIUM_ONLY = {
   globals: [
     "chrome", "webkitRTCPeerConnection", "webkitMediaStream", "webkitSpeechGrammar", "webkitSpeechGrammarList",
@@ -125,12 +137,27 @@ const CHROMIUM_ONLY = {
   "WorkerNavigator.prototype": ["devicePosture"],
 };
 
+/// What an iPad has of those: WebKit's Fullscreen API, prefixed from
+/// iPadOS 12 and its events unprefixed from 16.4 (see WebKit's
+/// Document+Fullscreen.idl and Element+Fullscreen.idl), as old as the
+/// oldest device of the lists.
+const IPAD_HAS = {
+  "Element.prototype": ["webkitRequestFullscreen", "webkitRequestFullScreen", "onwebkitfullscreenchange", "onwebkitfullscreenerror", "onfullscreenchange", "onfullscreenerror"],
+  "Document.prototype": ["webkitIsFullScreen", "webkitCurrentFullScreenElement", "webkitFullscreenEnabled", "webkitFullscreenElement", "onwebkitfullscreenchange", "onwebkitfullscreenerror", "webkitCancelFullScreen", "webkitExitFullscreen", "onfullscreenchange", "onfullscreenerror"],
+};
+
+/// A worker's MediaSource and its buffers (an iPad's, from iPadOS 18) are
+/// there from where BCD says a worker can make one, not the window's.
+const WORKER_SINCE = { MediaSource: "canConstructInDedicatedWorker_static", SourceBuffer: "canConstructInDedicatedWorker_static", SourceBufferList: "canConstructInDedicatedWorker_static" };
+
 /// WebGPU's constant objects go with WebGPU (iOS 26).
 const WITH = { GPUBufferUsage: "GPU", GPUColorWrite: "GPU", GPUMapMode: "GPU", GPUShaderStage: "GPU", GPUTextureUsage: "GPU" };
 
 const api = bcd.api;
 const builtins = bcd.javascript.builtins;
 
+const build = (forDevice) => {
+device = forDevice;
 const table = {};
 const put = (where, name, version) => {
   if (KEEP.has(name) || version === null || KEEP_MEMBER.has(`${where}.${name}`)) return;
@@ -142,6 +169,7 @@ const put = (where, name, version) => {
 // away below that. Only what Chromium has is listed.
 const globalSince = (name, scope) => {
   if (/^on/.test(name)) return null;
+  if (scope === "worker" && WORKER_SINCE[name] && api.MediaSource) return since(api.MediaSource[WORKER_SINCE[name]]);
   if (WITH[name]) return since(api[WITH[name]]);
   if (api[name]) return since(api[name]);
   if (builtins[name]) return since(builtins[name]);
@@ -185,8 +213,9 @@ for (const [where, names] of Object.entries(CHROMIUM_ONLY)) {
     ((surface.window.interfaces[name] || {}).prototype) || [],
     ((surface.worker.interfaces[name] || {}).prototype) || [],
   ));
+  const has = device === "ipad" ? IPAD_HAS[where] || [] : [];
   for (const member of names) {
-    if (present.has(member)) put(where, member, "");
+    if (present.has(member) && !has.includes(member)) put(where, member, "");
   }
 }
 
@@ -194,8 +223,24 @@ for (const where of Object.keys(table)) {
   if (!Object.keys(table[where]).length) delete table[where];
 }
 
-const sorted = Object.fromEntries(Object.keys(table).sort().map((where) => [where, Object.fromEntries(Object.keys(table[where]).sort().map((n) => [n, table[where][n]]))]));
-const body = JSON.stringify(sorted, null, 0).replace(/\},"/g, '},\n  "').replace(/^\{/, "{\n  ").replace(/\}$/, "\n}");
+return Object.fromEntries(Object.keys(table).sort().map((where) => [where, Object.fromEntries(Object.keys(table[where]).sort().map((n) => [n, table[where][n]]))]));
+};
+
+const sorted = build("iphone");
+const forIPad = build("ipad");
+/// Where an iPad differs: its versions, "0" for what every iPad of the
+/// list has (where an iPhone lacks it).
+const ipadDiffers = {};
+for (const where of [...new Set(Object.keys(sorted).concat(Object.keys(forIPad)))].sort()) {
+  const phone = sorted[where] || {};
+  const pad = forIPad[where] || {};
+  for (const name of [...new Set(Object.keys(phone).concat(Object.keys(pad)))].sort()) {
+    if (phone[name] === pad[name]) continue;
+    (ipadDiffers[where] = ipadDiffers[where] || {})[name] = name in pad ? pad[name] : "0";
+  }
+}
+const asSource = (table) => JSON.stringify(table, null, 0).replace(/\},"/g, '},\n  "').replace(/^\{/, "{\n  ").replace(/\}$/, "\n}");
+const body = asSource(sorted);
 const source = `// Generated by tools/iphone_surface.js from Chromium ${surface.chrome} and MDN's
 // browser compatibility data. Don't edit by hand; rerun the tool.
 //
@@ -205,7 +250,11 @@ const source = `// Generated by tools/iphone_surface.js from Chromium ${surface.
 // "" for never, "17.4" from 17.4 on, "-17.2" until 17.2, "17-18" from 17
 // until 18, several joined by "|". See scripts/parts/iphone.js.
 const IPHONE_SURFACE = ${body};
+// Where Safari on an iPad differs from it: the iPadOS versions it has
+// those in, "0" for every one.
+const IPAD_SURFACE = ${asSource(ipadDiffers)};
 `;
 fs.writeFileSync(out, source);
 const count = Object.values(sorted).reduce((n, names) => n + Object.keys(names).length, 0);
-console.log(`wrote ${out}: ${count} names in ${Object.keys(sorted).length} places, ${source.length} chars`);
+const ipadCount = Object.values(ipadDiffers).reduce((n, names) => n + Object.keys(names).length, 0);
+console.log(`wrote ${out}: ${count} names in ${Object.keys(sorted).length} places, ${ipadCount} an iPad has otherwise, ${source.length} chars`);

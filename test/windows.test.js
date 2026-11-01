@@ -251,3 +251,35 @@ test("new profiles open in a window of their own; many at once open none, and co
   assert.equal(windows.list.length, 2);
   assert.deepEqual(started, [one.id, ...many.map((p) => p.id)]);
 });
+
+test("Noor iPhone: new profiles are what the settings say, iPhones or iPads; one in a closed one's place is what that one was", async () => {
+  const { Fingerprint } = require("../main/fingerprint");
+  const store = tempStore();
+  const profiles = new Profiles(store);
+  const fingerprint = new Fingerprint(store, profiles, { iphone: true });
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "noor-windows-"));
+  const windows = new Windows({ store, profiles, fingerprint, userData, stats: { trackerBlocked() {} } }, {
+    makeBrowser: (profile, bounds) => new FakeWindow(windows, profile, bounds),
+  });
+  windows.clearData = async () => {};
+  windows.warmup = { settings: () => ({ auto: false }), startMany: async () => {}, stop: () => {} };
+  const familyOf = (profile) => fingerprint.forProfile(profile).iphone().family;
+  windows.open(profiles.find(DEFAULT_ID));
+  assert.equal(familyOf(windows.createProfile("Phone")), "iphone");
+  store.set("newProfileDevice", "ipad");
+  const pad = windows.createProfile("Pad");
+  assert.equal(familyOf(pad), "ipad");
+  const many = windows.createProfiles(3, "Tablet");
+  assert.deepEqual(many.map(familyOf), ["ipad", "ipad", "ipad"]);
+  // The first profile stays what it was.
+  assert.equal(familyOf(profiles.find(DEFAULT_ID)), "iphone");
+  // A profile made in an iPhone's place is an iPhone, whatever new ones are.
+  store.set("freshOnClose", true);
+  const phone = profiles.all().find((p) => p.name === "Phone");
+  windows.open(phone).close();
+  await new Promise((resolve) => setImmediate(resolve));
+  const fresh = profiles.all()[profiles.all().length - 1];
+  assert.equal(fresh.name, "Phone 2");
+  assert.equal(profiles.find(phone.id), null);
+  assert.equal(familyOf(fresh), "iphone");
+});

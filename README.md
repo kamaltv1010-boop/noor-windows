@@ -2,7 +2,7 @@
 
 متصفح خاص لـ Windows، بنفس الفكرة ديال [تطبيق Noor ديال iPhone](https://github.com/kamaltv1010-boop/Amir): **بروفايلات** كل واحد ببصماته والبيانات ديالو، **حماية ضد البصمات** (Canvas، WebGL، الصوت، ClientRects، الشاشة، البروسيسور)، **حجب المتتبعين**، **HTTPS**، **روابط نقية**، و**جلسة جديدة** بضغطة. مبني بـ Electron (Chromium)، وكيتبنى `.exe` أوتوماتيكياً فـ GitHub Actions.
 
-وكاينة حتى **[Noor iPhone](#noor-iphone-)**: نفس المتصفح على Windows، ولكن المواقع كتشوف فيه iPhone حقيقي فيه Safari.
+وكاينة حتى **[Noor iPhone](#noor-iphone-)**: نفس المتصفح على Windows، ولكن المواقع كتشوف فيه iPhone ولا iPad حقيقي فيه Safari.
 
 ## التحميل ⬇️
 
@@ -36,11 +36,12 @@
 
 ## Noor iPhone 📱
 
-نسخة ثانية من نفس المتصفح، كتخدم على Windows، ولكن **كل بروفايل كيبان للمواقع بحال iPhone حقيقي فيه Safari**، بحال تطبيق Noor ديال iPhone.
+نسخة ثانية من نفس المتصفح، كتخدم على Windows، ولكن **كل بروفايل كيبان للمواقع بحال iPhone ولا iPad حقيقي فيه Safari**، بحال تطبيق Noor ديال iPhone.
 
 - **iPhone حقيقي لكل بروفايل**: واحد من 20 iPhone (من iPhone SE حتى iPhone 16 Pro Max، ومن iOS 16 حتى iOS 26)، بالـ user agent ديال Safari ديالو، الشاشة ديالو، الدقة ديالو (2x ولا 3x)، واللمس (`ontouchstart`، `maxTouchPoints = 5`، `pointer: coarse`). الصفحة كتبان فوسط النافذة بعرض الـ iPhone، والماوس كيخدم بحال الصبع (tap وscroll).
 - **بحال Safari**: الطلبات كتمشي بالـ headers ديال Safari (بلا `Sec-CH-UA`، بالترتيب ديالو، وبلغة وحدة). الحوايج اللي كاينين غير فـ Chrome محيدين (`window.chrome`، `userAgentData`، `Notification`…)، والحوايج ديال Safari زايدين (`ApplePaySession`، `GestureEvent`، `webkitEnterFullscreen`…). WebGL ديال «Apple GPU»، الأصوات ديال iOS، الخطوط ديال iPhone (والخطوط ديال Windows مخبيين)، الأذونات بحال Safari، والوقت بالـ millisecond. كلشي هادا حتى فالـ frames، فالـ workers، وفالنوافذ اللي كتحل الصفحة، وفكل المواقع (حتى مواقع تسجيل الدخول).
-- **الحماية**: Canvas، WebGL، الصوت وClientRects مشعلين من الأول (بحال تطبيق iPhone). **New iPhone** فالإعدادات (ولا فالقائمة ⋯ ← Fingerprint) كيعطيك iPhone آخر، و**جلسة جديدة** حتى هي كتبدّل الـ iPhone مع البصمات.
+- **iPad حقيقي لكل بروفايل 📱↔️**: فالإعدادات › Profiles › **New profiles are** كتختار واش البروفايلات الجداد (واحد ولا بزاف دفعة وحدة) يكونو **iPhones** ولا **iPads**. البروفايل اللي كيتصاوب فبلاصة واحد تسد (**Replace a profile when closed**) كيبقى بحال اللي كان. وفالإعدادات › Fingerprint protection كاين اختيار **iPhone / iPad** للبروفايل اللي خدام فيه، و**New iPad** كيعطيك iPad آخر. واحد من 18 iPad (iPad 9 و10 وA16، iPad Air، iPad mini، iPad Pro حتى M4، ومن iPadOS 17 حتى 26)، **مقلوب على الجنب** (landscape) بحال iPad فوق مكتب، وهكا كيدخل مزيان فشاشة الـ PC: الشاشة ديالو والدقة ×2 واللمس. بحال iPad حقيقي، Safari كيوري المواقع **نسخة الـ Mac** (desktop websites): الـ user agent ديال Safari على Mac، `navigator.platform = "MacIntel"`، والصفحة بعرض النافذة كيفما كان الـ viewport ديالها، والموقع كيعرف بلي iPad باللمس (`maxTouchPoints = 5`)؛ غير الـ **iPad mini** كياخد المواقع ديال اللمس (user agent ديال iPad، `platform = "iPad"`)، بحال اللي كيدير WebKit. وعند الـ iPad حتى الحوايج اللي ما عندهاش iPhone: **Fullscreen** ديال أي عنصر، و**MediaSource**، وعدد cores ديالو (8 فـ iPads ديال M1/M2/M3/M4، و4 فالآخرين). إلا كانت الشاشة ديال الـ PC صغيرة على عرض الـ iPad، Noor كيرسم الصفحة صغيرة شوية باش تدخل، والموقع كيشوف نفس القياسات.
+- **الحماية**: Canvas، WebGL، الصوت وClientRects مشعلين من الأول (بحال تطبيق iPhone). **New iPhone** (ولا **New iPad**) فالإعدادات (ولا فالقائمة ⋯ ← Fingerprint) كيعطيك جهاز آخر من نفس النوع، و**جلسة جديدة** حتى هي كتبدّل الجهاز مع البصمات.
 - **بوحدو**: عندو البروفايلات والبيانات ديالو (مجلد `Noor iPhone`)، ما كيختلطوش مع Noor. تقدر تنصّب جوج بجوج.
 
 **الحدود** ⚠️:
@@ -58,7 +59,7 @@
 
 ## الفرق مع تطبيق iPhone 📱
 
-- ما كاينش «وضع iPad» ولا user agent عشوائي: على PC، المواقع كتشوف Chrome على Windows (أحسن تمويه هو اللي كيشبه أغلب الناس)، ولا iPhone فـ Noor iPhone.
+- ما كاينش «وضع iPad» ولا user agent عشوائي فـ Noor: على PC، المواقع كتشوف Chrome على Windows (أحسن تمويه هو اللي كيشبه أغلب الناس)؛ وفـ Noor iPhone كتشوف iPhone ولا iPad (كل بروفايل واش اختاريتي).
 - زادت حماية **Processor & Memory** (`hardwareConcurrency`/`deviceMemory`)، اللي Safari ما كيعطيهاش على iPhone.
 - الإضافات كاينين (من Chrome Web Store ولا من ملف)، ولكن ما كيخدموش فالـ onglets الخاصة. بلا استيراد cookies فهاد النسخة.
 
@@ -85,8 +86,8 @@
 | `renderer/icons.js` | الأيقونات الصغيرة ديال القوائم والإعدادات |
 | `scripts/preload.js`, `scripts/protect.js` | الحماية المحقونة فالصفحات (مولّدين من `FingerprintProtection.swift` ديال iPhone بـ `tools/extract_from_ios.py`) |
 | `scripts/parts/chrome.js` | الجزء الخاص بـ Chromium: `userAgentData`، `chrome.app/csi/loadTimes`، الأذونات، الأصوات، Widevine، Web Share، والبلاصة (quota) ملي البيانات فالذاكرة |
-| `main/iphone.js` | Noor iPhone: الـ iPhones، الـ user agent والـ headers ديال Safari، الشاشة اللي كيوريها Chromium |
-| `scripts/parts/iphone.js`, `scripts/parts/iphone-surface.js`, `scripts/parts/iphone-fonts.js` | شنو كتشوف الصفحة فـ Noor iPhone: اللي عند Safari واللي ماعندوش، الخطوط |
+| `main/iphone.js` | Noor iPhone: الـ iPhones والـ iPads، الـ user agent والـ headers ديال Safari، الشاشة اللي كيوريها Chromium |
+| `scripts/parts/iphone.js`, `scripts/parts/iphone-surface.js`, `scripts/parts/iphone-fonts.js` | شنو كتشوف الصفحة فـ Noor iPhone: اللي عند Safari واللي ماعندوش (وفين كيختلف الـ iPad)، الخطوط |
 | `main/extensions.js`, `main/extension-bridge.js` | الإضافات، والقنطرة اللي كتعطي الـ background ديالها الـ API (Electron ما كيخدّمش preload فالـ service worker ديال إضافة) |
 | `renderer/` | الشريط، صفحة البداية، الإعدادات (بحال Chrome: الأقسام، البحث)، المكتبة، صفحة الخطأ |
 | `rules/trackers.json` | المتتبعين المحجوبين (نفس قائمة iPhone) |

@@ -10,6 +10,8 @@
     fonts: ["Fonts", "Sites find the fonts every Windows has and others of this profile's own (Office's, Adobe Acrobat's, a language's…), so each profile has a list of its own, as PCs with different programs do. The other fonts of this PC are hidden."],
     device: ["iPhone", "The iPhone this profile is to every site: its screen, touch, Safari and iOS version."],
   };
+  // Noor iPhone: a profile is an iPhone or an iPad.
+  const IPAD_DEVICE = ["iPad", "The iPad this profile is to every site, held sideways: its screen, touch, Safari and iPadOS version. As on a real iPad, Safari shows sites what it shows a Mac (an iPad mini aside), and they find the iPad by its touch."];
   // Noor iPhone: the noise is on at first, as in the iPhone app.
   const IPHONE_HINTS = {
     audio: "Sound processing gets noise, so a site can't follow this profile to another.",
@@ -227,15 +229,38 @@
     $("newprofilename").placeholder = `Profile ${settings.profiles.length + 1}`;
 
     const isIPhone = settings.device === "iphone";
+    // Noor iPhone: what new profiles are.
+    $("newdevicerow").hidden = !isIPhone;
+    if (isIPhone) {
+      $("newdevice").value = settings.newProfileDevice || "iphone";
+    }
     const protections = $("protections");
     protections.textContent = "";
     for (const kind of settings.kinds || Object.keys(KIND_TITLES)) {
       const [title, plainHint] = KIND_TITLES[kind];
       const hint = (isIPhone && IPHONE_HINTS[kind]) || plainHint;
       if (kind === "device") {
-        // The iPhone can't be off: only changed.
-        const renew = button("New iPhone", "secondary", () => noor.invoke("fingerprint:new", [kind]).then(apply));
-        protections.append(row(`${title}: ${settings.values.iphone.name}`, hint, renew));
+        // The iPhone or iPad can't be off: only changed, for another of its
+        // kind, or for one of the other kind.
+        const isIPad = settings.deviceFamily === "ipad";
+        const [deviceTitle, deviceHint] = isIPad ? IPAD_DEVICE : [title, hint];
+        const controls = document.createElement("div");
+        controls.style.display = "flex";
+        controls.style.alignItems = "center";
+        controls.style.gap = "10px";
+        const family = document.createElement("select");
+        family.title = "This profile is";
+        for (const [id, name] of [["iphone", "iPhone"], ["ipad", "iPad"]]) {
+          const option = document.createElement("option");
+          option.value = id;
+          option.textContent = name;
+          option.selected = id === (settings.deviceFamily || "iphone");
+          family.append(option);
+        }
+        family.addEventListener("change", () => noor.invoke("device:family", family.value).then(apply));
+        const renew = button(`New ${deviceTitle}`, "secondary", () => noor.invoke("fingerprint:new", [kind]).then(apply));
+        controls.append(family, renew);
+        protections.append(row(`${deviceTitle}: ${settings.values.iphone.name}`, deviceHint, controls));
         continue;
       }
       const controls = document.createElement("div");
@@ -263,11 +288,18 @@
     };
     if (isIPhone) {
       const iphone = settings.values.iphone;
-      values.append(row("iPhone", "", value(`${iphone.name} · iOS ${iphone.iOS}`)));
-      values.append(row("Screen size", "", value(`${iphone.width} × ${iphone.height} · ×${iphone.scale}`)));
+      if (iphone.family === "ipad") {
+        values.append(row("iPad", "", value(`${iphone.name} · iPadOS ${iphone.iOS}`)));
+        values.append(row("Screen size", `Held sideways: the page is ${iphone.pageWidth} × ${iphone.pageHeight}.`, value(`${iphone.width} × ${iphone.height} · ×${iphone.scale}`)));
+        values.append(row("Websites", iphone.desktop ? "As on a real iPad: Safari shows sites what it shows a Mac, and they find the iPad by its touch." : "An iPad mini gets the websites made for touch screens, as on a real one.", value(iphone.desktop ? `A Mac's (${iphone.platform})` : `An iPad's (${iphone.platform})`)));
+        values.append(row("Processor", "", value(`${iphone.cores} cores`)));
+      } else {
+        values.append(row("iPhone", "", value(`${iphone.name} · iOS ${iphone.iOS}`)));
+        values.append(row("Screen size", "", value(`${iphone.width} × ${iphone.height} · ×${iphone.scale}`)));
+      }
       values.append(row("User agent", "", value(settings.values.userAgent)));
       values.append(row("Language", "", value(settings.values.language)));
-      $("fingerprintfooter").textContent = "Every profile is one real iPhone to the sites it opens, the same ones as in the iPhone app: Safari's user agent and requests, the iPhone's screen, pixel density and touch, its graphics card, voices and fonts, and what Safari on its iOS version has and lacks, sign-in sites included. Canvas, WebGL and audio values and ClientRects get noise of their own on each site.";
+      $("fingerprintfooter").textContent = "Every profile is one real iPhone or iPad to the sites it opens (the iPhones the same ones as in the iPhone app): Safari's user agent and requests, the device's screen, pixel density and touch, its graphics card, voices and fonts, and what Safari on its iOS or iPadOS version has and lacks, sign-in sites included. Canvas, WebGL and audio values and ClientRects get noise of their own on each site.";
       $("appname").textContent = "Noor iPhone for Windows";
     } else {
       values.append(row("Screen size", "", value(`${settings.values.screen.width} × ${settings.values.screen.height}`)));
@@ -380,6 +412,7 @@
   $("extstore").addEventListener("click", () => noor.invoke("extensions:store").then(apply));
   $("extfile").addEventListener("click", () => noor.invoke("extensions:install", "file").then(apply));
   $("extfolder").addEventListener("click", () => noor.invoke("extensions:install", "folder").then(apply));
+  $("newdevice").addEventListener("change", () => noor.invoke("settings:set", "newProfileDevice", $("newdevice").value).then(apply));
   $("newprofile").addEventListener("click", () => {
     const name = $("newprofilename").value.trim() || $("newprofilename").placeholder;
     $("newprofilename").value = "";

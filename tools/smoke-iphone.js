@@ -2,8 +2,11 @@
 // started on its own, then handed a page as a second launch hands it an
 // address), opens tools/smoke-iphone.html in it and checks what a site
 // sees there: Safari on an iPhone, in the page, its frames, its workers,
-// a window it opens and the requests it makes.
-// Needs a display: on Linux, `xvfb-run -a node tools/smoke-iphone.js`.
+// a window it opens and the requests it makes. With "ipad" its profile is
+// an iPad shown desktop websites (an iPad Air, or the n-th iPad of the
+// list with "ipad <n>"), with "ipad-mini" an iPad mini; "iphone <n>", the
+// n-th iPhone of the list.
+// Needs a display: on Linux, `xvfb-run -a node tools/smoke-iphone.js [ipad [<n>]|ipad-mini|iphone <n>]`.
 "use strict";
 const fs = require("fs");
 const os = require("os");
@@ -16,6 +19,13 @@ const electronPath = require(path.join(root, "node_modules", "electron"));
 const PROBE = fs.readFileSync(path.join(__dirname, "smoke-iphone.html"), "utf8");
 const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const { IPADS } = require(path.join(root, "main", "iphone"));
+
+/// The device the profile is: an iPhone (its first launch's), or the iPad
+/// asked for, given to the profile before the app starts.
+const MODE = process.argv[2] || "iphone";
+const IPAD = { ipad: "iPad Air (5th generation)", "ipad-mini": "iPad mini (6th generation)" }[MODE] || null;
+const ipad = MODE === "ipad" && process.argv[3] !== undefined ? IPADS[Number(process.argv[3])] : IPAD ? IPADS.find((d) => d.name === IPAD) : null;
 
 /// What a worker tells of itself (a shared worker and a service worker
 /// answer a message with it).
@@ -74,6 +84,12 @@ const check = (name, ok, detail) => {
   // No click can reach the app here, so its page may open a window on its
   // own (see Tab.opensWindow), to check that window.
   const env = { ...process.env, NOOR_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), "noor-iphone-smoke-")), NOOR_DEVICE: "iphone", NOOR_TEST_OPEN_WINDOWS: "1" };
+  if (ipad) {
+    fs.writeFileSync(path.join(env.NOOR_USER_DATA, "settings.json"), JSON.stringify({ "device.family": "ipad", "seed.device": IPADS.indexOf(ipad) }));
+  } else if (process.argv[3] !== undefined) {
+    // An iPhone of the list asked for by its place in it.
+    fs.writeFileSync(path.join(env.NOOR_USER_DATA, "settings.json"), JSON.stringify({ "seed.device": Number(process.argv[3]) }));
+  }
   delete env.NOOR_TEST;
   const args = [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"];
   const first = spawn(electronPath, args, { env, stdio: process.env.SMOKE_LOG ? ["ignore", fs.openSync(process.env.SMOKE_LOG, "w"), fs.openSync(process.env.SMOKE_LOG, "a")] : "ignore" });
@@ -86,7 +102,8 @@ const check = (name, ok, detail) => {
   server.close();
   const r = reports.find((x) => x.done);
   if (!r) {
-    console.error("No report from the page", JSON.stringify(reports).slice(0, 500), Object.keys(headers).join(" "));
+    const probe = headers["/probe"] || [];
+    console.error("No report from the page", JSON.stringify(reports).slice(0, 500), Object.keys(headers).join(" "), probe[probe.findIndex((n) => /^user-agent$/i.test(n)) + 1]);
     process.exit(1);
   }
   if (r.error) {
@@ -94,17 +111,34 @@ const check = (name, ok, detail) => {
     process.exit(1);
   }
   const ua = r.nav.ua;
-  check("user agent", /^Mozilla\/5\.0 \(iPhone; CPU iPhone OS [\d_]+ like Mac OS X\) AppleWebKit\/605\.1\.15 \(KHTML, like Gecko\) Version\/[\d.]+ Mobile\/15E148 Safari\/604\.1$/.test(ua), ua);
-  check("navigator", r.nav.platform === "iPhone" && r.nav.vendor === "Apple Computer, Inc." && r.nav.hc === 4 && r.nav.dm === undefined && r.nav.mtp === 5 && r.nav.langs.length === 1 && r.nav.standalone === false && !r.nav.uad && !r.nav.connection && !r.nav.battery && r.nav.webdriver === false, r.nav);
+  const platform = ipad ? ipad.platform : "iPhone";
+  const cores = ipad ? ipad.cores : 4;
+  const UA = !ipad
+    ? /^Mozilla\/5\.0 \(iPhone; CPU iPhone OS [\d_]+ like Mac OS X\) AppleWebKit\/605\.1\.15 \(KHTML, like Gecko\) Version\/[\d.]+ Mobile\/15E148 Safari\/604\.1$/
+    : ipad.desktop
+      ? /^Mozilla\/5\.0 \(Macintosh; Intel Mac OS X 10_15_7\) AppleWebKit\/605\.1\.15 \(KHTML, like Gecko\) Version\/[\d.]+ Safari\/605\.1\.15$/
+      : /^Mozilla\/5\.0 \(iPad; CPU OS [\d_]+ like Mac OS X\) AppleWebKit\/605\.1\.15 \(KHTML, like Gecko\) Version\/[\d.]+ Mobile\/15E148 Safari\/604\.1$/;
+  check("user agent", UA.test(ua), ua);
+  check("navigator", r.nav.platform === platform && r.nav.vendor === "Apple Computer, Inc." && r.nav.hc === cores && r.nav.dm === undefined && r.nav.mtp === 5 && r.nav.langs.length === 1 && r.nav.standalone === false && !r.nav.uad && !r.nav.connection && !r.nav.battery && r.nav.webdriver === false, r.nav);
   check("engine as FingerprintJS tells it", r.fpjs.isWebKit && !r.fpjs.isChromium && !r.fpjs.isDesktopWebKit && r.fpjs.isSafariWebKit, r.fpjs);
   check("engine as BotD tells it", r.botd.evalLength === 37 && r.botd.engineWebKit && !r.botd.mismatch, r.botd);
   check("engine as CreepJS tells it", r.creepEngine === 77, r.creepEngine);
   check("built-ins print as Safari's", r.toStrings.fn === "function toString() {\n    [native code]\n}" && r.toStrings.getter === "function width() {\n    [native code]\n}" && r.toStrings.stackLimit === 100, r.toStrings);
-  const NEVER = ["chrome", "Notification", "MediaSource", "SourceBuffer", "requestIdleCallback", "scheduler", "Temporal", "showOpenFilePicker", "queryLocalFonts", "BatteryManager", "NetworkInformation", "NavigatorUAData", "webkitRequestFileSystem", "webkitSpeechGrammar", "SharedStorage", "documentPictureInPicture", "originAgentCluster", "onbeforeinstallprompt"];
+  const NEVER = ["chrome", "Notification", ...(ipad ? [] : ["MediaSource", "SourceBuffer"]), "requestIdleCallback", "scheduler", "Temporal", "showOpenFilePicker", "queryLocalFonts", "BatteryManager", "NetworkInformation", "NavigatorUAData", "webkitRequestFileSystem", "webkitSpeechGrammar", "SharedStorage", "documentPictureInPicture", "originAgentCluster", "onbeforeinstallprompt"];
   check("Chrome's own taken away", NEVER.every((name) => r.chromeOnly[name] === false), r.chromeOnly);
+  if (ipad) {
+    check("an iPad's MediaSource", r.chromeOnly.MediaSource && r.chromeOnly.SourceBuffer, r.chromeOnly);
+  }
   check("Safari's own there", ["ApplePayError", "CSSPrimitiveValue", "Counter", "RGBColor", "WebKitMediaKeys", "GestureEvent", "ongesturestart", "orientation", "ontouchstart"].every((name) => r.webkitOnly[name]), r.webkitOnly);
-  check("full screen through the video only", !r.elements.requestFullscreen && r.elements.webkitEnterFullscreen && r.elements.touchCallout, r.elements);
-  check("screen and window", r.screen.w === r.win.ow && r.screen.h === r.win.oh && r.screen.ah === r.screen.h && r.win.iw === r.screen.w && [2, 3].includes(r.win.dpr) && r.win.orientation === 0 && !r.screen.isExtended, { screen: r.screen, win: r.win });
+  if (ipad) {
+    check("full screen of any element, and through the video", r.elements.requestFullscreen && r.elements.fullscreenEnabled && r.elements.webkitEnterFullscreen && !r.elements.pointerLock && r.elements.touchCallout, r.elements);
+    // Held sideways: the screen upright, as Safari tells it; the window and
+    // the page as wide as the screen is long.
+    check("screen and window", r.screen.w === ipad.width && r.screen.h === ipad.height && r.win.ow === r.screen.h && r.win.oh === r.screen.w && r.screen.ah === r.screen.h && r.win.iw === r.screen.h && r.win.ih === ipad.pageHeight && r.win.dpr === 2 && r.win.orientation === 90 && r.screen.o === "landscape-primary" && r.win.cw === r.win.iw && !r.mq["(orientation: portrait)"] && !r.screen.isExtended, { screen: r.screen, win: r.win });
+  } else {
+    check("full screen through the video only", !r.elements.requestFullscreen && r.elements.webkitEnterFullscreen && r.elements.touchCallout, r.elements);
+    check("screen and window", r.screen.w === r.win.ow && r.screen.h === r.win.oh && r.screen.ah === r.screen.h && r.win.iw === r.screen.w && [2, 3].includes(r.win.dpr) && r.win.orientation === 0 && !r.screen.isExtended, { screen: r.screen, win: r.win });
+  }
   check("media queries", r.mq["(pointer: coarse)"] && r.mq["(hover: none)"] && r.mq["(color-gamut: p3)"] && r.mq[`(device-width: ${r.screen.w}px)`], r.mq);
   check("clocks to the millisecond", r.clocks.nowFrac === 0 && r.clocks.event === 0, r.clocks);
   const gl = r.webgl && r.webgl.webgl;
@@ -117,7 +151,7 @@ const check = (name, ok, detail) => {
   check("a page that asks for Trusted Types works, with them (iOS 26) or without", r.trusted.innerHTML === "ok" && r.trusted.scriptSrc === "ok" && r.trusted.tt === (safari >= 26 ? "object" : "undefined"), r.trusted);
   check("permissions as Safari answers", r.permissions.camera === "prompt" && /^TypeError/.test(r.permissions["clipboard-read"]), r.permissions);
   for (const [name, w] of [["worker", r.worker], ["shared worker", r.shared], ["service worker", r.service]]) {
-    check(name, w && w.ua === ua && w.platform === "iPhone" && w.hc === 4 && w.dm === undefined && w.uad === "undefined" && w.temporal === "undefined" && w.toString === "function toString() {\n    [native code]\n}", w);
+    check(name, w && w.ua === ua && w.platform === platform && w.hc === cores && w.dm === undefined && w.uad === "undefined" && w.temporal === "undefined" && w.toString === "function toString() {\n    [native code]\n}", w);
   }
   check("worker canvas fonts", r.worker.fonts && r.worker.fonts.calibri === r.worker.fonts.base, r.worker.fonts);
   for (const [name, f] of [["frame of another site", r.frame], ["window the page opens", r.popup]]) {
@@ -128,7 +162,7 @@ const check = (name, ok, detail) => {
   check("navigation headers", !names.some((n) => n.startsWith("sec-ch-") || n === "sec-fetch-user" || n === "upgrade-insecure-requests") && navigation[navigation.indexOf("Accept") + 1] === "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", navigation);
   const image = headers["/pixel.png"] || [];
   check("image headers", /^image\/webp,image\/avif/.test(image[image.indexOf("Accept") + 1] || ""), image);
-  console.log(JSON.stringify({ iphone: ua, screen: [r.screen.w, r.screen.h, r.win.dpr], failures }, null, 2));
+  console.log(JSON.stringify({ mode: MODE, device: ipad ? ipad.name : null, userAgent: ua, platform: r.nav.platform, cores: r.nav.hc, screen: [r.screen.w, r.screen.h, r.win.dpr], page: [r.win.iw, r.win.ih], orientation: r.win.orientation, failures }, null, 2));
   process.exit(failures.length ? 1 : 0);
 })().catch((error) => {
   console.error(error);

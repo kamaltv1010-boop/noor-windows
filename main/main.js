@@ -194,6 +194,13 @@ const iphoneLanguage = () => {
   return iphoneLanguageTag;
 };
 
+/// Noor iPhone: what new profiles are, "iphone" or "ipad" (the settings;
+/// see Windows.setDevices).
+const newProfileDevice = () => {
+  const value = context ? context.store.get("newProfileDevice", "iphone") : "iphone";
+  return iphone.FAMILIES.includes(value) ? value : "iphone";
+};
+
 const setUpSessions = new WeakSet();
 const setUpSession = (ses) => {
   if (setUpSessions.has(ses)) {
@@ -771,7 +778,14 @@ const settingsSnapshot = (browser = windows.current) => ({
   protections: Object.fromEntries(browser.fingerprint.kinds.map((kind) => [kind, browser.fingerprint.isEnabled(kind)])),
   values: IPHONE ? (() => {
     const current = browser.fingerprint.iphone();
-    return { iphone: { name: current.name, iOS: current.iOS, width: current.width, height: current.height, scale: current.scale }, userAgent: iphone.userAgent(current), language: iphoneLanguage() };
+    return {
+      iphone: {
+        family: current.family, name: current.name, iOS: current.iOS, width: current.width, height: current.height, scale: current.scale,
+        pageWidth: current.pageWidth, pageHeight: current.pageHeight, desktop: current.desktop, platform: current.platform, cores: current.cores,
+      },
+      userAgent: iphone.userAgent(current),
+      language: iphoneLanguage(),
+    };
   })() : {
     screen: browser.fingerprint.screen(),
     hardware: browser.fingerprint.hardware(),
@@ -779,6 +793,10 @@ const settingsSnapshot = (browser = windows.current) => ({
     brands: brandList,
   },
   device: IPHONE ? "iphone" : "windows",
+  // Noor iPhone: whether this profile is an iPhone or an iPad, and what new
+  // profiles are.
+  deviceFamily: IPHONE ? browser.fingerprint.family() : null,
+  newProfileDevice: IPHONE ? newProfileDevice() : null,
   shieldsDownSites: context.shields.downSites(),
   profiles: context.profiles.all(),
   profile: browser.profile,
@@ -931,6 +949,8 @@ const registerIPC = () => {
   on("settings:set", (at, event, key, value) => {
     if (SETTING_KEYS.has(key)) {
       context.store.set(key, key === "searchEngine" ? String(value) : Boolean(value));
+    } else if (key === "newProfileDevice" && IPHONE) {
+      context.store.set(key, iphone.FAMILIES.includes(value) ? value : "iphone");
     } else if (key === "nightMode") {
       windows.setNightMode(Boolean(value));
     } else if (key === "timezoneFromIP") {
@@ -983,6 +1003,13 @@ const registerIPC = () => {
       } catch (error) {
         dialog.showMessageBox(at.win, { type: "error", message: "The extension wasn't installed", detail: String(error.message || error) });
       }
+    }
+    return settingsSnapshot(at);
+  });
+  // Noor iPhone: this profile becomes an iPhone or an iPad (a new one).
+  on("device:family", (at, event, family) => {
+    if (IPHONE && iphone.FAMILIES.includes(family) && family !== at.fingerprint.family()) {
+      at.setDeviceFamily(family);
     }
     return settingsSnapshot(at);
   });

@@ -1,6 +1,6 @@
 "use strict";
 const crypto = require("crypto");
-const { IPHONES } = require("./iphone");
+const { DEVICES } = require("./iphone");
 const { pickFonts } = require("./fonts");
 
 /// The protections, each with a seed per profile that decides the values
@@ -11,9 +11,9 @@ const { pickFonts } = require("./fonts");
 /// profile's own (see main/fonts.js).
 const KINDS = ["canvas", "webGL", "audio", "clientRects", "screen", "hardware", "fonts"];
 const NOISE_KINDS = ["canvas", "webGL", "audio", "clientRects"];
-/// Noor iPhone's: the noise ones, and "device", the iPhone a profile is
-/// (its screen, Safari's user agent and the rest, see main/iphone.js),
-/// always on.
+/// Noor iPhone's: the noise ones, and "device", the iPhone or iPad a
+/// profile is (its screen, Safari's user agent and the rest, see
+/// main/iphone.js), always on.
 const IPHONE_KINDS = ["canvas", "webGL", "audio", "clientRects", "device"];
 
 /// Common PC screens, in CSS pixels, as on a screen shown at 100%.
@@ -139,9 +139,35 @@ class Fingerprint {
     }
   }
 
-  /// The iPhone the profile in use is, in Noor iPhone.
+  /// Whether the profile in use is an iPhone or an iPad, in Noor iPhone:
+  /// "iphone" or "ipad" (a profile made before iPads is an iPhone).
+  family() {
+    return this.store.get(this.familyKey()) === "ipad" ? "ipad" : "iphone";
+  }
+
+  familyKey() {
+    return this.profiles.key("device.family", this.boundProfile || undefined);
+  }
+
+  /// Makes the profile in use an iPhone or an iPad, a new one of them: a
+  /// device of the other kind is another device to sites.
+  setFamily(family) {
+    const wanted = family === "ipad" ? "ipad" : "iphone";
+    if (wanted === this.family() && Number.isInteger(this.store.get(this.seedKey("device")))) {
+      return;
+    }
+    this.store.set(this.familyKey(), wanted);
+    this.newSeed("device");
+  }
+
+  /// The devices the profile in use can be: iPhones, or iPads.
+  devices() {
+    return DEVICES[this.family()];
+  }
+
+  /// The iPhone or iPad the profile in use is, in Noor iPhone.
   iphone() {
-    return this.pick(this.seed("device"), IPHONES);
+    return this.pick(this.seed("device"), this.devices());
   }
 
   /// The screens pages may see: displays shown at this PC's scale (see
@@ -173,7 +199,7 @@ class Fingerprint {
   /// What a seed shows for a kind; a new seed must change it.
   visibleValue(seed, kind) {
     if (kind === "device") {
-      return this.pick(seed, IPHONES).name;
+      return this.pick(seed, this.devices()).name;
     }
     if (kind === "screen") {
       const s = this.pick(seed, this.screens());
@@ -192,7 +218,7 @@ class Fingerprint {
   /// How many different values a new seed can pick from.
   choices(kind) {
     if (kind === "device") {
-      return new Set(IPHONES.map((iphone) => iphone.name)).size;
+      return new Set(this.devices().map((device) => device.name)).size;
     }
     if (kind === "screen") {
       return new Set(this.screens().map((s) => `${s.width}x${s.height}`)).size;

@@ -90,10 +90,13 @@ out.streaming = window.ManagedMediaSource ? await new Promise((resolve) => {
   setTimeout(() => resolve(got), 5000);
 }) : "none";
 // A page whose CSP asks for Trusted Types, in a frame of its own.
+fetch("/report", { method: "POST", body: JSON.stringify({ step: "trusted" }) });
 out.trusted = await new Promise((resolve) => { addEventListener("message", (e) => { if (e.data && e.data.trusted) resolve(e.data.trusted); }); const f = document.createElement("iframe"); f.src = "/trusted"; document.body.appendChild(f); setTimeout(() => resolve("timeout"), 5000); });
 // A dedicated worker.
+fetch("/report", { method: "POST", body: JSON.stringify({ step: "worker" }) });
 out.worker = await new Promise((resolve) => { const wk = new Worker("/worker.js"); wk.onmessage = (e) => resolve(e.data); wk.onerror = (e) => resolve("ERR " + e.message); wk.postMessage(1); setTimeout(() => resolve("timeout"), 5000); });
 // A frame of another site (localhost against 127.0.0.1).
+fetch("/report", { method: "POST", body: JSON.stringify({ step: "frame" }) });
 out.frame = await new Promise((resolve) => { addEventListener("message", (e) => { if (e.data && e.data.frame) resolve(e.data.frame); }); const f = document.createElement("iframe"); f.src = `http://localhost:${new URLSearchParams(location.search).get("port")}/frame`; document.body.appendChild(f); setTimeout(() => resolve("timeout"), 5000); });
 // A service worker and a shared worker (each step given 10 seconds).
 const within = (promise, ms = 10000) => Promise.race([promise, new Promise((resolve) => setTimeout(() => resolve("timeout"), ms))]);

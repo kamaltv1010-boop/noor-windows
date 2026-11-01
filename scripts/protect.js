@@ -47,7 +47,7 @@ const IPHONE_SURFACE = {
   "DocumentFragment.prototype":{"moveBefore":""},
   "Element.prototype":{"activeViewTransition":"","ariaBrailleLabel":"18","ariaBrailleRoleDescription":"18","ariaColIndexText":"26.2","ariaDescription":"17.4","ariaNotify":"27","ariaRowIndexText":"26.2","checkVisibility":"17.4","currentCSSZoom":"26.4","customElementRegistry":"26","elementTiming":"","getHTML":"18","moveBefore":"","onfullscreenchange":"","onfullscreenerror":"","onwebkitfullscreenchange":"","onwebkitfullscreenerror":"","pseudo":"","requestFullscreen":"","requestPointerLock":"","setHTML":"","setHTMLUnsafe":"17.4","startViewTransition":"","webkitRequestFullScreen":"","webkitRequestFullscreen":""},
   "ElementInternals.prototype":{"ariaBrailleLabel":"18","ariaBrailleRoleDescription":"18","ariaColIndexText":"","ariaDescription":"","ariaRowIndexText":"","states":"17.4"},
-  "Error":{"captureStackTrace":"17.2","isError":"18.4"},
+  "Error":{"isError":"18.4"},
   "EventTarget.prototype":{"when":""},
   "External.prototype":{"AddSearchProvider":"","IsSearchProviderInstalled":""},
   "File.prototype":{"lastModifiedDate":""},
@@ -136,6 +136,16 @@ const IPHONE_SURFACE = {
   "XMLHttpRequest.prototype":{"setAttributionReporting":"","setPrivateToken":""},
   "window":{"AbsoluteOrientationSensor":"","Accelerometer":"","AnimationTrigger":"","AsyncDisposableStack":"","AudioData":"26","AudioDecoder":"26","AudioEncoder":"26","AudioPlaybackStats":"","AudioSinkInfo":"","BackgroundFetchManager":"","BackgroundFetchRecord":"","BackgroundFetchRegistration":"","BatteryManager":"","BeforeInstallPromptEvent":"","BrowserCaptureMediaStreamTrack":"","CSPViolationReportBody":"18.4","CSSCounterStyleRule":"17","CSSFunctionDeclarations":"","CSSFunctionDescriptors":"","CSSFunctionRule":"","CSSMarginRule":"","CSSNestedDeclarations":"18.2","CSSPositionTryDescriptors":"26","CSSPositionTryRule":"26","CSSPositionValue":"","CSSPseudoElement":"","CSSScopeRule":"17.4","CSSStartingStyleRule":"17.5","CSSViewTransitionRule":"18.2","CaptureController":"","CaretPosition":"26.2","ChapterInformation":"","CharacterBoundsUpdateEvent":"","ClipboardChangeEvent":"","CloseWatcher":"","CommandEvent":"26.2","ContentVisibilityAutoStateChangeEvent":"18","CookieChangeEvent":"18.4","CookieStore":"18.4","CookieStoreManager":"","CrashReportContext":"","CreateMonitor":"","CropTarget":"","CustomStateSet":"17.4","DOMError":"","DelegatedInkTrailPresenter":"","DevicePosture":"","DigitalCredential":"26","DisposableStack":"","DocumentPictureInPicture":"","DocumentPictureInPictureEvent":"","EditContext":"","EncodedAudioChunk":"26","EventCounts":"26.2","External":"","EyeDropper":"","FeaturePolicy":"","FederatedCredential":"","Fence":"","FencedFrameConfig":"","FetchLaterResult":"","FileSystemObserver":"","FileSystemWritableFileStream":"26","Float16Array":"18.2","FontData":"","FontFaceSetLoadEvent":"","FragmentDirective":"18.4","GPU":"26","GPUAdapter":"26","GPUAdapterInfo":"26","GPUBindGroup":"26","GPUBindGroupLayout":"26","GPUBuffer":"26","GPUBufferUsage":"26","GPUCanvasContext":"26","GPUColorWrite":"26","GPUCommandBuffer":"26","GPUCommandEncoder":"26","GPUCompilationInfo":"26","GPUCompilationMessage":"26","GPUComputePassEncoder":"26","GPUComputePipeline":"26","GPUDevice":"26","GPUDeviceLostInfo":"26","GPUError":"","GPUExternalTexture":"26","GPUInternalError":"26","GPUMapMode":"26","GPUOutOfMemoryError":"26","GPUPipelineError":"26","GPUPipelineLayout":"26","GPUQuerySet":"26","GPUQueue":"26","GPURenderBundle":"26","GPURenderBundleEncoder":"26","GPURenderPassEncoder":"26","GPURenderPipeline":"26","GPUSampler":"26","GPUShaderModule":"26","GPUShaderStage":"26","GPUSupportedFeatures":"26","GPUSupportedLimits":"26","GPUTexture":"26","GPUTextureUsage":"26","GPUTextureView":"26","GPUUncapturedErrorEvent":"26","GPUValidationError":"26","GamepadHapticActuator":"","GravitySensor":"","Gyroscope":"","HID":"","HIDConnectionEvent":"","HIDDevice":"","HIDInputReportEvent":"","HTMLCameraElement":"","HTMLFencedFrameElement":"","HTMLGeolocationElement":"","HTMLMicrophoneElement":"","HTMLSelectedContentElement":"27","HTMLUserMediaElement":"","Highlight":"17.2","HighlightRegistry":"17.2","IDBRecord":"","IdentityCredential":"","IdentityCredentialError":"","IdentityProvider":"","IdleDeadline":"","IdleDetector":"","ImageCapture":"18.4","ImageDecoder":"","ImageTrack":"","ImageTrackList":"","Ink":"","InputDeviceCapabilities":"","IntegrityViolationReportBody":"","InteractionContentfulPaint":"","InterestEvent":"","Keyboard":"","KeyboardLayoutMap":"","LanguageDetector":"","LanguageModel":"","LargestContentfulPaint":"26.2","LaunchParams":"","LaunchQueue":"","LayoutShift":"","LayoutShiftAttribution":"","LinearAccelerationSensor":"","MIDIAccess":"","MIDIConnectionEvent":"","MIDIInput":"","MIDIInputMap":"","MIDIMessageEvent":"","MIDIOutput":"","MIDIOutputMap":"","MIDIPort":"","MediaSource":"","MediaSourceHandle":"18","MediaStreamEvent":"","MediaStreamTrackAudioStats":"","MediaStreamTrackGenerator":"","MediaStreamTrackProcessor":"18","MediaStreamTrackVideoStats":"","NavigateEvent":"26.2","Navigation":"26.2","NavigationActivation":"26.2","NavigationCurrentEntryChangeEvent":"26.2","NavigationDestination":"26.2","NavigationHistoryEntry":"26.2","NavigationPrecommitController":"","NavigationTransition":"26.2","NavigatorLogin":"","NavigatorManagedData":"","NavigatorUAData":"","NetworkInformation":"","NodeRange":"","NotRestoredReasonDetails":"","NotRestoredReasons":"","Notification":"","OTPCredential":"","Observable":"","OpaqueRange":"","OrientationSensor":"","Origin":"26.5","PageRevealEvent":"18.2","PageSwapEvent":"18.2","PasswordCredential":"","PaymentManager":"","PerformanceElementTiming":"","PerformanceEventTiming":"26.2","PerformanceLongAnimationFrameTiming":"","PerformanceLongTaskTiming":"","PerformanceScriptTiming":"","PerformanceSoftNavigation":"","PerformanceTimingConfidence":"","PeriodicSyncManager":"","PermissionsPolicy":"","Presentation":"","PresentationAvailability":"","PresentationConnection":"","PresentationConnectionAvailableEvent":"","PresentationConnectionCloseEvent":"","PresentationConnectionList":"","PresentationReceiver":"","PresentationRequest":"","PressureObserver":"","PressureRecord":"","Profiler":"","ProtectedAudience":"","QuotaExceededError":"","ReadableByteStreamController":"26.4","ReadableStreamBYOBReader":"26.4","ReadableStreamBYOBRequest":"26.4","RelativeOrientationSensor":"","RestrictionTarget":"","Sanitizer":"","Scheduler":"","Scheduling":"","ScreenDetailed":"","ScreenDetails":"","ScrollTimeline":"26","Sensor":"","SensorErrorEvent":"","Serial":"","SerialPort":"","SnapEvent":"","SourceBuffer":"","SourceBufferList":"","SpeechGrammar":"","SpeechGrammarList":"","SpeechRecognitionPhrase":"","StorageBucket":"","StorageBucketManager":"","Subscriber":"","Summarizer":"","SuppressedError":"","SyncManager":"","TaskAttributionTiming":"","TaskController":"","TaskPriorityChangeEvent":"","TaskSignal":"","Temporal":"","TextFormat":"","TextFormatUpdateEvent":"","TextUpdateEvent":"","TimelineTrigger":"","TimelineTriggerRange":"","TimelineTriggerRangeList":"","ToggleEvent":"17","Translator":"","TrustedHTML":"26","TrustedScript":"26","TrustedScriptURL":"26","TrustedTypePolicy":"26","TrustedTypePolicyFactory":"26","URLPattern":"26","USB":"","USBAlternateInterface":"","USBConfiguration":"","USBConnectionEvent":"","USBDevice":"","USBEndpoint":"","USBInTransferResult":"","USBInterface":"","USBIsochronousInTransferPacket":"","USBIsochronousInTransferResult":"","USBIsochronousOutTransferPacket":"","USBIsochronousOutTransferResult":"","USBOutTransferResult":"","ViewTimeline":"26","ViewTransition":"18","ViewTransitionTypeSet":"18.2","Viewport":"","VirtualKeyboard":"","VirtualKeyboardGeometryChangeEvent":"","VisibilityStateEntry":"","WGSLLanguageFeatures":"26","WebGLObject":"","WebSocketError":"","WebSocketStream":"","WebTransport":"26.4","WebTransportBidirectionalStream":"26.4","WebTransportDatagramDuplexStream":"26.4","WebTransportError":"26.4","WindowControlsOverlay":"","WindowControlsOverlayGeometryChangeEvent":"","XRAnchor":"","XRAnchorSet":"","XRBoundedReferenceSpace":"","XRCPUDepthInformation":"","XRCamera":"","XRCompositionLayer":"","XRCubeLayer":"","XRCylinderLayer":"","XRDOMOverlayState":"","XRDepthInformation":"","XREquirectLayer":"","XRFrame":"","XRHand":"","XRHitTestResult":"","XRHitTestSource":"","XRInputSource":"","XRInputSourceArray":"","XRInputSourceEvent":"","XRInputSourcesChangeEvent":"","XRJointPose":"","XRJointSpace":"","XRLayer":"","XRLayerEvent":"","XRLightEstimate":"","XRLightProbe":"","XRPlane":"","XRPlaneSet":"","XRPose":"","XRProjectionLayer":"","XRQuadLayer":"","XRRay":"","XRReferenceSpace":"","XRReferenceSpaceEvent":"","XRRenderState":"","XRRigidTransform":"","XRSession":"","XRSessionEvent":"","XRSpace":"","XRSubImage":"","XRSystem":"","XRTransientInputHitTestResult":"","XRTransientInputHitTestSource":"","XRView":"","XRViewerPose":"","XRViewport":"","XRVisibilityMaskChangeEvent":"","XRWebGLBinding":"","XRWebGLDepthInformation":"","XRWebGLLayer":"","XRWebGLSubImage":"","cancelIdleCallback":"","chrome":"","cookieStore":"18.4","crashReport":"","credentialless":"","documentPictureInPicture":"","external":"","fence":"","fetchLater":"","getScreenDetails":"","launchQueue":"","navigation":"26.2","onappinstalled":"","onbeforeinstallprompt":"","onbeforematch":"","onbeforexrselect":"","oncommand":"","oncontentvisibilityautostatechange":"","ondeviceorientationabsolute":"","onpointerrawupdate":"","onscrollsnapchange":"","onscrollsnapchanging":"","originAgentCluster":"","queryLocalFonts":"","requestIdleCallback":"","requestResize":"","scheduler":"","showDirectoryPicker":"","showOpenFilePicker":"","showSaveFilePicker":"","trustedTypes":"26","viewport":"","webkitMediaStream":"","webkitRTCPeerConnection":"","webkitRequestFileSystem":"","webkitResolveLocalFileSystemURL":"","webkitSpeechGrammar":"","webkitSpeechGrammarList":"","webkitSpeechRecognitionError":"","webkitSpeechRecognitionEvent":""},
   "worker":{"AsyncDisposableStack":"","AudioData":"26","AudioDecoder":"26","AudioEncoder":"26","BackgroundFetchManager":"","BackgroundFetchRecord":"","BackgroundFetchRegistration":"","CreateMonitor":"","CropTarget":"","DisposableStack":"","EncodedAudioChunk":"26","FileSystemObserver":"","FileSystemWritableFileStream":"26","Float16Array":"18.2","GPU":"26","GPUAdapter":"26","GPUAdapterInfo":"26","GPUBindGroup":"26","GPUBindGroupLayout":"26","GPUBuffer":"26","GPUBufferUsage":"26","GPUCanvasContext":"26","GPUColorWrite":"26","GPUCommandBuffer":"26","GPUCommandEncoder":"26","GPUCompilationInfo":"26","GPUCompilationMessage":"26","GPUComputePassEncoder":"26","GPUComputePipeline":"26","GPUDevice":"26","GPUDeviceLostInfo":"26","GPUError":"","GPUExternalTexture":"26","GPUInternalError":"26","GPUMapMode":"26","GPUOutOfMemoryError":"26","GPUPipelineError":"26","GPUPipelineLayout":"26","GPUQuerySet":"26","GPUQueue":"26","GPURenderBundle":"26","GPURenderBundleEncoder":"26","GPURenderPassEncoder":"26","GPURenderPipeline":"26","GPUSampler":"26","GPUShaderModule":"26","GPUShaderStage":"26","GPUSupportedFeatures":"26","GPUSupportedLimits":"26","GPUTexture":"26","GPUTextureUsage":"26","GPUTextureView":"26","GPUUncapturedErrorEvent":"26","GPUValidationError":"26","HID":"","HIDConnectionEvent":"","HIDDevice":"","HIDInputReportEvent":"","IDBRecord":"","IdleDetector":"","ImageDecoder":"","ImageTrack":"","ImageTrackList":"","MediaSource":"","MediaSourceHandle":"18","NavigatorUAData":"","NetworkInformation":"","Notification":"","Observable":"","Origin":"26.5","PeriodicSyncManager":"","PressureObserver":"","PressureRecord":"","QuotaExceededError":"","ReadableByteStreamController":"26.4","ReadableStreamBYOBReader":"26.4","ReadableStreamBYOBRequest":"26.4","RestrictionTarget":"","Scheduler":"","Serial":"","SerialPort":"","SourceBuffer":"","SourceBufferList":"","StorageBucket":"","StorageBucketManager":"","Subscriber":"","SuppressedError":"","SyncManager":"","TaskController":"","TaskPriorityChangeEvent":"","TaskSignal":"","Temporal":"","TrustedHTML":"26","TrustedScript":"26","TrustedScriptURL":"26","TrustedTypePolicy":"26","TrustedTypePolicyFactory":"26","URLPattern":"26","USB":"","USBAlternateInterface":"","USBConfiguration":"","USBConnectionEvent":"","USBDevice":"","USBEndpoint":"","USBInTransferResult":"","USBInterface":"","USBIsochronousInTransferPacket":"","USBIsochronousInTransferResult":"","USBIsochronousOutTransferPacket":"","USBIsochronousOutTransferResult":"","USBOutTransferResult":"","WGSLLanguageFeatures":"26","WebGLObject":"","WebSocketError":"","WebSocketStream":"","WebTransport":"26.4","WebTransportBidirectionalStream":"26.4","WebTransportDatagramDuplexStream":"26.4","WebTransportError":"26.4","webkitRequestFileSystem":"","webkitResolveLocalFileSystemURL":""}
+};
+// Where Safari on an iPad differs from it: the iPadOS versions it has
+// those in, "0" for every one.
+const IPAD_SURFACE = {
+  "Document.prototype":{"exitFullscreen":"0","fullscreen":"0","fullscreenElement":"0","fullscreenEnabled":"0","onfullscreenchange":"0","onfullscreenerror":"0","onwebkitfullscreenchange":"0","onwebkitfullscreenerror":"0","webkitCancelFullScreen":"0","webkitCurrentFullScreenElement":"0","webkitExitFullscreen":"0","webkitFullscreenElement":"0","webkitFullscreenEnabled":"0","webkitIsFullScreen":"0"},
+  "Element.prototype":{"onfullscreenchange":"0","onfullscreenerror":"0","onwebkitfullscreenchange":"0","onwebkitfullscreenerror":"0","requestFullscreen":"0","webkitRequestFullScreen":"0","webkitRequestFullscreen":"0"},
+  "HTMLIFrameElement.prototype":{"allowFullscreen":"0"},
+  "ShadowRoot.prototype":{"fullscreenElement":"0"},
+  "window":{"MediaSource":"0","SourceBuffer":"0","SourceBufferList":"0"},
+  "worker":{"MediaSource":"18","SourceBuffer":"18","SourceBufferList":"18"}
 };
 // Noor iPhone's fonts (see scripts/parts/iphone.js and
 // scripts/parts/preload-glue.js). `block`: fonts of Windows and of its
@@ -2163,16 +2173,17 @@ if (config.fonts) { try {
 } catch (e) {} }
 if (config.iphone) { try {
 // Noor iPhone: what a page sees of the browser is Safari on the profile's
-// iPhone (config.iphone, see main/iphone.js). Chromium already shows the
-// iPhone's screen, pixel density, touch and Safari's user agent (see
-// Tab.emulate); this does the rest a site reads to tell Safari on an
-// iPhone from Chrome dressed as one: what Safari has and Chromium doesn't
-// (and the other way round, for the iPhone's iOS version), how its
+// iPhone or iPad (config.iphone, see main/iphone.js). Chromium already
+// shows the device's screen, pixel density, touch and Safari's user agent
+// (see Tab.emulate); this does the rest a site reads to tell Safari on an
+// iPhone or iPad from Chrome dressed as one: what Safari has and Chromium
+// doesn't (and the other way round, for the device's iOS version), how its
 // built-ins print, its error messages and clocks, its graphics card, its
 // voices and fonts, and how it answers permission queries. In a worker as
 // in a window.
 {
   const iphone = config.iphone;
+  const isIPad = iphone.family === "ipad";
   const isWindow = Boolean(document) && typeof window.Window === "function";
   const compareVersions = (a, b) => {
     const pa = String(a).split(".").map(Number);
@@ -2329,14 +2340,15 @@ if (config.iphone) { try {
     }
   }
 
-  // The navigator: Apple's, the core count Safari reports on any iPhone
-  // (WebKit tells 4 below 8 cores), the platform and user agent in every
-  // worker too, home-screen state, and Web Share.
+  // The navigator: Apple's, the core count Safari reports (WebKit tells 4
+  // below 8 cores, 8 from 8: 4 on any iPhone), the platform ("MacIntel" on
+  // an iPad shown desktop websites) and user agent in every worker too,
+  // home-screen state, and Web Share.
   {
     const navigatorProto = (window.Navigator || window.WorkerNavigator).prototype;
     if (window.Navigator) defineGetter(navigatorProto, "vendor", () => "Apple Computer, Inc.");
-    regetter(navigatorProto, "hardwareConcurrency", () => 4);
-    regetter(navigatorProto, "platform", () => "iPhone");
+    regetter(navigatorProto, "hardwareConcurrency", () => iphone.cores || 4);
+    regetter(navigatorProto, "platform", () => iphone.platform || "iPhone");
     if (iphone.userAgent) {
       defineGetter(navigatorProto, "userAgent", () => iphone.userAgent);
       defineGetter(navigatorProto, "appVersion", () => iphone.userAgent.replace(/^Mozilla\//, ""));
@@ -2398,11 +2410,19 @@ if (config.iphone) { try {
     }
   }
 
-  // The window: an iPhone's is the whole screen (WebKit's outer size is
-  // its web view's, which Safari lays under its bars).
+  // The window: the whole screen, held as the device is (WebKit's outer
+  // size is its web view's, which Safari lays under its bars).
   if (isWindow) {
-    defineGetter(window, "outerWidth", () => iphone.width);
-    defineGetter(window, "outerHeight", () => iphone.height);
+    defineGetter(window, "outerWidth", () => iphone.outerWidth || iphone.width);
+    defineGetter(window, "outerHeight", () => iphone.outerHeight || iphone.height);
+  }
+
+  // An iPad shown desktop websites tells which way it is held as any iPad
+  // does (Chromium tells it only where it shows a phone's page): sideways,
+  // turned left.
+  if (isWindow && iphone.desktop && !("orientation" in window)) {
+    addGetter(window, "orientation", () => 90);
+    addHandler(window, "onorientationchange");
   }
 
   // HDR screens (iPhone XS and later, but the XR, 11 and SE) answer the
@@ -2461,7 +2481,11 @@ if (config.iphone) { try {
   }
 
   // An iPhone shows a video full screen through the video itself (it has
-  // no Fullscreen API, taken away below), and tells it so.
+  // no Fullscreen API, taken away below), and tells it so; an iPad has
+  // both (and Safari's old name for whether keys reach a page full screen).
+  if (isIPad && isWindow && documentProto && fullscreenElementOf) {
+    addGetter(documentProto, "webkitFullScreenKeyboardInputAllowed", () => false);
+  }
   if (isWindow && window.HTMLVideoElement && requestFullscreen) {
     const videoProto = window.HTMLVideoElement.prototype;
     const mediaProto = window.HTMLMediaElement.prototype;
@@ -3037,10 +3061,14 @@ if (config.iphone) { try {
     }
   }
 
-  // Last, what an iPhone of this iOS version doesn't have (see
-  // scripts/parts/iphone-surface.js): members first, then the globals
-  // they hang on.
+  // Last, what an iPhone or iPad of this iOS version doesn't have (see
+  // scripts/parts/iphone-surface.js; an iPad's differs where
+  // IPAD_SURFACE says): members first, then the globals they hang on.
   {
+    const specOf = (where, name) => {
+      const own = isIPad ? IPAD_SURFACE[where] : null;
+      return own && Object.prototype.hasOwnProperty.call(own, name) ? own[name] : IPHONE_SURFACE[where][name];
+    };
     const has = (spec) => {
       if (spec === "") return false;
       return String(spec).split("|").some((part) => {
@@ -3063,7 +3091,7 @@ if (config.iphone) { try {
     // Types stay, for the site's own scripts to use.
     const TRUSTED = ["trustedTypes", "TrustedHTML", "TrustedScript", "TrustedScriptURL", "TrustedTypePolicy", "TrustedTypePolicyFactory"];
     let keepTrusted = false;
-    if (TRUSTED.some((name) => name in globals && !has(globals[name]))) {
+    if (TRUSTED.some((name) => name in globals && !has(specOf(scope, name)))) {
       try {
         const factory = window.trustedTypes;
         if (factory && typeof factory.createPolicy === "function") {
@@ -3088,14 +3116,14 @@ if (config.iphone) { try {
       if (!target || (typeof target !== "object" && typeof target !== "function")) continue;
       const names = IPHONE_SURFACE[where];
       for (const name of Object.keys(names)) {
-        if (!has(names[name])) {
+        if (!has(specOf(where, name))) {
           try { delete target[name]; } catch (e) {}
         }
       }
     }
     for (const name of Object.keys(globals)) {
       if (keepTrusted && TRUSTED.indexOf(name) !== -1) continue;
-      if (!has(globals[name])) {
+      if (!has(specOf(scope, name))) {
         try { delete window[name]; } catch (e) {}
       }
     }

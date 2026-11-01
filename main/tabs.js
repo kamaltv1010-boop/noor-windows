@@ -147,12 +147,13 @@ class Tab {
   }
 
   /// Noor iPhone: Chromium shows the tab's pages as the profile's iPhone
-  /// (see main/iphone.js): its page area, pixel density and screen, as a
-  /// phone (the page's viewport tag counts, scroll bars float over it),
-  /// touch for the mouse (a press is a tap, a drag scrolls, and nothing
-  /// hovers), its wide colors, and Safari's user agent, language and
-  /// platform, in this tab and its session (its workers). Told once, before
-  /// the tab's first page (see load), and kept through every page after.
+  /// or iPad (see main/iphone.js): its page area, pixel density and
+  /// screen, as a phone (the page's viewport tag counts, scroll bars float
+  /// over it) or, on an iPad shown desktop websites, as a computer, touch
+  /// for the mouse (a press is a tap, a drag scrolls, and nothing hovers),
+  /// its wide colors, and Safari's user agent, language and platform, in
+  /// this tab and its session (its workers). Told once, before the tab's
+  /// first page (see load), and kept through every page after.
   emulate() {
     if (!this.debugging) {
       this.emulation = Promise.resolve(false);
@@ -162,7 +163,8 @@ class Tab {
     const language = this.browser.iphoneLanguage();
     const agent = iphone.userAgent(device);
     this.device = device;
-    this.pageHeight = Math.min(this.pageHeight || device.pageHeight, device.height);
+    this.pageHeight = Math.min(this.pageHeight || device.pageHeight, device.fullHeight);
+    this.pageScale = this.pageScale || 1;
     try {
       this.webContents.session.setUserAgent(agent, iphone.acceptLanguage(language));
     } catch (error) {
@@ -170,22 +172,25 @@ class Tab {
     }
     const send = (method, params) => this.webContents.debugger.sendCommand(method, params);
     this.emulation = Promise.all([
-      send("Emulation.setDeviceMetricsOverride", iphone.deviceMetrics(device, this.pageHeight)),
+      send("Emulation.setDeviceMetricsOverride", iphone.deviceMetrics(device, this.pageHeight, this.pageScale)),
       send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 }),
       send("Emulation.setEmitTouchEventsForMouse", { enabled: true, configuration: "mobile" }),
       send("Emulation.setEmulatedMedia", { features: [{ name: "color-gamut", value: "p3" }] }),
-      send("Network.setUserAgentOverride", { userAgent: agent, acceptLanguage: language, platform: "iPhone" }),
+      send("Network.setUserAgentOverride", { userAgent: agent, acceptLanguage: language, platform: device.platform }),
     ]).then(() => true, () => false);
   }
 
-  /// The height of the iPhone's page area (see Browser.phoneBounds): the
-  /// page sees a resize, as on an iPhone whose toolbar shows or hides.
-  setPageHeight(height) {
-    if (!this.device || !this.debugging || height === this.pageHeight) {
+  /// The height of the device's page area (see Browser.phoneBounds): the
+  /// page sees a resize, as on a device whose toolbar shows or hides; and
+  /// how big Chromium draws it (an iPad's smaller on a narrow PC screen,
+  /// with the same sizes for the page).
+  setPageHeight(height, scale = 1) {
+    if (!this.device || !this.debugging || (height === this.pageHeight && scale === this.pageScale)) {
       return;
     }
     this.pageHeight = height;
-    this.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", iphone.deviceMetrics(this.device, height)).catch(() => {});
+    this.pageScale = scale;
+    this.webContents.debugger.sendCommand("Emulation.setDeviceMetricsOverride", iphone.deviceMetrics(this.device, height, scale)).catch(() => {});
   }
 
   /// A page's dedicated workers start without the preload, so a page could
@@ -704,7 +709,9 @@ class Browser {
 
   // MARK: - Window
 
-  /// Noor iPhone's window fits the iPhone's page under the toolbar.
+  /// Noor iPhone's window fits the device's page under the toolbar (an
+  /// iPhone's in a window as wide as the toolbar needs, an iPad's in one as
+  /// wide as its page).
   windowSize() {
     if (!this.isIPhone) {
       return { width: 1280, height: 860 };
@@ -715,7 +722,8 @@ class Browser {
       work = require("electron").screen.getPrimaryDisplay().workAreaSize;
     } catch (error) {}
     const height = Math.min(work.height - 16, CHROME_HEIGHT + device.pageHeight + 2 * PHONE_MARGIN + 40);
-    return { width: Math.min(work.width - 16, 760), height: Math.max(560, height) };
+    const width = Math.max(760, device.pageWidth + 2 * PHONE_MARGIN + 40);
+    return { width: Math.min(work.width - 16, width), height: Math.max(560, height) };
   }
 
   makeWindow(bounds = null) {
@@ -972,22 +980,27 @@ class Browser {
     }
   }
 
-  /// Where Noor iPhone draws a tab's page: the iPhone's page area, at its
+  /// Where Noor iPhone draws a tab's page: the device's page area, at its
   /// size (a CSS pixel to a pixel of the PC's), in the middle under the
   /// toolbar; on a screen too short for it, as tall as fits (see
-  /// Tab.setPageHeight), and the whole screen's height for a video shown
-  /// full screen.
+  /// Tab.setPageHeight), and the whole screen's height for a video or page
+  /// shown full screen. An iPad's page on a window too narrow for it is
+  /// drawn smaller, to fit.
   phoneBounds(tab, width, height, top) {
     const device = tab.device || this.fingerprint.iphone();
     const margin = this.fullScreen ? 0 : PHONE_MARGIN;
-    const room = Math.max(MIN_PAGE_HEIGHT, height - top - 2 * margin);
-    const pageHeight = Math.min(this.fullScreen ? device.height : device.pageHeight, room);
-    tab.setPageHeight(pageHeight);
-    return { x: Math.max(0, Math.round((width - device.width) / 2)), y: top + Math.max(0, Math.round((height - top - pageHeight) / 2)), width: device.width, height: pageHeight };
+    const scale = Math.min(1, Math.max(0.25, Math.floor(((width - 2 * margin) / device.pageWidth) * 100) / 100));
+    const room = Math.max(MIN_PAGE_HEIGHT, Math.floor((height - top - 2 * margin) / scale));
+    const pageHeight = Math.min(this.fullScreen ? device.fullHeight : device.pageHeight, room);
+    tab.setPageHeight(pageHeight, scale);
+    const shownWidth = Math.round(device.pageWidth * scale);
+    const shownHeight = Math.round(pageHeight * scale);
+    return { x: Math.max(0, Math.round((width - shownWidth) / 2)), y: top + Math.max(0, Math.round((height - top - shownHeight) / 2)), width: shownWidth, height: shownHeight };
   }
 
-  /// A new iPhone for the profile: every tab and the profile's sessions
-  /// are told it, and the pages load again with it.
+  /// A new iPhone or iPad for the profile: every tab and the profile's
+  /// sessions are told it, and the pages load again with it. A window too
+  /// small for its page (an iPhone's, now an iPad's) grows to fit it.
   applyDevice() {
     for (const tab of this.allTabs.concat(this.backgroundTabs)) {
       if (!tab.webContents.isDestroyed()) {
@@ -997,6 +1010,13 @@ class Browser {
     try {
       require("electron").app.userAgentFallback = iphone.userAgent(this.fingerprint.iphone());
     } catch (error) {}
+    if (this.win && !this.win.isDestroyed() && !this.win.isMaximized() && !this.win.isFullScreen()) {
+      const wanted = this.windowSize();
+      const [width, height] = this.win.getSize();
+      if (width < wanted.width || height < wanted.height) {
+        this.win.setSize(Math.max(width, wanted.width), Math.max(height, wanted.height));
+      }
+    }
     this.layout();
   }
 
@@ -1467,6 +1487,14 @@ class Browser {
       this.selected.reload();
     }
     this.pushState();
+  }
+
+  /// Noor iPhone: the profile becomes an iPhone or an iPad (a new one), in
+  /// every tab, and the pages load again with it.
+  setDeviceFamily(family) {
+    this.fingerprint.setFamily(family);
+    this.applyDevice();
+    this.applyPrivacySettings();
   }
 
   /// Gives every site new values for `kinds` and reloads the page with them.

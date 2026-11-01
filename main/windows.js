@@ -416,6 +416,7 @@ class Windows {
   /// A new profile, in a window of its own.
   createProfile(name) {
     const profile = this.profiles.add(name);
+    this.setDevices([profile]);
     this.open(profile);
     this.collectInNew([profile]);
     return profile;
@@ -425,9 +426,22 @@ class Windows {
   /// Profiles.addMany); no window opens for them.
   createProfiles(count, name) {
     const made = this.profiles.addMany(count, name);
+    this.setDevices(made);
     this.collectInNew(made);
     this.pushState();
     return made;
+  }
+
+  /// Noor iPhone: new profiles are iPhones or iPads, as the settings say
+  /// ("newProfileDevice"), or `family`; each a device of its own.
+  setDevices(profiles, family = null) {
+    if (!this.isIPhone) {
+      return;
+    }
+    const wanted = family || this.store.get("newProfileDevice", "iphone");
+    for (const profile of profiles) {
+      this.context.fingerprint.forProfile(profile).setFamily(wanted);
+    }
   }
 
   /// New profiles collect their cookies, all at once, each in the
@@ -505,10 +519,13 @@ class Windows {
     if (this.warmup) {
       this.warmup.stop(old.id);
     }
+    // In its place, the same kind of device (a new one).
+    const family = this.isIPhone ? this.context.fingerprint.forProfile(old).family() : null;
     const fresh = this.profiles.replace(old.id);
     if (!fresh) {
       return null;
     }
+    this.setDevices([fresh], family);
     // Its place among the windows of the next launch is the new one's.
     const open = this.store.get("openWindows", []);
     if (Array.isArray(open) && open.includes(old.id)) {
