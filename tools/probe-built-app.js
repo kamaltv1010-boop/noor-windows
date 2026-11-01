@@ -108,27 +108,47 @@ const windowOf = (pid) => {
   return { handle: Number(handle) || 0, title: title || "" };
 };
 
-/// The windows of the process `pid` that are on the screen (Windows): title
-/// and class of each, to see which a request to close left.
-const shownWindows = (pid) => {
-  const ps = `Add-Type -TypeDefinition @"
-using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;
-public static class NoorShown {
+/// Windows' own calls on the windows of the process `pid`: Shown lists
+/// those on the screen, front first ("handle title" each); CloseEach asks
+/// each of them to close as its X does (WM_CLOSE), front first, the next
+/// once the first is off the screen (10 s at most), and says how it went.
+const WINDOW_CALLS = `Add-Type -TypeDefinition @"
+using System; using System.Text; using System.Collections.Generic; using System.Diagnostics; using System.Threading; using System.Runtime.InteropServices;
+public static class NoorWindows {
   delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll")] static extern bool IsWindow(IntPtr h);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
-  public static string List(uint want) {
-    var found = new List<string>();
-    EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == want && IsWindowVisible(h)) { var t = new StringBuilder(256); GetWindowText(h, t, 256); found.Add(t.ToString()); } return true; }, IntPtr.Zero);
-    return string.Join(" | ", found);
+  static List<IntPtr> Of(uint want) {
+    var found = new List<IntPtr>();
+    EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == want && IsWindowVisible(h)) found.Add(h); return true; }, IntPtr.Zero);
+    return found;
+  }
+  static string Title(IntPtr h) { var t = new StringBuilder(256); GetWindowText(h, t, 256); return t.ToString(); }
+  public static string Shown(uint want) {
+    var lines = new List<string>();
+    foreach (var h in Of(want)) lines.Add(h.ToInt64() + " " + Title(h));
+    return string.Join("\\n", lines);
+  }
+  public static string CloseEach(uint want) {
+    var lines = new List<string>();
+    foreach (var h in Of(want)) {
+      var title = Title(h);
+      var clock = Stopwatch.StartNew();
+      var posted = PostMessage(h, 0x0010, IntPtr.Zero, IntPtr.Zero);
+      while (IsWindow(h) && IsWindowVisible(h) && clock.ElapsedMilliseconds < 10000) Thread.Sleep(50);
+      lines.Add(h.ToInt64() + " " + title + ": WM_CLOSE " + (posted ? "sent" : "not sent") + ", " + (IsWindow(h) && IsWindowVisible(h) ? "still on the screen after 10 s" : "gone in " + clock.ElapsedMilliseconds + " ms"));
+    }
+    return string.Join("\\n", lines);
   }
 }
 "@
-[NoorShown]::List(${pid})`;
-  return (spawnSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" }).stdout || "").trim();
-};
+`;
+const windowCall = (call, pid) => (spawnSync("powershell", ["-NoProfile", "-Command", `${WINDOW_CALLS}[NoorWindows]::${call}(${pid})`], { encoding: "utf8" }).stdout || "").trim().split(/\r?\n/).filter(Boolean);
+const shownWindows = (pid) => windowCall("Shown", pid);
 
 /// Starts Noor and waits until its toolbar page answers.
 const start = async (label, extra = []) => {
@@ -151,9 +171,18 @@ const start = async (label, extra = []) => {
   let port;
   let browserPath;
   for (let i = 0; i < 50; i++) {
-    [port, browserPath] = fs.readFileSync(portFile, "utf8").split(/\r?\n/);
+    try {
+      [port, browserPath] = fs.readFileSync(portFile, "utf8").split(/\r?\n/);
+    } catch (error) {
+      // Chromium is writing it: Windows keeps it locked meanwhile (EBUSY).
+      [port, browserPath] = [];
+    }
     if (port && browserPath) break;
     await sleep(100);
+  }
+  if (!port || !browserPath) {
+    step(`${label}: Noor starts`, false, "its DevToolsActivePort unreadable for 5 s");
+    return null;
   }
   const cdp = await connect(Number(port), browserPath.trim());
   let toolbar = null;
@@ -174,37 +203,29 @@ const start = async (label, extra = []) => {
   return app;
 };
 
-/// Closes Noor as Windows closes an app (its windows are sent WM_CLOSE:
-/// taskkill without /F; elsewhere SIGTERM), and waits until every process
-/// of it is gone.
+/// Closes Noor as a user closes it on Windows: each of its windows asked
+/// to close as its X does (WM_CLOSE), the one in front first, the next
+/// once the first is gone; Noor must then quit by itself. If it doesn't,
+/// what is left is kept, then taskkill without /F asks again (every window
+/// at once). Elsewhere SIGTERM. Waits until every process of it is gone.
 const close = async (app, label) => {
   app.cdp.close();
   const asked = Date.now();
+  const STUCK = "still running after its windows were closed";
   let how;
   if (WINDOWS) {
-    // As the window's X does: its main window is asked to close; then, if
-    // Noor is still there, as taskkill without /F asks every window of it.
-    // What each said is kept (a close Windows didn't deliver isn't Noor's).
     report.closing = report.closing || {};
-    const asked = spawnSync("powershell", ["-NoProfile", "-Command", `$p = Get-Process -Id ${app.child.pid} -ErrorAction SilentlyContinue; if ($p) { "$($p.MainWindowHandle) $($p.CloseMainWindow())" }`], { encoding: "utf8" });
-    report.closing[label] = { before: shownWindows(app.child.pid), closeMainWindow: (asked.stdout || "").trim() };
-    how = await Promise.race([app.exited, sleep(15000).then(() => "still running after 15 s")]);
-    if (how === "still running after 15 s") {
-      report.closing[label].afterCloseMainWindow = shownWindows(app.child.pid);
-      const told = spawnSync("taskkill", ["/PID", String(app.child.pid)], { encoding: "utf8" });
-      report.closing[label].taskkill = ((told.stdout || "") + (told.stderr || "")).trim();
-      how = await Promise.race([app.exited, sleep(15000).then(() => "still running after 30 s")]);
+    const record = (report.closing[label] = { shown: shownWindows(app.child.pid) });
+    record.closed = windowCall("CloseEach", app.child.pid);
+    how = await Promise.race([app.exited, sleep(15000).then(() => STUCK)]);
+    if (how === STUCK) {
+      record.left = shownWindows(app.child.pid);
     }
   } else {
     app.child.kill("SIGTERM");
-    how = await Promise.race([app.exited, sleep(30000).then(() => "still running after 30 s")]);
+    how = await Promise.race([app.exited, sleep(30000).then(() => STUCK)]);
   }
-  let left = running();
-  for (let i = 0; i < 50 && left; i++) {
-    await sleep(200);
-    left = running();
-  }
-  if (how === "still running after 30 s") {
+  if (how === STUCK) {
     // What Chromium still holds (its debugging port still answers while
     // Noor hangs), and what is still running.
     report.hang = report.hang || {};
@@ -215,17 +236,36 @@ const close = async (app, label) => {
         : (spawnSync("ps", ["-eo", "pid,ppid,stat,wchan:20,args", "--sort", "pid"], { encoding: "utf8" }).stdout || "").split("\n").filter((line) => line.includes(exe)).map((line) => line.replace(exe, path.basename(exe)).slice(0, 220)),
     };
   }
-  step(`${label}: Noor closes as Windows closes an app`, how !== "still running after 30 s", `in ${Date.now() - asked} ms (${how})`);
+  step(`${label}: Noor closes as Windows closes an app`, how !== STUCK, `in ${Date.now() - asked} ms (${how})`);
+  if (how === STUCK) {
+    if (WINDOWS) {
+      // Asked again as taskkill without /F asks (every window at once);
+      // then, if it is still there, ended.
+      const record = report.closing[label];
+      const told = spawnSync("taskkill", ["/PID", String(app.child.pid)], { encoding: "utf8" });
+      record.taskkill = ((told.stdout || "") + (told.stderr || "")).trim();
+      const after = await Promise.race([app.exited, sleep(15000).then(() => "still running 15 s after taskkill")]);
+      record.afterTaskkill = after;
+      if (after === "still running 15 s after taskkill") {
+        record.leftAfterTaskkill = shownWindows(app.child.pid);
+        spawnSync("taskkill", ["/F", "/T", "/PID", String(app.child.pid)], { stdio: "ignore" });
+      }
+    } else {
+      app.child.kill("SIGKILL");
+    }
+    await Promise.race([app.exited, sleep(10000)]);
+  }
+  let left = running();
+  for (let i = 0; i < 50 && left; i++) {
+    await sleep(200);
+    left = running();
+  }
   step(`${label}: no process of Noor is left`, left === 0, `${left} left`);
   // An error nothing caught in Noor's main process (written as its stack;
   // Chromium's own lines start with "[").
   const written = fs.existsSync(app.logFile) ? fs.readFileSync(app.logFile, "utf8") : "";
   const errors = written.split(/\r?\n/).filter((line, i, lines) => /^[A-Za-z]*Error\b/.test(line) && /^\s+at /.test(lines[i + 1] || "")).map((line, i) => line.slice(0, 200));
   step(`${label}: no error nothing caught in Noor's main process (its log)`, errors.length === 0, errors.length ? errors : path.basename(app.logFile));
-  if (how === "still running after 30 s") {
-    if (WINDOWS) spawnSync("taskkill", ["/F", "/T", "/PID", String(app.child.pid)], { stdio: "ignore" });
-    else app.child.kill("SIGKILL");
-  }
 };
 
 /// The test site: a page that writes (or only reads) what a site keeps,
@@ -409,8 +449,9 @@ function finish(app) {
   site.close();
   if (out) fs.writeFileSync(path.join(out, "built-app.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
-  // (The last lines, which a CI log shows: what failed, and how closing went.)
-  console.log("CLOSING " + JSON.stringify(report.closing || {}));
-  console.log("PROBLEMS " + JSON.stringify(report.problems));
+  // (The last lines, which a CI log shows: what failed, and how closing
+  // went; written apart from the report, which stays JSON alone.)
+  console.error("CLOSING " + JSON.stringify(report.closing || {}));
+  console.error("PROBLEMS " + JSON.stringify(report.problems));
   process.exit(report.problems.length ? 1 : 0);
 }

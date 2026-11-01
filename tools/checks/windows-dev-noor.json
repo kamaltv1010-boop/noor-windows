@@ -40,6 +40,16 @@
   "minutes": 10
  },
  {
+  "name": "smoke-close",
+  "title": "إغلاق Noor بنافذتين: واحدة بعد الأخرى، والاثنتان معاً، وtaskkill",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-close.js"
+  ],
+  "minutes": 6
+ },
+ {
   "name": "smoke-gpu",
   "title": "WebGL Vendor & Renderer لكل بروفايل",
   "kind": "app",

@@ -92,14 +92,21 @@ const entry = () => {
   // Its first start, on its own data folder, and what a user does next.
   const dataBefore = fs.existsSync(dataFolder);
   const probe = spawnSync(process.execPath, [path.join(__dirname, "probe-built-app.js"), appExe, "--own-data", dataFolder, ...(out ? ["--out", path.join(out, `installed-${product.replace(/ /g, "-")}`)] : [])], { encoding: "utf8", timeout: 600000 });
+  // (Its report: the JSON it prints, from its first "{" to its last "}".)
   let probed = null;
   try {
-    probed = JSON.parse(probe.stdout.slice(probe.stdout.indexOf("{")));
+    const said = probe.stdout || "";
+    probed = JSON.parse(said.slice(said.indexOf("{"), said.lastIndexOf("}") + 1));
   } catch (error) {
     probed = null;
   }
   report.firstStart = probed;
-  step(`the installed app's first start and use (probe-built-app.js${dataBefore ? ", its data folder was already there" : ""})`, probe.status === 0, probed ? (probed.problems.length ? probed.problems : `${probed.steps.length} steps passed`) : (probe.stderr || "").slice(-600));
+  // What failed, by name; without its report, the lines it wrote that say FAIL.
+  const failedLines = (probe.stderr || "").split(/\r?\n/).filter((line) => line.startsWith("FAIL")).map((line) => line.slice(0, 600));
+  step(`the installed app's first start and use (probe-built-app.js${dataBefore ? ", its data folder was already there" : ""})`, probe.status === 0, probed ? (probed.problems.length ? probed.problems : `${probed.steps.length} steps passed`) : failedLines.length ? failedLines : (probe.stderr || "").slice(-600));
+  if (probed && probed.closing) {
+    report.closing = probed.closing;
+  }
 
   // Uninstalled silently: the uninstaller runs from a copy of itself.
   const removed = Date.now();
