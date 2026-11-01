@@ -1,0 +1,126 @@
+[
+ {
+  "name": "fuses-iphone",
+  "title": "قراءة الـ fuses من Noor iPhone.exe",
+  "kind": "headless",
+  "command": [
+   "node",
+   "tools/check-fuses.js",
+   "{exe:iphone}"
+  ],
+  "minutes": 2
+ },
+ {
+  "name": "install-iphone",
+  "title": "مثبّت Noor iPhone: التثبيت، أول تشغيل، الإغلاق وإعادة الفتح، إزالة التثبيت",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/check-install.js",
+   "{setup:iphone}",
+   "--out",
+   "{out}/install"
+  ],
+  "minutes": 25
+ },
+ {
+  "name": "built-app-iphone",
+  "title": "Noor iPhone المبني: بروفايل ثانٍ، العزل، الصلاحيات، الإعدادات، إعادة التشغيل",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-built-app.js",
+   "{exe:iphone}",
+   "--out",
+   "{out}/built-app-iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "workers-iphone",
+  "title": "الحماية داخل الـ workers (Noor iPhone المبني)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-workers.js",
+   "iphone"
+  ],
+  "minutes": 10,
+  "env": {
+   "NOOR_ELECTRON": "{exe:iphone}"
+  }
+ },
+ {
+  "name": "cookie-store-iphone",
+  "title": "الكوكيز على القرص (Noor iPhone المبني)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-cookie-store.js",
+   "{exe:iphone}"
+  ],
+  "minutes": 5
+ },
+ {
+  "name": "fuses-android",
+  "title": "قراءة الـ fuses من Noor Android.exe",
+  "kind": "headless",
+  "command": [
+   "node",
+   "tools/check-fuses.js",
+   "{exe:android}"
+  ],
+  "minutes": 2
+ },
+ {
+  "name": "install-android",
+  "title": "مثبّت Noor Android: التثبيت، أول تشغيل، الإغلاق وإعادة الفتح، إزالة التثبيت",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/check-install.js",
+   "{setup:android}",
+   "--out",
+   "{out}/install"
+  ],
+  "minutes": 25
+ },
+ {
+  "name": "built-app-android",
+  "title": "Noor Android المبني: بروفايل ثانٍ، العزل، الصلاحيات، الإعدادات، إعادة التشغيل",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-built-app.js",
+   "{exe:android}",
+   "--out",
+   "{out}/built-app-android"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "workers-android",
+  "title": "الحماية داخل الـ workers (Noor Android المبني)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-workers.js",
+   "android"
+  ],
+  "minutes": 10,
+  "env": {
+   "NOOR_ELECTRON": "{exe:android}"
+  }
+ },
+ {
+  "name": "cookie-store-android",
+  "title": "الكوكيز على القرص (Noor Android المبني)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-cookie-store.js",
+   "{exe:android}"
+  ],
+  "minutes": 5
+ }
+]

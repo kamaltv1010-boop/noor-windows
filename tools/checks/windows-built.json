@@ -1,0 +1,122 @@
+[
+ {
+  "name": "fuses",
+  "title": "قراءة الـ fuses من Noor.exe المبني",
+  "kind": "headless",
+  "command": [
+   "node",
+   "tools/check-fuses.js",
+   "{exe}"
+  ],
+  "minutes": 2
+ },
+ {
+  "name": "install",
+  "title": "مثبّت Noor: التثبيت، أول تشغيل، البروفايلات، الإغلاق وإعادة الفتح، إزالة التثبيت",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/check-install.js",
+   "{setup}",
+   "--out",
+   "{out}/install"
+  ],
+  "minutes": 25
+ },
+ {
+  "name": "built-app",
+  "title": "Noor المبني: بروفايل ثانٍ، العزل، الصلاحيات، الإعدادات، إعادة التشغيل",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-built-app.js",
+   "{exe}",
+   "--out",
+   "{out}/built-app"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "cookie-store",
+  "title": "الكوكيز على القرص (Noor المبني)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-cookie-store.js",
+   "{exe}"
+  ],
+  "minutes": 5
+ },
+ {
+  "name": "cookie-store-update",
+  "title": "الكوكيز بعد التحديث من نسخة بلا تشفير",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-cookie-store.js",
+   "--after",
+   "{exe}"
+  ],
+  "minutes": 8
+ },
+ {
+  "name": "ways-in",
+  "title": "الدخول إلى عملية Noor (RunAsNode، NODE_OPTIONS، ‎--inspect)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-fuses.js",
+   "{exe}"
+  ],
+  "minutes": 5
+ },
+ {
+  "name": "workers",
+  "title": "الحماية داخل الـ workers (Noor المبني)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-workers.js",
+   "windows"
+  ],
+  "minutes": 10,
+  "env": {
+   "NOOR_ELECTRON": "{exe}"
+  }
+ },
+ {
+  "name": "debug-port",
+  "title": "منفذ التصحيح: صفحات الويب والعناوين الأخرى",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-debug-port.js"
+  ],
+  "minutes": 6,
+  "env": {
+   "NOOR_ELECTRON": "{exe}"
+  }
+ },
+ {
+  "name": "debug-port-other-account",
+  "title": "منفذ التصحيح: حساب Windows آخر على نفس الجهاز",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-port-other-user.js",
+   "{exe}"
+  ],
+  "minutes": 10,
+  "expect": "problem"
+ },
+ {
+  "name": "pipe-experiment",
+  "title": "تجربة: pipe بدل منفذ التصحيح (Electron وحده)",
+  "kind": "app",
+  "command": [
+   "electron",
+   "tools/check-devtools-pipe.js"
+  ],
+  "minutes": 3
+ }
+]

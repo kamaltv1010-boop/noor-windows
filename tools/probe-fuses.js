@@ -4,7 +4,7 @@
 // on it (--inspect). Each is turned off by a fuse package.json flips in
 // the built app (build.electronFuses; tools/check-fuses.js reads them);
 // Electron as it comes allows all three.
-//   xvfb-run -a node tools/probe-fuses.js [electron]
+//   xvfb-run -a node tools/probe-fuses.js [electron]   (Windows: no xvfb-run)
 // [electron]: a built Noor (dist/linux-unpacked/noor-browser, from
 // `npx electron-builder --linux dir`), or node_modules' Electron (the
 // default). Prints what each way did; exits 1 if one worked.

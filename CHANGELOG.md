@@ -5,6 +5,35 @@ Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
 ## Unreleased
 
+- **إصلاح تجمّد Noor (النسخ الثلاث):** كان Noor أحياناً يتجمّد ولا يُغلَق
+  (يبقى أكثر من 30 ثانية مع 8 عمليات) بعد تغيير إعداد أو إعادة فتح
+  نوافذ البروفايلات. السبب: عمل مؤجَّل (`pushState` في `setImmediate`)
+  يصل إلى شريط نافذة أُغلقت، وElectron لا يعطي الـ view أي `webContents`
+  بعد ذلك، فيحدث خطأ `TypeError` غير ملتقط؛ ثم تُظهره نافذة الخطأ
+  `dialog.showErrorBox` التي توقف التطبيق كله حتى يُضغط OK. الإصلاح:
+  `pageOf(view)` في `main/tabs.js` لكل عمل مؤجَّل على الشريط وقائمة النوافذ،
+  ونافذة الخطأ بعد جاهزية التطبيق صارت غير حاجبة (`showMessageBox`، واحدة
+  في كل مرة). قبل الإصلاح: 2 من 4 تشغيلات لـ `tools/probe-built-app.js`
+  على Linux علقت؛ بعده: 0 من 10. (على Windows: يُنتظر تقرير CI.)
+- **اختبارات على Windows نفسه** (`.github/workflows/windows-checks.yml`،
+  آلة GitHub الافتراضية `windows-latest`): Noor المبني والمثبَّت
+  (`tools/check-install.js`: التثبيت الصامت، الاختصارات، قائمة البرامج
+  المثبتة، أول تشغيل، بروفايل ثانٍ، العزل، الإعدادات، الإغلاق وإعادة الفتح،
+  إزالة التثبيت)، و`tools/probe-built-app.js` (يقود التطبيق المبني عبر
+  صفحاته كما يفعل المستخدم)، والكوكيز على القرص (DPAPI)، والـ fuses،
+  والـ workers، ومنفذ التصحيح (الصفحات، العناوين الأخرى، **حساب Windows
+  آخر**: `tools/probe-port-other-user.js`)، وتجربة الـ pipe؛ وNoor iPhone
+  وNoor Android المبنيين؛ وكل اختبارات Playwright التي كانت تعمل على Linux.
+  `tools/run-checks.js` يكتب تقريراً بالعربية لكل اختبار: إصدار Windows،
+  إصدار Noor، الأمر، النتيجة، المدة، مكان السجل، والعمليات المتبقية.
+- `tools/probe-debug-port.js`: صفحة تعرف منفذ التصحيح وعنوان المتصفح لا
+  تستطيع قراءته ولا فتح تبويب ولا الاتصال؛ والمنفذ لا يجيب على عناوين
+  الجهاز الأخرى (أي برنامج على الجهاز يستطيع: انظر PROGRESS.md).
+- `tools/probe-cookie-store.js` يعمل على Windows أيضاً (إغلاق Noor كما يغلق
+  Windows البرامج: `taskkill` بدون /F).
+
+## 1.0.43
+
 - Security (all three builds): cookies are kept encrypted on the disk, as
   Chrome keeps them (on Windows with the user's own key, DPAPI). Before,
   every profile's cookies, logins included, were in plain text in Noor's

@@ -10,6 +10,15 @@ const { iconLook } = require("./profile-icon");
 const PRELOAD = path.join(__dirname, "..", "scripts", "preload.js");
 const CHROME_PRELOAD = path.join(__dirname, "..", "scripts", "chrome-preload.js");
 const CHROME_PARTITION = "persist:noor-chrome";
+
+/// A view's page while it is there. Once it is gone (its window closed),
+/// Electron gives the view no webContents at all, so asking it whether it
+/// is destroyed throws: work left for later (a state pushed on the next
+/// turn, a menu shown once its page loads) looks here first.
+const pageOf = (view) => {
+  const contents = view ? view.webContents : null;
+  return contents && !contents.isDestroyed() ? contents : null;
+};
 const CHROME_URL = "noor://app/chrome.html";
 /// The window's menus, drawn over it (see Browser.showMenu).
 const MENU_URL = "noor://app/menu.html";
@@ -428,8 +437,9 @@ class Tab {
     wc.on("enter-html-full-screen", () => this.browser.setFullScreen(true));
     wc.on("leave-html-full-screen", () => this.browser.setFullScreen(false));
     wc.on("found-in-page", (event, result) => {
-      if (this.browser.selected === this) {
-        this.browser.chrome.webContents.send("noor:found", { activeMatchOrdinal: result.activeMatchOrdinal, matches: result.matches });
+      const toolbar = pageOf(this.browser.chrome);
+      if (this.browser.selected === this && toolbar) {
+        toolbar.send("noor:found", { activeMatchOrdinal: result.activeMatchOrdinal, matches: result.matches });
       }
     });
     // The last time the user acted on the page (a click, a key, a touch):
@@ -895,8 +905,9 @@ class Browser {
       }
       for (const view of [this.chrome, this.overlay]) {
         try {
-          if (view && !view.webContents.isDestroyed()) {
-            view.webContents.close();
+          const contents = pageOf(view);
+          if (contents) {
+            contents.close();
           }
         } catch (error) {
           // Gone with the window.
@@ -928,7 +939,7 @@ class Browser {
   /// The page menus are drawn on, made once: transparent, so the window
   /// shows through around the menu.
   menuOverlay() {
-    if (this.overlay && !this.overlay.webContents.isDestroyed()) {
+    if (pageOf(this.overlay)) {
       return this.overlay;
     }
     this.overlay = new WebContentsView({ webPreferences: { preload: CHROME_PRELOAD, sandbox: false, contextIsolation: false, nodeIntegration: false, partition: CHROME_PARTITION, spellcheck: false } });
@@ -955,9 +966,10 @@ class Browser {
     }
     const menu = { items, anchor: this.menu.anchor, align: this.menu.align, update, private: Boolean(this.selected && this.selected.isPrivate) };
     this.overlayReady.then(() => {
-      if (this.menuShown && this.overlay === overlay && !overlay.webContents.isDestroyed()) {
-        overlay.webContents.send("noor:menu", menu);
-        overlay.webContents.focus();
+      const contents = pageOf(overlay);
+      if (this.menuShown && this.overlay === overlay && contents) {
+        contents.send("noor:menu", menu);
+        contents.focus();
       }
     });
   }
@@ -1712,8 +1724,9 @@ class Browser {
     }
     this.stateTimer = setImmediate(() => {
       this.stateTimer = null;
-      if (this.chrome && !this.chrome.webContents.isDestroyed()) {
-        this.chrome.webContents.send("noor:state", this.state());
+      const toolbar = pageOf(this.chrome);
+      if (toolbar) {
+        toolbar.send("noor:state", this.state());
       }
     });
   }
@@ -1756,4 +1769,4 @@ const serializeMenu = (items) => {
   return { items: walk(items), actions };
 };
 
-module.exports = { Browser, Tab, CHROME_HEIGHT, PRELOAD, CHROME_PARTITION, serializeMenu };
+module.exports = { pageOf, Browser, Tab, CHROME_HEIGHT, PRELOAD, CHROME_PARTITION, serializeMenu };

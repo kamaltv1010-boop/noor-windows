@@ -1,0 +1,202 @@
+[
+ {
+  "name": "smoke-electron",
+  "title": "الأساسيات: ما تراه الصفحة، حجب المتتبعين، البروفايلات، صفحات التطبيق",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-electron.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-extensions",
+  "title": "الإضافات (Chrome Web Store وملفات crx)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-extensions.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-quota",
+  "title": "مساحة التخزين وservice worker",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-quota.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-windows",
+  "title": "نافذة لكل بروفايل",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-windows.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-gpu",
+  "title": "WebGL Vendor & Renderer لكل بروفايل",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-gpu.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-fonts",
+  "title": "الخطوط لكل بروفايل (خطوط Windows الحقيقية هنا)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-fonts.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-menu",
+  "title": "القوائم",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-menu.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-warmup",
+  "title": "جمع الكوكيز",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-warmup.js",
+   "windows"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-workers",
+  "title": "الحماية داخل الـ workers (الكود أثناء التطوير)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-workers.js",
+   "windows"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-webgpu",
+  "title": "WebGPU في الصفحة والـ worker",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-webgpu.js",
+   "windows"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-device",
+  "title": "واجهات الجهاز (البطارية، الأجهزة، الشبكة…)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-device.js",
+   "windows"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-lies",
+  "title": "هل يكشف الموقع الضجيج؟",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-lies.js",
+   "windows"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-isolation",
+  "title": "عزل البيانات بين البروفايلات والتبويب الخاص",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-isolation.js",
+   "windows"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-screen",
+  "title": "اتساق حجم الشاشة مع media queries",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-screen.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-webrtc",
+  "title": "WebRTC: هل يظهر عنوان IP؟",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-webrtc.js",
+   "windows"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-persistence",
+  "title": "ثبات البروفايل بعد إعادة التشغيل وتشغيل/إيقاف كل حماية",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-persistence.js",
+   "windows"
+  ],
+  "minutes": 25
+ },
+ {
+  "name": "probe-memory",
+  "title": "الذاكرة والمعالج مع 40 تبويباً",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-memory.js",
+   "windows"
+  ],
+  "minutes": 20
+ },
+ {
+  "name": "cookie-store-dev",
+  "title": "الكوكيز على القرص بـ Electron بلا fuses (المرجع: قبل الإصلاح)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-cookie-store.js"
+  ],
+  "minutes": 5,
+  "expect": "problem"
+ },
+ {
+  "name": "debug-port-dev",
+  "title": "منفذ التصحيح (الكود أثناء التطوير)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-debug-port.js"
+  ],
+  "minutes": 6
+ }
+]

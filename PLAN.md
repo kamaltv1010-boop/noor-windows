@@ -16,9 +16,13 @@ sites a different platform, so each is checked on its own.
   (Electron 45.2.1, Chromium 156) under Xvfb on **Linux**, by the tools in
   `tools/smoke-*.js`, and unit tests (`npm test`) for the main process.
 - **Not tested here:** a real Windows PC, a real Android phone, a real
-  iPhone. Windows only builds the `.exe` files in CI (`npm test` runs
-  there too). A check that needs Windows itself (its GPU, its fonts, its
-  DPAPI) is marked as such.
+  iPhone. Windows builds the `.exe` files in CI (`npm test` runs there
+  too) and reads their fuses; the **Windows checks** job
+  (`.github/workflows/windows-checks.yml`) starts the built Noor.exe on a
+  Windows virtual machine (no graphics card, not a user's PC) for the
+  probes that need no test tool: cookies on the disk (DPAPI), the fuses,
+  workers, the debugging port. A check that needs a real PC (its GPU, its
+  fonts) is marked as such.
 - A fix counts when a test shows the leak before and not after. A build
   that passes is not a privacy result.
 - Builds: every push to `main` makes a numbered build (`1.0.<run>`) on
@@ -66,7 +70,9 @@ PROGRESS.md.
    (cookies: encrypted on the disk since the Electron fuses, see
    PROGRESS.md); no way into the app's main process for another program;
    the debugging port only on 127.0.0.1, random, and refused to web
-   pages.
+   pages (checked); still open to any program on the PC, other Windows
+   accounts' too: a pipe instead of the port, once Windows can be tested
+   in CI.
 9. Dependencies: Electron/Chromium security releases, `npm audit`.
 10. Memory and speed: the page script in every frame, background cookie
     collection, closed tabs and windows.

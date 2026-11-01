@@ -1,0 +1,143 @@
+# Noor's checks on Windows itself: a GitHub Windows virtual machine
+# (windows-latest; not a user's PC: no graphics card, a desktop session of
+# the runner's own). Four jobs side by side, each with a report in Arabic
+# (the run's summary, and checks/<suite>/report.md in its artifact, with
+# every check's log under logs/):
+# - built: Noor built as the release is, its installer (install, first
+#   start, profiles, settings, close and reopen, uninstall), cookies on the
+#   disk, the fuses, workers, Chromium's debugging port (pages, other
+#   addresses, another Windows account), the debugging pipe experiment;
+# - variants: the same for Noor iPhone and Noor Android, built;
+# - dev: the checks run on Linux until now (tools/smoke-*.js, probe-*.js,
+#   Playwright on Noor's source with Electron), for the three builds.
+# A built app takes no test tool (its fuses refuse --inspect): it is driven
+# as a user's launch and its own pages drive it (tools/probe-built-app.js).
+# This doesn't make or hold back a release (the Build workflow does).
+name: Windows checks
+
+on:
+  push:
+    branches: [main, windows-checks]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  built:
+    name: Noor, built and installed
+    runs-on: windows-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build Noor (installer, portable, unpacked)
+        run: npm run dist
+
+      - name: Checks
+        run: |
+          $env:NOOR_EXE = (Resolve-Path "dist/win-unpacked/Noor.exe").Path
+          $env:NOOR_SETUP = (Get-ChildItem "dist/Noor-Setup-*.exe").FullName
+          node tools/run-checks.js tools/checks/windows-built.json --out checks/windows-built
+
+      - name: Keep the reports and logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-windows-built
+          path: checks/
+          if-no-files-found: warn
+
+  variants:
+    name: Noor iPhone and Noor Android, built and installed
+    runs-on: windows-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build Noor iPhone
+        run: npm run dist:iphone
+
+      - name: Keep Noor iPhone apart
+        run: Rename-Item dist/win-unpacked iphone-unpacked
+
+      - name: Build Noor Android
+        run: npm run dist:android
+
+      - name: Keep Noor Android apart
+        run: Rename-Item dist/win-unpacked android-unpacked
+
+      - name: Checks
+        run: |
+          $env:NOOR_EXE_IPHONE = (Resolve-Path "dist/iphone-unpacked/Noor iPhone.exe").Path
+          $env:NOOR_EXE_ANDROID = (Resolve-Path "dist/android-unpacked/Noor Android.exe").Path
+          $env:NOOR_SETUP_IPHONE = (Get-ChildItem "dist/Noor-iPhone-Setup-*.exe").FullName
+          $env:NOOR_SETUP_ANDROID = (Get-ChildItem "dist/Noor-Android-Setup-*.exe").FullName
+          node tools/run-checks.js tools/checks/windows-variants.json --out checks/windows-variants
+
+      - name: Keep the reports and logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-windows-variants
+          path: checks/
+          if-no-files-found: warn
+
+  dev:
+    name: Noor's source (${{ matrix.suite }})
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [windows-dev-noor, windows-dev-mobile]
+    runs-on: windows-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Playwright drives Electron (no browser of its own is fetched).
+      - name: Playwright
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+        run: npm install --no-save playwright@1.63.0
+
+      - name: Checks
+        run: node tools/run-checks.js tools/checks/${{ matrix.suite }}.json --out checks/${{ matrix.suite }}
+
+      - name: Keep the reports and logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: checks-${{ matrix.suite }}
+          path: checks/
+          if-no-files-found: warn

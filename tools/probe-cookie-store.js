@@ -18,14 +18,15 @@
 // Exits 1 if a secret is on the disk as it is (the old one's, with
 // --after, is only reported: Chromium encrypts a cookie as it is written),
 // or the old cookie is lost; 2 if a cookie never got to the disk.
-// Needs a display: `xvfb-run -a node tools/probe-cookie-store.js ...`.
+// Needs a display: `xvfb-run -a node tools/probe-cookie-store.js ...` (on
+// Windows, `node tools/probe-cookie-store.js dist/win-unpacked/Noor.exe`).
 "use strict";
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const http = require("http");
 const crypto = require("crypto");
-const { spawn, execFileSync } = require("child_process");
+const { spawn, spawnSync, execFileSync } = require("child_process");
 
 const root = path.join(__dirname, "..");
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -38,6 +39,15 @@ const first = firstArg ? path.resolve(firstArg) : require(path.join(root, "node_
 /// A built app has its code beside it (resources/app.asar); Electron alone
 /// is given the source folder.
 const launchArgs = (exe) => [...(fs.existsSync(path.join(path.dirname(exe), "resources", "app.asar")) ? [] : [root]), "--no-sandbox"];
+const PYTHON = process.platform === "win32" ? "python" : "python3";
+
+/// Asks Noor to quit as the system asks an app (Windows: its windows are
+/// sent WM_CLOSE, taskkill without /F; elsewhere SIGTERM): Chromium writes
+/// what it holds before it goes. (Killed outright, it may not.)
+const askToQuit = (child) => {
+  if (process.platform === "win32") spawnSync("taskkill", ["/PID", String(child.pid)], { stdio: "ignore" });
+  else child.kill("SIGTERM");
+};
 
 /// Every file under `dir` (but big ones) that holds `text` as it is.
 const filesHolding = (dir, text) => {
@@ -64,9 +74,9 @@ const rowsOf = (dir, name) => {
       const full = path.join(at, entry.name);
       if (entry.isDirectory()) walk(full);
       else if (entry.name === "Cookies") {
-        const out = execFileSync("python3", ["-I", "-c", [
+        const out = execFileSync(PYTHON, ["-I", "-c", [
           "import sqlite3, sys, json",
-          "db = sqlite3.connect('file:' + sys.argv[1] + '?mode=ro', uri=True)",
+          "db = sqlite3.connect(sys.argv[1])",
           "rows = db.execute('select host_key, length(value), substr(encrypted_value, 1, 3), length(encrypted_value) from cookies where name = ?', (sys.argv[2],)).fetchall()",
           "print(json.dumps([[r[0], r[1], (r[2] or b'').decode('latin-1'), r[3]] for r in rows]))",
         ].join("\n"), full, name], { encoding: "utf8" });
@@ -100,8 +110,12 @@ const visit = async (exe, userData, name, secret) => {
     }
   });
   await new Promise((resolve) => web.listen(0, "127.0.0.1", resolve));
-  const env = { ...process.env, NOOR_USER_DATA: userData, NOOR_DEVICE: "windows", NOOR_TEST_OPEN_WINDOWS: "1" };
+  const env = { ...process.env, NOOR_USER_DATA: userData, NOOR_TEST_OPEN_WINDOWS: "1" };
   delete env.NOOR_TEST;
+  // (A built Noor iPhone or Noor Android is what it was built as; Electron
+  // alone runs Noor's source as Noor.)
+  if (launchArgs(exe).includes(root)) env.NOOR_DEVICE = "windows";
+  else delete env.NOOR_DEVICE;
   const app = spawn(exe, launchArgs(exe), { env, stdio: "ignore" });
   const exited = new Promise((resolve) => app.on("exit", (code, signal) => resolve(signal || code)));
   await sleep(7000);
@@ -109,9 +123,7 @@ const visit = async (exe, userData, name, secret) => {
   await new Promise((resolve) => second.on("exit", resolve));
   const until = Date.now() + 60000;
   while (seen.back === null && Date.now() < until) await sleep(250);
-  // Asked to quit, as Windows asks an app (Chromium writes what it holds
-  // before it goes).
-  app.kill("SIGTERM");
+  askToQuit(app);
   const how = await Promise.race([exited, sleep(30000).then(() => "still running")]);
   if (how === "still running") app.kill("SIGKILL");
   await sleep(1000);

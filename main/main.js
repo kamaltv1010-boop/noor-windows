@@ -10,7 +10,7 @@ const { Fingerprint } = require("./fingerprint");
 const { Shields, Stats } = require("./shields");
 const { Bookmarks } = require("./bookmarks");
 const { Timezone } = require("./timezone");
-const { Browser, CHROME_PARTITION } = require("./tabs");
+const { Browser, CHROME_PARTITION, pageOf } = require("./tabs");
 const { Windows, profileArgument } = require("./windows");
 const { Extensions, STORE_URL } = require("./extensions");
 const { storeExtensionID, storeTitle } = require("./crx");
@@ -1281,8 +1281,8 @@ app.whenReady().then(async () => {
   // A window shown asks for this computer's fonts from its toolbar (a page
   // has to show to be told them; see main/fonts.js); the first run's first
   // pages wait for them.
-  Browser.prototype.fontsKnown = (browser) => (!MOBILE && context && context.fonts && browser.chrome && !browser.chrome.webContents.isDestroyed()
-    ? context.fonts.whenKnown(browser.chrome.webContents) : null);
+  Browser.prototype.fontsKnown = (browser) => (!MOBILE && context && context.fonts && pageOf(browser.chrome)
+    ? context.fonts.whenKnown(pageOf(browser.chrome)) : null);
   Browser.prototype.tabMade = registerTab;
   Browser.prototype.screenFor = screenFor;
   Browser.prototype.extensions = extensions;
@@ -1366,15 +1366,29 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
+/// An error nothing caught, shown to the user. Once the app is up, in a box
+/// beside its windows, not in their way: the box Electron shows before
+/// that (showErrorBox) holds the whole app until it is closed, so an error
+/// in a timer froze Noor, which then couldn't even be closed. One at a
+/// time.
+let reporting = false;
 const report = (error) => {
   const text = String((error && error.stack) || error);
   console.error(text);
-  if (!process.env.NOOR_TEST) {
-    try {
+  if (process.env.NOOR_TEST) {
+    return;
+  }
+  try {
+    if (!app.isReady()) {
       dialog.showErrorBox("Noor", text);
-    } catch (e) {
-      // Nothing more to do.
+    } else if (!reporting) {
+      reporting = true;
+      dialog.showMessageBox({ type: "error", title: "Noor", message: "Noor ran into an error", detail: text, buttons: ["OK"], noLink: true })
+        .catch(() => {})
+        .finally(() => { reporting = false; });
     }
+  } catch (e) {
+    // Nothing more to do.
   }
 };
 process.on("uncaughtException", report);

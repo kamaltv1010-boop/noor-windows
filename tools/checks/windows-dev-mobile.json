@@ -1,0 +1,234 @@
+[
+ {
+  "name": "smoke-iphone",
+  "title": "Noor iPhone: iPhone (Safari، الشاشة، اللمس، الخطوط)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-iphone.js"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-ipad",
+  "title": "Noor iPhone: iPad",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-iphone.js",
+   "ipad"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-menu-iphone",
+  "title": "Noor iPhone: القوائم",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-menu.js",
+   "iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-windows-iphone",
+  "title": "Noor iPhone: نافذة لكل بروفايل",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-windows.js",
+   "iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-android-phone",
+  "title": "Noor Android: هاتف (الجهاز رقم 3 في القائمة)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-android.js",
+   "phone",
+   "3"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-android-tablet",
+  "title": "Noor Android: تابلت (الجهاز رقم 1)",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-android.js",
+   "tablet",
+   "1"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "smoke-warmup-android",
+  "title": "Noor Android: جمع الكوكيز",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-warmup.js",
+   "android"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-workers-iphone",
+  "title": "Noor iPhone: الحماية داخل الـ workers",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-workers.js",
+   "iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-webgpu-iphone",
+  "title": "Noor iPhone: WebGPU في الصفحة والـ worker",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-webgpu.js",
+   "iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-device-iphone",
+  "title": "Noor iPhone: واجهات الجهاز",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-device.js",
+   "iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-lies-iphone",
+  "title": "Noor iPhone: هل يكشف الموقع الضجيج؟",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-lies.js",
+   "iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-isolation-iphone",
+  "title": "Noor iPhone: عزل البيانات بين البروفايلات",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-isolation.js",
+   "iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-webrtc-iphone",
+  "title": "Noor iPhone: WebRTC",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-webrtc.js",
+   "iphone"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-persistence-iphone",
+  "title": "Noor iPhone: الثبات بعد إعادة التشغيل",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-persistence.js",
+   "iphone"
+  ],
+  "minutes": 25
+ },
+ {
+  "name": "probe-workers-android",
+  "title": "Noor Android: الحماية داخل الـ workers",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-workers.js",
+   "android"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-webgpu-android",
+  "title": "Noor Android: WebGPU في الصفحة والـ worker",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-webgpu.js",
+   "android"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-device-android",
+  "title": "Noor Android: واجهات الجهاز",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-device.js",
+   "android"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-lies-android",
+  "title": "Noor Android: هل يكشف الموقع الضجيج؟",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-lies.js",
+   "android"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-isolation-android",
+  "title": "Noor Android: عزل البيانات بين البروفايلات",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-isolation.js",
+   "android"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-webrtc-android",
+  "title": "Noor Android: WebRTC",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-webrtc.js",
+   "android"
+  ],
+  "minutes": 10
+ },
+ {
+  "name": "probe-persistence-android",
+  "title": "Noor Android: الثبات بعد إعادة التشغيل",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-persistence.js",
+   "android"
+  ],
+  "minutes": 25
+ }
+]

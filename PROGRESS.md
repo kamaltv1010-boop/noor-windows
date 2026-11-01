@@ -246,12 +246,75 @@ build (`tools/check-fuses.js`, exits 1 if one isn't as asked). Left as
 Electron has them: ASAR integrity and app-from-ASAR only (need checking on
 Windows itself), file:// privileges.
 
+**Chromium's debugging port** (P1-8) — `tools/probe-debug-port.js`: Noor
+is started as a user starts it; the port and the browser's address are
+read from `DevToolsActivePort` (Chromium writes it in the data folder) and
+given to a page, the worst case. The page, served as a local page and then
+as a site on the internet, can't read `/json/version` (no CORS), can't open
+a tab (`PUT /json/new`, blocked), and its WebSocket to the browser is
+refused (Chromium refuses one that carries a page's Origin). A no-cors
+request still gets an answer it can't read, so a site scanning ports
+20000–39999 could learn that something listens there (Electron doesn't
+apply Chrome's Local Network Access: the "internet" run answered the
+same). The port doesn't answer on this computer's other address
+(192.0.2.2): 127.0.0.1 only. **Not fixed, a limit:** any program on the
+PC can connect to the port and so control Noor while it runs (pages, every
+profile's cookies, decrypted). The user's own programs can read the
+profile's files anyway; but on a PC with several Windows accounts,
+another account's programs can too (127.0.0.1 is the same for all). The
+port is how shared workers get the protection: a tab's own debugger
+reaches its service worker but not a shared worker, and Electron's
+in-app debugger may not attach to the browser
+(`Target.attachToBrowserTarget`: "Not allowed"; both tried here). The fix
+would be Chromium's pipe instead of a port (`--remote-debugging-pipe` with
+`--remote-debugging-io-pipes`, read in Chromium's source): how the app
+opens the pipes' ends on Windows must be tested on Windows itself, so a
+Windows test job in CI comes first.
+
+## 2026-11-01 (مساءً) — الاختبار على Windows نفسه
+
+**بيئة Windows المتاحة:** الحاوية التي أعمل فيها Linux (Ubuntu 24.04) بلا
+KVM ولا Wine ولا آلة افتراضية، ولا جهاز متصل عبر Remote Control. البيئة
+الوحيدة بنظام Windows هي آلة GitHub Actions الافتراضية `windows-latest`
+(Microsoft Windows Server 2025، صورة `windows-2025-vs2026` الإصدار
+`20261021.278.1`): ليست جهاز مستخدم، بلا بطاقة رسوميات.
+
+**أول دليل من Windows (البناء 1.0.43، التشغيل 41348741347):** `npm test`
+‏139/139؛ و`tools/check-fuses.js` على `Noor.exe` و`Noor iPhone.exe`
+و`Noor Android.exe` المبنية: تشفير الكوكيز مفعّل، و`runAsNode`
+و`NODE_OPTIONS` و`--inspect` معطّلة في الثلاثة (قراءة من ملف الـ exe، ليست
+تشغيلاً للتطبيق).
+
+**خلل وُجد وأُصلح: تجمّد Noor وعدم إغلاقه** — `tools/probe-built-app.js`
+(يقود Noor المبني عبر صفحاته: بروفايل ثانٍ، صفحة في كل بروفايل، العزل،
+الصلاحيات، تغيير إعداد، إغلاق وإعادة فتح). **قبل** (Linux، Noor مبني): في 2
+من 4 تشغيلات بقي Noor يعمل أكثر من 30 ثانية بعد طلب الإغلاق مع 8 عمليات،
+أو علق نداء `settings:set`. في سجل Noor:
+`TypeError: Cannot read properties of undefined (reading 'isDestroyed') at
+main/tabs.js:1715` — عمل مؤجَّل (`pushState` في `setImmediate`) يصل إلى
+شريط نافذة أُغلقت، وElectron لا يعطي الـ view أي `webContents` بعدها؛
+والخطأ غير الملتقط تُظهره `dialog.showErrorBox` التي توقف التطبيق كله حتى
+يُضغط OK. **الإصلاح:** `pageOf(view)` في `main/tabs.js` لكل وصول مؤجَّل إلى
+صفحة الشريط أو صفحة القوائم (و`main.js` لـ `fontsKnown`)، ونافذة الخطأ بعد
+جاهزية التطبيق صارت `showMessageBox` غير حاجبة (واحدة في كل مرة).
+**بعد** (Linux): 0 من 10 تشغيلات علقت، 0 أخطاء غير ملتقطة في سجلات Noor
+(صار `probe-built-app.js` يفحص سجل Noor بعد كل إغلاق). على Windows: يُنتظر
+تقرير CI. (تشغيل واحد فشل بعد الإصلاح كان من الاختبار نفسه: تبويبات تعيد
+فتحها إعادة التشغيل أرسلت تقاريرها أثناء زيارة؛ صار لكل زيارة علامة.)
+
+**أدوات اختبار Windows:** `tools/run-checks.js` (تقرير عربي: إصدار Windows،
+إصدار Noor، الأمر، النتيجة، المدة، السجل، العمليات المتبقية)،
+`tools/checks/windows-*.json`، `tools/check-install.js` (المثبّت)،
+`tools/probe-port-other-user.js` (حساب Windows آخر)،
+`.github/workflows/windows-checks.yml` (أربع مهام، على الفرع
+`windows-checks` حتى لا يُصدر نسخة).
+
 ## Resume point
 
-Next: check that pages can't reach Chromium's debugging port (P1-8:
-`/json`, the browser's WebSocket; the port is random, on 127.0.0.1).
-Then WebGPU's adapter features and limits, still this PC's in Noor Android
-and Noor iPhone (a phone lists no ASTC, a PC's BC formats show): adding
-formats the PC can't use would break pages that ask for them, so at most
-BC can be taken away — decide and test. Then the time zone watcher's
-30-second poll (CPU, network, battery).
+**نقطة الاستئناف:** قراءة تقارير مهمة "Windows checks" على الفرع
+`windows-checks` (أربع مهام، artifacts باسم `checks-*`، فيها `report.md`
+و`logs/`)، وإصلاح ما يفشل على Windows؛ ثم شعار مختلف لكل متصفح (Noor
+بنفسجي بدرع، Noor iPhone أزرق بهاتف، Noor Android أخضر بهاتف) مع فحص
+الأيقونة في الـ exe على Windows؛ ثم دمج الفرع في `main` لإصدار نسخة مرقّمة.
+بعدها: الـ pipe بدل منفذ التصحيح إن نجحت التجربة على Windows؛ ثم ميزات
+WebGPU وحدوده في Noor Android وNoor iPhone؛ ثم مراقب المنطقة الزمنية.
