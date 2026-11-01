@@ -50,6 +50,21 @@ const PROBE = `(async () => {
   if (Math.abs(b.width - 100.5) > 1e-9) out.rects.lies.push("width " + b.width + " for 100.5px");
   if (Math.abs(b.x - 10) > 1e-9 || Math.abs(b.y - 10) > 1e-9) out.rects.lies.push("position " + b.x + "," + b.y + " for 10,10");
   box.remove();
+  // Text: an inline span and a range over its text (what fonts decide; the
+  // noise must still move these, alike).
+  const holder = document.createElement("div");
+  holder.style.cssText = "position:absolute;left:10px;top:60px;font:16px Arial";
+  const span = document.createElement("span");
+  span.textContent = "Noor probe text Wy";
+  holder.appendChild(span);
+  document.body.appendChild(holder);
+  const s1 = span.getBoundingClientRect();
+  const textRange = document.createRange();
+  textRange.selectNodeContents(span.firstChild);
+  const t1 = textRange.getBoundingClientRect();
+  out.text = { span: [s1.x, s1.y, s1.width, s1.height], range: [t1.x, t1.y, t1.width, t1.height], lies: [] };
+  if (s1.width !== t1.width) out.text.lies.push("span width != its text's range width");
+  holder.remove();
   // Canvas.
   const canvas = document.createElement("canvas");
   canvas.width = 200; canvas.height = 50;
@@ -134,9 +149,13 @@ const PROBE = `(async () => {
   await app.close().catch(() => {});
   web.close();
   const lies = (r, k) => (r[k].lies || []).map((l) => `${k}: ${l.replace(/[-\d.]+(?= for)/, "…")}`);
-  const offLies = new Set([].concat(...["rects", "canvas", "audio", "webgl"].map((k) => lies(result.off, k))));
+  const kinds = ["rects", "text", "canvas", "audio", "webgl"];
+  const offLies = new Set([].concat(...kinds.map((k) => lies(result.off, k))));
   result.alsoOff = [...offLies];
-  result.caught = [].concat(...["rects", "canvas", "audio", "webgl"].map((k) => lies(result.on, k))).filter((l) => !offLies.has(l));
+  result.caught = [].concat(...kinds.map((k) => lies(result.on, k))).filter((l) => !offLies.has(l));
+  // The noise must still do its work: the text's size moves.
+  result.textMoves = result.on.text.span[2] !== result.off.text.span[2] || result.on.text.span[3] !== result.off.text.span[3];
+  if (!result.textMoves) result.caught.push("text: the noise no longer moves the size of text");
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.caught.length ? 1 : 0);
 })().catch((error) => {

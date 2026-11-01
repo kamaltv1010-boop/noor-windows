@@ -5,6 +5,18 @@ Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
 ## Unreleased
 
+## 1.0.41
+
+- ClientRects (all three builds, and the iPhone app, whose code it is):
+  only what fonts decide moves — the width and height of an inline box
+  holding text and of a range within one text. A box a page laid out
+  (a block, an image, a size like 100.5px), a range holding elements, and
+  positions stay exact: a page that set 100.5px read back 100.515625, so a
+  site could catch the noise (`tools/probe-lies.js`, now passes in the
+  three builds, and checks that text sizes still move).
+- `tools/probe-workers.js` starts Noor as a user does (no test tool
+  attached), so it checks shared workers truly.
+
 ## 1.0.40
 
 - Security: Electron 45.1.0 → 45.2.1 (Chromium 156.0.8078.49 →

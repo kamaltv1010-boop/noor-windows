@@ -1,22 +1,24 @@
 // Whether what protects a page also protects its workers, in a build of
-// Noor ("windows", "iphone" or "android"): the same canvas drawing and
-// WebGL drawing are hashed in the page, a dedicated worker, a shared
-// worker and a service worker, in two profiles, and with the canvas and
-// WebGL protections off. A worker that reads this computer's real values
-// (what the protections off show) gives a site the same hash in every
-// profile; a worker that reads other values than its page shows the
-// protection. Prints the hashes; exits 1 if a worker leaks or disagrees.
-// Needs Playwright and a display: `xvfb-run -a node tools/probe-workers.js [windows|iphone|android]`.
+// Noor ("windows", "iphone" or "android"): the same canvas drawing, WebGL
+// drawing and font checks are hashed in the page, a dedicated worker, a
+// shared worker and a service worker, in two profiles (two fresh profiles,
+// each with seeds of its own) and with the canvas and WebGL protections off.
+// A worker that reads this computer's real values (what the protections off
+// show) gives a site the same hash in every profile; a worker that reads
+// other values than its page shows the protection. Noor is started as a
+// user starts it, with no test tool attached to its browser: a second
+// debugger (Playwright's) keeps the shared worker from being protected.
+// Prints the hashes; exits 1 if a worker leaks or disagrees.
+// Needs a display: `xvfb-run -a node tools/probe-workers.js [windows|iphone|android]`.
 "use strict";
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const http = require("http");
-const { _electron: electron } = require("playwright");
+const { spawn } = require("child_process");
 
 const root = path.join(__dirname, "..");
 const BUILD = ["iphone", "android"].includes(process.argv[2]) ? process.argv[2] : "windows";
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /// The drawings and their hashes, the same code in a page and a worker.
 const DRAW = String.raw`
@@ -55,7 +57,7 @@ const valuesHere = (makeCanvas) => {
 const WORKER_BODY = `${DRAW}\nconst mine = () => valuesHere((w, h) => new OffscreenCanvas(w, h));`;
 
 const PAGE = `<!doctype html><title>workers</title><script>${DRAW}
-window.probe = async () => {
+(async () => {
   const out = { page: valuesHere((w, h) => Object.assign(document.createElement("canvas"), { width: w, height: h })) };
   out.dedicated = await new Promise((resolve) => { const w = new Worker("/dedicated.js"); w.onmessage = (e) => resolve(e.data); w.onerror = (e) => resolve("ERR " + e.message); setTimeout(() => resolve("timeout"), 8000); });
   out.shared = await new Promise((resolve) => { const s = new SharedWorker("/shared.js?" + Math.random()); s.port.onmessage = (e) => resolve(e.data); s.port.start(); s.port.postMessage(1); setTimeout(() => resolve("timeout"), 8000); });
@@ -68,13 +70,26 @@ window.probe = async () => {
     worker.postMessage(1, [channel.port2]);
     return answer;
   })().catch((e) => "ERR " + e), new Promise((r) => setTimeout(() => r("timeout"), 10000))]);
-  return out;
-};
+  await fetch("/report", { method: "POST", body: JSON.stringify(out) });
+})();
 </script><p>workers</p>`;
 
-(async () => {
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const electronPath = require(path.join(root, "node_modules", "electron"));
+
+/// Starts Noor with `settings` in a profile folder of its own, as a user
+/// does, opens the probe page in it (as a second launch hands it an
+/// address), and gives back what the page reports.
+const run = async (settings) => {
+  const reports = [];
   const web = http.createServer((req, res) => {
     const url = req.url.split("?")[0];
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => { try { reports.push(JSON.parse(body)); } catch (e) {} res.end("ok"); });
+      return;
+    }
     const send = (type, body) => { res.setHeader("content-type", type); res.setHeader("cache-control", "no-store"); res.end(body); };
     if (url === "/dedicated.js") return send("text/javascript", `${WORKER_BODY}\npostMessage(mine());`);
     if (url === "/shared.js") return send("text/javascript", `${WORKER_BODY}\nonconnect = (e) => { const port = e.ports[0]; port.onmessage = () => port.postMessage(mine()); };`);
@@ -82,32 +97,27 @@ window.probe = async () => {
     send("text/html", PAGE);
   });
   await new Promise((resolve) => web.listen(0, "127.0.0.1", resolve));
-  const base = `http://127.0.0.1:${web.address().port}/`;
-  const app = await electron.launch({
-    executablePath: require(path.join(root, "node_modules", "electron")),
-    args: [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
-    env: { ...process.env, NOOR_TEST: "1", NOOR_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), "noor-workers-")), NOOR_DEVICE: BUILD, NOOR_TEST_TIMEZONE: "Africa/Casablanca" },
-  });
-  const main = (fn, arg) => app.evaluate(fn, arg);
-  for (let i = 0; i < 200; i++) {
-    if (await main(() => Boolean(global.noorTest && global.noorTest.browser && global.noorTest.browser.selected)).catch(() => false)) break;
-    await sleep(100);
-  }
-  const probe = async () => {
-    await main((electron, url) => { global.noorTest.browser.newTab({ url }); }, base);
-    await sleep(2500);
-    return main((electron) => global.noorTest.browser.selected.webContents.executeJavaScript("window.probe()", true));
-  };
-  const result = { build: BUILD, first: await probe() };
-  await main(() => global.noorTest.browser.createProfile("Second"));
-  await sleep(1500);
-  result.second = await probe();
-  await main(() => { global.noorTest.context.fingerprint.setEnabled("canvas", false); global.noorTest.context.fingerprint.setEnabled("webGL", false); });
-  await sleep(300);
-  result.off = await probe();
-  await app.close().catch(() => {});
+  const userData = fs.mkdtempSync(path.join(os.tmpdir(), "noor-workers-"));
+  fs.writeFileSync(path.join(userData, "settings.json"), JSON.stringify(settings));
+  const env = { ...process.env, NOOR_USER_DATA: userData, NOOR_DEVICE: BUILD, NOOR_TEST_OPEN_WINDOWS: "1" };
+  delete env.NOOR_TEST;
+  const args = [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"];
+  const first = spawn(electronPath, args, { env, stdio: "ignore" });
+  await sleep(7000);
+  const second = spawn(electronPath, [...args, `http://127.0.0.1:${web.address().port}/probe`], { env, stdio: "ignore" });
+  await new Promise((resolve) => second.on("exit", resolve));
+  const until = Date.now() + 60000;
+  while (!reports.length && Date.now() < until) await sleep(250);
+  first.kill();
   web.close();
+  return reports[0] || { page: "no report" };
+};
 
+(async () => {
+  const result = { build: BUILD };
+  result.first = await run({});
+  result.second = await run({});
+  result.off = await run({ "protection.canvas": false, "protection.webGL": false });
   const problems = [];
   const places = ["page", "dedicated", "shared", "service"];
   for (const kind of ["canvas", "webgl"]) {

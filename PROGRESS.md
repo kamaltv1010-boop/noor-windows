@@ -114,7 +114,24 @@ check against the same check with every noise off:
 - **ClientRects: caught in all three builds** — an element a page made
   100.5px wide measured 100.515625 (100.5 with the noise off). The noise
   moved every fractional size, including sizes a page set itself.
-  Fix in progress: move only the sizes text decides (see the resume point).
+  **Fixed** in the shared source (the iPhone app's
+  `FingerprintProtection.swift`): only the width and height of an inline
+  box holding something and of a range within one text node move; blocks,
+  images, empty or padded boxes, ranges holding elements and all positions
+  stay exact. After: the 100.5px box reads 100.5; a span's text width
+  still moves (137.6875 → 137.703125 in one profile, 137.671875 in
+  another), and the span and the range over its text agree. probe-lies
+  passes in the three builds; smoke-iphone (iPhone, iPad), smoke-android
+  (phone, tablet), smoke-electron, smoke-menu and smoke-extensions pass.
+  (Found on the way: Chromium keeps a range's `startContainer` getter on
+  `Range.prototype`, not `AbstractRange.prototype`; the check looks along
+  the prototype chain.) The iPhone app gets the same change; it is
+  compiled by its own CI (unsigned IPA), not tested on an iPhone here.
+
+**Workers, again** — `tools/probe-workers.js` now starts Noor as a user
+does: in Noor (Windows), page, dedicated, shared and service worker give
+the same protected canvas and WebGL hashes, different in two profiles and
+from the real ones; fonts hidden the same way in each.
 
 **Secrets** — the app writes no log but uncaught errors (to stderr), no
 cookies or tokens; history skips private and background tabs; exporting
@@ -124,10 +141,6 @@ cookies writes a file only where the user picks one. Nothing to fix.
 
 ## Resume point
 
-The ClientRects rewrite is in the iOS app's
-`AmirBrowser/FingerprintProtection.swift` (the shared source of
-`scripts/protect.js`; Amir repo, not committed yet): only the width and
-height of inline boxes holding text and of ranges within one text move.
-Next: regenerate `scripts/protect.js`, run `tools/probe-lies.js` in the
-three builds (the 100.5px check must pass and text sizes must still move),
-then commit both repositories.
+Next: `tools/probe-memory.js` (memory and CPU, PLAN P1-10) in the three
+builds; then the time zone watcher's 30-second poll (CPU, network,
+battery); then P2 (per build).
