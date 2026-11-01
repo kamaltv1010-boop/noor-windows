@@ -7,8 +7,11 @@
 //               (a user closing one window, then the other);
 //   at-once     a request to both windows at the same moment (Windows'
 //               taskbar "Close all windows");
-//   taskkill    `taskkill /PID <pid>` without /F (Windows only), which asks
-//               every window of the process to close.
+//   taskkill    `taskkill /PID <pid>` without /F (Windows only). It asks one
+//               window to close, the process's main one, as CloseMainWindow
+//               does (seen on Windows: the other profile's window stayed,
+//               and Noor with it, as any app with two windows): so once per
+//               window, Noor still sound after the first, gone after the last.
 // On Windows a request is what Windows sends a window: WM_CLOSE posted to
 // it (PostMessage); elsewhere BaseWindow.close(). Every event is written to
 // a file as it happens, with its time, so what happened is known even when
@@ -185,10 +188,19 @@ const run = async (mode, base) => {
         return "close() all";
       }).catch((error) => `close() all: ${String(error).split("\n")[0]}`));
   } else if (mode === "taskkill") {
-    await ask("taskkill");
-    lastAsked = Date.now();
-    const done = spawnSync("taskkill", ["/PID", String(pid)], { encoding: "utf8" });
-    report.requests.push(((done.stdout || "") + (done.stderr || "")).trim());
+    // Once per window (one window each time), 5 s apart at most: after the
+    // first, Noor must still answer, its other window open.
+    for (let i = 1; i <= order.length + 1; i++) {
+      await ask(`taskkill ${i}`);
+      lastAsked = Date.now();
+      const done = spawnSync("taskkill", ["/PID", String(pid)], { encoding: "utf8" });
+      report.requests.push(((done.stdout || "") + (done.stderr || "")).trim());
+      const gone = await Promise.race([exited.then(() => true), sleep(5000).then(() => false)]);
+      if (gone) break;
+      if (i === 1) {
+        report.afterFirst = await main(() => global.noorTest.windows.list.map((b) => b.profile.name)).catch((error) => String(error).split("\n")[0]);
+      }
+    }
   } else {
     throw new Error(`no such way to close: ${mode}`);
   }
@@ -225,6 +237,10 @@ const run = async (mode, base) => {
     appQuitAfterTheWindows: line("will-quit") > Math.max(...names.map((name) => line(`closed ${name}`))),
     noProcessLeft: report.processesLeft.length === 0,
   };
+  if (mode === "taskkill") {
+    // After the first: one window closed, Noor still answering with the other.
+    report.checks.soundAfterFirst = Array.isArray(report.afterFirst) && report.afterFirst.length === order.length - 1;
+  }
   report.ok = Object.values(report.checks).every(Boolean);
   if (!quit) {
     try {
@@ -260,6 +276,7 @@ const run = async (mode, base) => {
       `events ${JSON.stringify(r.events)}`,
       `processes left ${JSON.stringify(r.processesLeft)}`,
     ];
+    if (r.afterFirst) parts.push(`open after the first request ${JSON.stringify(r.afterFirst)}`);
     if (r.stillOpen) parts.push(`still open ${JSON.stringify(r.stillOpen)}`);
     if (r.after) parts.push(`windows after ${JSON.stringify(r.after)}`);
     console.log(`MODE ${r.mode}: ${parts.join("; ")}`);

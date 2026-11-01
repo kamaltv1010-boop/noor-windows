@@ -197,7 +197,7 @@ const start = async (label, extra = []) => {
     }
     if (!toolbar) await sleep(100);
   }
-  const app = { child, exited, cdp, port: Number(port), toolbar, readyMs: Date.now() - started, logFile };
+  const app = { child, exited, cdp, port: Number(port), toolbar, started, readyMs: Date.now() - started, logFile };
   app.invoke = (channel, ...values) => evaluate(cdp, toolbar, `window.noor.invoke(${JSON.stringify(channel)}, ...${JSON.stringify(values)})`);
   step(`${label}: Noor starts and its toolbar answers`, Boolean(toolbar), `${app.readyMs} ms, debugging port ${port}`);
   return app;
@@ -339,8 +339,18 @@ const visit = async (id, tag, mode) => {
   // 1. The first start (or a start on data already there).
   let app = await start(firstStart ? "first start" : "start");
   if (!app || !app.toolbar) return finish();
-  const shown = windowOf(app.child.pid);
-  if (shown) step("first start: a window is on the screen", shown.handle !== 0, shown);
+  // Its window on the screen: soon after its toolbar answers, later on a
+  // computer's very first start of a newly installed Noor (Windows checks
+  // the new files first); how long it took is kept.
+  if (WINDOWS) {
+    let shown = windowOf(app.child.pid);
+    for (let waited = Date.now(); shown && shown.handle === 0 && Date.now() - waited < 20000; ) {
+      await sleep(500);
+      shown = windowOf(app.child.pid);
+    }
+    report.windowAfterMs = Date.now() - app.started;
+    step("first start: a window is on the screen", Boolean(shown) && shown.handle !== 0, { ...shown, afterStartMs: report.windowAfterMs, toolbarMs: app.readyMs });
+  }
   if (WINDOWS && out) {
     // What the screen shows (a machine with no desktop can't be captured:
     // then the window isn't to be seen, whatever the app drew).
