@@ -139,8 +139,64 @@ cookies writes a file only where the user picks one. Nothing to fix.
 
 **Memory and CPU** — `tools/probe-memory.js` written, not run yet.
 
+**Memory and CPU** — `tools/probe-memory.js [build]`: 40 tabs (frames, a
+worker, drawing) opened and closed one after another. All three builds: no
+closed tab's page left (webContents back to 2), the same 5 processes,
+memory +3–4% (Noor 720 → 742 MB, Android 735 → 767, iPhone 734 → 761,
+SwiftShader GPU here), main heap +1 MB; one quiet page for 10 s: 0.24–0.31%
+CPU in all. No leak found.
+
+**Restart and switches** — `tools/probe-persistence.js [build]`: two
+profiles read the same canvas/WebGL hashes, card, text widths, screen,
+cores and memory, fonts, battery, user agent and time zone before and after
+a restart (Noor, Android, iPhone); each protection turned off (then a
+restart) shows this computer's value, on again gives back the profile's own
+(Noor: canvas, WebGL Vendor & Renderer, ClientRects, screen, hardware,
+fonts; Android: canvas, WebGL Vendor & Renderer, ClientRects, fonts;
+iPhone: canvas, ClientRects). Twelve text widths differ between two
+profiles (one width alone matches half the time: the noise moves a value
+one step up or down). A profile may pick this computer's own screen size:
+then off and on look alike (reported, not a fault).
+
+**Permissions** — sites get none of camera, microphone, location,
+notifications, screens or local fonts (`queryLocalFonts` only for the
+app's own pages); nothing to cross between profiles.
+
+**WebGPU in workers, and what Chromium adds late** — `tools/probe-webgpu.js
+[build]` reads WebGPU's adapter info in a page and in its dedicated worker.
+Before (commit d7ebe88): the page told the profile's card, **the worker this
+computer's** ("google"/"swiftshader" here; a real card on a PC) in Noor and
+Noor Android; in Noor iPhone (iOS 26) the page too. A worker gets WebGPU,
+and Web HID and the rest a secure context alone has, only after the
+protection ran in it (at that point it has not even `setTimeout`), so what
+the protection does there was lost: the same reason Noor Android's worker
+still had Web HID, and an iOS 16 iPhone's worker kept `GPU` and `HID`.
+**Fixed:** the protection hands back its late part (`protectPage` returns
+it; `scripts/parts/*.js` leave work in `lateTasks`); Noor holds each worker
+again right before its own script runs (V8's "before script execution"
+breakpoint), runs that part, and turns the debugger off before the worker's
+first line (`Tab.atScriptStart`, `BrowserDebugger.runLate` for shared and
+service workers). After: page and worker tell the same card in all three
+builds (Noor: the profile's NVIDIA/Intel/AMD; Android: the device's,
+subgroups 16/16 on Valhall; iPhone iOS 26: "apple" ×4, subgroups 32 as
+WebKit gives); Noor Android's workers have no Web HID (the exception in
+`tools/smoke-android.js` is gone); an iOS 16 iPhone's worker has no `GPU`
+nor `HID`. Noor iPhone's page now names WebGPU's adapter as Safari does
+(WebKit `GPUAdapterInfo.h`: vendor, architecture, device and description
+are all the first word of the Metal device's name, "apple").
+
+Full run on the late worker step: 27 app tests and probes pass —
+smoke-electron, -extensions (extension service workers), -quota (service
+worker), -windows, -gpu, -fonts, -menu (Noor and iPhone), -warmup (Noor
+and Android), -iphone (iPhone, iPad), -android (phone, tablet);
+probe-workers (now with WebGPU in dedicated, shared and service workers,
+started as a user starts Noor) and probe-webgpu in the three builds,
+probe-device, probe-lies ×3, probe-isolation, probe-screen, probe-webrtc.
+
 ## Resume point
 
-Next: `tools/probe-memory.js` (memory and CPU, PLAN P1-10) in the three
-builds; then the time zone watcher's 30-second poll (CPU, network,
-battery); then P2 (per build).
+Next: WebGPU's adapter features and limits are still this PC's in Noor
+Android and Noor iPhone (a phone lists no ASTC, a PC's BC formats show);
+adding formats the PC can't use would break pages that ask for them, so at
+most BC can be taken away — decide and test. Then the time zone watcher's
+30-second poll (CPU, network, battery).

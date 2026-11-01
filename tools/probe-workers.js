@@ -45,6 +45,7 @@ const webglHash = (canvas) => {
 };
 const fontWidth = (x, family) => { x.font = "40px " + family; return x.measureText("mmmmmmmmmmlli Noor 123").width; };
 const fonts = (x) => { const base = fontWidth(x, "monospace"); return Object.fromEntries(["DejaVu Sans", "Liberation Mono", "Arial", "Calibri"].map((f) => [f, fontWidth(x, "'" + f + "', monospace") !== base])); };
+const gpuHere = () => (self.navigator && navigator.gpu ? Promise.race([navigator.gpu.requestAdapter().then((a) => (a ? a.info.vendor + "/" + a.info.architecture : "no adapter"), (e) => "ERR " + e.message), new Promise((r) => setTimeout(() => r("timeout"), 5000))]) : Promise.resolve("none"));
 const valuesHere = (makeCanvas) => {
   const out = {};
   try { out.canvas = canvasHash(makeCanvas(220, 60)); } catch (e) { out.canvas = "ERR " + e.message; }
@@ -54,11 +55,11 @@ const valuesHere = (makeCanvas) => {
 };
 `;
 
-const WORKER_BODY = `${DRAW}\nconst mine = () => valuesHere((w, h) => new OffscreenCanvas(w, h));`;
+const WORKER_BODY = `${DRAW}\nconst mine = async () => Object.assign(valuesHere((w, h) => new OffscreenCanvas(w, h)), { gpu: await gpuHere() });`;
 
 const PAGE = `<!doctype html><title>workers</title><script>${DRAW}
 (async () => {
-  const out = { page: valuesHere((w, h) => Object.assign(document.createElement("canvas"), { width: w, height: h })) };
+  const out = { page: Object.assign(valuesHere((w, h) => Object.assign(document.createElement("canvas"), { width: w, height: h })), { gpu: await gpuHere() }) };
   out.dedicated = await new Promise((resolve) => { const w = new Worker("/dedicated.js"); w.onmessage = (e) => resolve(e.data); w.onerror = (e) => resolve("ERR " + e.message); setTimeout(() => resolve("timeout"), 8000); });
   out.shared = await new Promise((resolve) => { const s = new SharedWorker("/shared.js?" + Math.random()); s.port.onmessage = (e) => resolve(e.data); s.port.start(); s.port.postMessage(1); setTimeout(() => resolve("timeout"), 8000); });
   out.service = await Promise.race([(async () => {
@@ -91,9 +92,9 @@ const run = async (settings) => {
       return;
     }
     const send = (type, body) => { res.setHeader("content-type", type); res.setHeader("cache-control", "no-store"); res.end(body); };
-    if (url === "/dedicated.js") return send("text/javascript", `${WORKER_BODY}\npostMessage(mine());`);
-    if (url === "/shared.js") return send("text/javascript", `${WORKER_BODY}\nonconnect = (e) => { const port = e.ports[0]; port.onmessage = () => port.postMessage(mine()); };`);
-    if (url === "/sw.js") return send("text/javascript", `${WORKER_BODY}\nself.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim())); self.addEventListener("message", (e) => e.ports[0].postMessage(mine()));`);
+    if (url === "/dedicated.js") return send("text/javascript", `${WORKER_BODY}\nmine().then((v) => postMessage(v));`);
+    if (url === "/shared.js") return send("text/javascript", `${WORKER_BODY}\nonconnect = (e) => { const port = e.ports[0]; port.onmessage = () => mine().then((v) => port.postMessage(v)); };`);
+    if (url === "/sw.js") return send("text/javascript", `${WORKER_BODY}\nself.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim())); self.addEventListener("message", (e) => { const port = e.ports[0]; mine().then((v) => port.postMessage(v)); });`);
     send("text/html", PAGE);
   });
   await new Promise((resolve) => web.listen(0, "127.0.0.1", resolve));
@@ -101,7 +102,7 @@ const run = async (settings) => {
   fs.writeFileSync(path.join(userData, "settings.json"), JSON.stringify(settings));
   const env = { ...process.env, NOOR_USER_DATA: userData, NOOR_DEVICE: BUILD, NOOR_TEST_OPEN_WINDOWS: "1" };
   delete env.NOOR_TEST;
-  const args = [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"];
+  const args = [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--enable-unsafe-webgpu"];
   const first = spawn(electronPath, args, { env, stdio: "ignore" });
   await sleep(7000);
   const second = spawn(electronPath, [...args, `http://127.0.0.1:${web.address().port}/probe`], { env, stdio: "ignore" });
@@ -117,17 +118,20 @@ const run = async (settings) => {
   const result = { build: BUILD };
   result.first = await run({});
   result.second = await run({});
-  result.off = await run({ "protection.canvas": false, "protection.webGL": false });
+  result.off = await run({ "protection.canvas": false, "protection.webGL": false, "protection.gpu": false });
   const problems = [];
   const places = ["page", "dedicated", "shared", "service"];
-  for (const kind of ["canvas", "webgl"]) {
+  for (const kind of ["canvas", "webgl", "gpu"]) {
     const real = result.off.page[kind];
     for (const where of places) {
       const a = result.first[where] && result.first[where][kind];
       const b = result.second[where] && result.second[where][kind];
+      if (kind === "gpu" && (a === "none" || a === "no adapter")) continue;
       if (typeof a !== "string" || /^ERR|timeout|no webgl/.test(a)) { problems.push(`${kind} in ${where}: ${a}`); continue; }
-      if (a === real) problems.push(`${kind} in ${where}: this computer's real value`);
-      if (a === b) problems.push(`${kind} in ${where}: the same in two profiles`);
+      // (Noor iPhone names every adapter "apple", as Safari does: off or on.)
+      if (a === real && !(kind === "gpu" && BUILD === "iphone")) problems.push(`${kind} in ${where}: this computer's real value`);
+      // (Two profiles may show one card; Noor iPhone shows Safari's "apple" in all.)
+      if (a === b && kind !== "gpu") problems.push(`${kind} in ${where}: the same in two profiles`);
       if (where !== "page" && a !== result.first.page[kind]) problems.push(`${kind} in ${where}: not what its page shows`);
     }
   }

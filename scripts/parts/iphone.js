@@ -647,6 +647,25 @@
     patch(window.WebGL2RenderingContext, true);
   }
 
+  // WebGPU, which Safari has from iOS 26 (before, the surface below takes it
+  // away): an adapter's info as Safari's, not this PC's card. WebKit names
+  // all four of vendor, architecture, device and description after the
+  // first word of the Metal device's name ("Apple A17 Pro GPU": "apple"),
+  // and an Apple GPU's subgroups (SIMD groups) run 32 wide. In a worker too.
+  {
+    const told = { vendor: "apple", architecture: "apple", device: "apple", description: "apple", subgroupMinSize: 32, subgroupMaxSize: 32 };
+    const nameInfo = () => {
+      const infoProto = window.GPUAdapterInfo && window.GPUAdapterInfo.prototype;
+      if (!infoProto) return false;
+      for (const name of Object.keys(told)) defineGetter(infoProto, name, () => told[name]);
+      return true;
+    };
+    // A worker gets WebGPU (as what a secure context alone has) only after
+    // this script ran, as its own script is about to run: then it is named
+    // (see lateTasks).
+    if (!nameInfo()) lateTasks.push(nameInfo);
+  }
+
   // Voices: an iPhone's, by language, where Chromium has this PC's (their
   // names would tell Windows). One a page picks speaks with a voice of
   // this PC's of its language, and reads back as picked.
@@ -934,24 +953,31 @@
         keepTrusted = true;
       }
     }
-    for (const where of Object.keys(IPHONE_SURFACE)) {
-      if (where === "window" || where === "worker") continue;
-      const dot = where.indexOf(".");
-      const owner = window[dot === -1 ? where : where.slice(0, dot)];
-      const target = owner && (dot === -1 ? owner : owner.prototype);
-      if (!target || (typeof target !== "object" && typeof target !== "function")) continue;
-      const names = IPHONE_SURFACE[where];
-      for (const name of Object.keys(names)) {
-        if (!has(specOf(where, name))) {
-          try { delete target[name]; } catch (e) {}
+    const takeAway = () => {
+      for (const where of Object.keys(IPHONE_SURFACE)) {
+        if (where === "window" || where === "worker") continue;
+        const dot = where.indexOf(".");
+        const owner = window[dot === -1 ? where : where.slice(0, dot)];
+        const target = owner && (dot === -1 ? owner : owner.prototype);
+        if (!target || (typeof target !== "object" && typeof target !== "function")) continue;
+        const names = IPHONE_SURFACE[where];
+        for (const name of Object.keys(names)) {
+          if (!has(specOf(where, name))) {
+            try { delete target[name]; } catch (e) {}
+          }
         }
       }
-    }
-    for (const name of Object.keys(globals)) {
-      if (keepTrusted && TRUSTED.indexOf(name) !== -1) continue;
-      if (!has(specOf(scope, name))) {
-        try { delete window[name]; } catch (e) {}
+      for (const name of Object.keys(globals)) {
+        if (keepTrusted && TRUSTED.indexOf(name) !== -1) continue;
+        if (!has(specOf(scope, name))) {
+          try { delete window[name]; } catch (e) {}
+        }
       }
-    }
+    };
+    takeAway();
+    // What a worker gets late (what a secure context alone has: WebGPU
+    // before iOS 26, Web HID…) is taken away as its own script is about to
+    // run (see lateTasks).
+    if (!isWindow) lateTasks.push(takeAway);
   }
 }

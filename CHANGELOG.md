@@ -5,6 +5,14 @@ Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
 ## Unreleased
 
+- Workers (all three builds): what Chromium gives a worker only after the
+  protection ran in it (WebGPU, Web HID, what a secure context alone has)
+  is handled as the worker's own script is about to run: WebGPU's adapter
+  info in a worker told this computer's card, now the profile's; Noor
+  Android's workers no longer have Web HID; an iOS 16 iPhone's worker no
+  longer has WebGPU or Web HID.
+- Noor iPhone: WebGPU's adapter info (iOS 26) as Safari's: "apple".
+
 ## 1.0.41
 
 - ClientRects (all three builds, and the iPhone app, whose code it is):

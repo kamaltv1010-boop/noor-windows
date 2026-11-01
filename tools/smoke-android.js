@@ -181,10 +181,11 @@ const check = (name, ok, detail) => {
   check("Windows fonts hidden, Android's there, the page's font list as its own", !r.fonts.Calibri && !r.fonts["Segoe UI"] && !r.fonts.Consolas && r.fonts.Roboto && r.fonts["sans-serif-thin"] && r.fonts["Noto Serif"] && r.fonts.Arial && r.fonts["Droid Sans Mono"] && r.fontSet.size === 0 && r.fontSet.status === "loaded", { fonts: r.fonts, set: r.fontSet });
   check("the profile's own Noto fonts: one it has found, one it lacks not", r.fonts[NOTO.has] === true && r.fonts[NOTO.lacks] === false && r.localFonts[NOTO.has] === true && r.localFonts[NOTO.lacks] === false, { noto: NOTO, fonts: r.fonts, local: r.localFonts });
   check("battery", r.battery && typeof r.battery.level === "number" && r.battery.level >= 0.35 && r.battery.level <= 0.95, r.battery);
-  // (A dedicated worker still has Web HID: Chromium puts it there, as it
-  // puts what a secure page alone has, after the protection has run.)
+  // (Chromium gives a worker Web HID, as what a secure context alone has,
+  // after the protection ran: it is taken away as the worker's own script
+  // is about to run, see Tab.atScriptStart.)
   for (const [name, w] of [["worker", r.worker], ["shared worker", r.shared], ["service worker", r.service]]) {
-    check(name, w && w.ua === ua && w.platform === device.platform && w.hc === device.cores && w.dm === device.memory && w.uad === `Android/${phone}` && (name === "worker" || w.hid === false), w);
+    check(name, w && w.ua === ua && w.platform === device.platform && w.hc === device.cores && w.dm === device.memory && w.uad === `Android/${phone}` && w.hid === false, w);
   }
   for (const [name, f] of [["frame of another site", r.frame], ["window the page opens", r.popup]]) {
     check(name, f && f.ua === ua && f.platform === device.platform && f.mtp === device.touchPoints && f.sw === device.width && f.dpr === device.scale && f.uad === "Android" && f.plugins === 0 && f.hid === false, f);

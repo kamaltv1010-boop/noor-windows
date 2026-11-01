@@ -736,7 +736,9 @@ const workerSource = (config) => {
   if (!protectSource || !config) {
     return null;
   }
-  return `(() => {\n${protectSource}\ntry { protectPage(self, ${JSON.stringify(config)}); } catch (e) {}\n})();\n//# sourceURL=${config.scriptName}`;
+  // Its value is what protectPage hands back: what the worker gets once
+  // its own script is about to run (see Tab.injectWorker).
+  return `(() => {\n${protectSource}\ntry { return protectPage(self, ${JSON.stringify(config)}); } catch (e) { return undefined; }\n})();\n//# sourceURL=${config.scriptName}`;
 };
 
 /// The protection for a dedicated worker of a tab, with the tab's page

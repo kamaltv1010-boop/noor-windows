@@ -19,9 +19,15 @@
       return value;
     });
   }
-  const infoProto = window.GPUAdapterInfo && window.GPUAdapterInfo.prototype;
-  if (infoProto) {
-    const told = { vendor: graphics.webgpu.vendor, architecture: graphics.webgpu.architecture, device: "", description: "" };
+  const told = { vendor: graphics.webgpu.vendor, architecture: graphics.webgpu.architecture, device: "", description: "" };
+  const nameInfo = () => {
+    const infoProto = window.GPUAdapterInfo && window.GPUAdapterInfo.prototype;
+    if (!infoProto) return false;
     for (const name of Object.keys(told)) defineGetter(infoProto, name, () => told[name]);
-  }
+    return true;
+  };
+  // A worker gets WebGPU (as what a secure context alone has) only after
+  // this script ran, as its own script is about to run: then it is named
+  // (see lateTasks).
+  if (!nameInfo()) lateTasks.push(nameInfo);
 }

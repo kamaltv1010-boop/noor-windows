@@ -276,14 +276,19 @@
     // WebGPU (an adapter's info, and a device's): the card's maker and
     // family, no model or description (as Chrome tells neither), and the
     // width its subgroups run at.
-    const Info = window.GPUAdapterInfo;
-    const infoProto = Info && Info.prototype;
-    if (infoProto) {
-      const told = { vendor: graphics.webgpu.vendor, architecture: graphics.webgpu.architecture, device: "", description: "", subgroupMinSize: graphics.webgpu.subgroupMinSize, subgroupMaxSize: graphics.webgpu.subgroupMaxSize };
+    const told = { vendor: graphics.webgpu.vendor, architecture: graphics.webgpu.architecture, device: "", description: "", subgroupMinSize: graphics.webgpu.subgroupMinSize, subgroupMaxSize: graphics.webgpu.subgroupMaxSize };
+    const nameInfo = () => {
+      const infoProto = window.GPUAdapterInfo && window.GPUAdapterInfo.prototype;
+      if (!infoProto) return false;
       // (The browser's getter still runs first, and refuses what isn't
       // an adapter's info.)
       for (const name of Object.keys(told)) regetter(infoProto, name, () => told[name]);
-    }
+      return true;
+    };
+    // A worker gets WebGPU (as what a secure context alone has) only after
+    // this script ran, as its own script is about to run: then it is named
+    // (see lateTasks).
+    if (!nameInfo()) lateTasks.push(nameInfo);
   }
 
   // Voices: Chrome on Android lists one for each language and country the
@@ -533,18 +538,24 @@
   // they hang on.
   {
     const scope = isWindow ? "window" : "worker";
-    for (const where of Object.keys(ANDROID_SURFACE)) {
-      if (where === "window" || where === "worker") continue;
-      const dot = where.indexOf(".");
-      const owner = window[dot === -1 ? where : where.slice(0, dot)];
-      const target = owner && (dot === -1 ? owner : owner.prototype);
-      if (!target || (typeof target !== "object" && typeof target !== "function")) continue;
-      for (const name of ANDROID_SURFACE[where]) {
-        try { delete target[name]; } catch (e) {}
+    const takeAway = () => {
+      for (const where of Object.keys(ANDROID_SURFACE)) {
+        if (where === "window" || where === "worker") continue;
+        const dot = where.indexOf(".");
+        const owner = window[dot === -1 ? where : where.slice(0, dot)];
+        const target = owner && (dot === -1 ? owner : owner.prototype);
+        if (!target || (typeof target !== "object" && typeof target !== "function")) continue;
+        for (const name of ANDROID_SURFACE[where]) {
+          try { delete target[name]; } catch (e) {}
+        }
       }
-    }
-    for (const name of ANDROID_SURFACE[scope] || []) {
-      try { delete window[name]; } catch (e) {}
-    }
+      for (const name of ANDROID_SURFACE[scope] || []) {
+        try { delete window[name]; } catch (e) {}
+      }
+    };
+    takeAway();
+    // What a worker gets late (what a secure context alone has: Web HID…)
+    // is taken away as its own script is about to run (see lateTasks).
+    if (!isWindow) lateTasks.push(takeAway);
   }
 }

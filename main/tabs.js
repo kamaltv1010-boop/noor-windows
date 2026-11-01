@@ -207,6 +207,9 @@ class Tab {
       return;
     }
     this.debugging = true;
+    /// The workers held for the protection's late part: session → the
+    /// part, a function in the worker (see atScriptStart).
+    this.lateWorkers = new Map();
     wc.debugger.on("detach", () => {
       this.debugging = false;
     });
@@ -216,7 +219,16 @@ class Tab {
     if (this.browser.userAgentOverride) {
       wc.debugger.sendCommand("Network.setUserAgentOverride", this.browser.userAgentOverride).catch(() => {});
     }
-    wc.debugger.on("message", (event, method, params) => {
+    wc.debugger.on("message", (event, method, params, sessionId) => {
+      // A worker held as its own script is about to run (see atScriptStart).
+      if (method === "Debugger.paused" && sessionId && this.lateWorkers.has(sessionId)) {
+        this.runLate(sessionId);
+        return;
+      }
+      if (method === "Target.detachedFromTarget" && params && this.lateWorkers.has(params.sessionId)) {
+        this.lateWorkers.delete(params.sessionId);
+        return;
+      }
       if (method !== "Target.attachedToTarget" || !params || !params.targetInfo) {
         return;
       }
@@ -262,6 +274,9 @@ class Tab {
     if (!hidden) {
       return;
     }
+    // What the protection hands back: what the worker gets later.
+    const lateOf = (done) => (done && done.result && done.result.type === "function" ? done.result.objectId : null);
+    let late = null;
     try {
       const global = await send("Runtime.evaluate", { expression: "globalThis", silent: true });
       const objectId = global && global.result && global.result.objectId;
@@ -271,22 +286,60 @@ class Tab {
       try {
         const done = await send("Runtime.callFunctionOn", {
           objectId,
-          functionDeclaration: "function () {}",
+          functionDeclaration: "function (late) { return late; }",
           arguments: [{ unserializableValue: hidden }],
           silent: true,
         });
         if (done && done.exceptionDetails) {
           throw new Error("Not run");
         }
+        late = lateOf(done);
       } finally {
         send("Runtime.releaseObject", { objectId }).catch(() => {});
       }
     } catch (error) {
       const plain = this.browser.workerScript(this, false);
       if (plain) {
-        await send("Runtime.evaluate", { expression: plain, silent: true }).catch(() => {});
+        late = lateOf(await send("Runtime.evaluate", { expression: plain, silent: true }).catch(() => null));
       }
     }
+    if (late) {
+      await this.atScriptStart(session, late);
+    }
+  }
+
+  /// A worker is held before Chromium has given it what a secure context
+  /// alone has (WebGPU, Web HID…), which comes as its own script is about
+  /// to run: the protection's late part (`late`, a function in the worker)
+  /// runs then, at a pause asked for right there (V8's "before script
+  /// execution" breakpoint); the debugger is then turned off again before
+  /// the worker's first line, so nothing of the worker's own (a debugger
+  /// statement) ever stops on it. Any pause of the worker until then does
+  /// the same.
+  async atScriptStart(session, late) {
+    const send = (method, params) => this.webContents.debugger.sendCommand(method, params, session);
+    try {
+      this.lateWorkers.set(session, late);
+      await send("Debugger.enable", {});
+      await send("Debugger.setInstrumentationBreakpoint", { instrumentation: "beforeScriptExecution" });
+    } catch (error) {
+      this.lateWorkers.delete(session);
+      send("Debugger.disable", {}).catch(() => {});
+      send("Runtime.releaseObject", { objectId: late }).catch(() => {});
+    }
+  }
+
+  async runLate(session) {
+    const send = (method, params) => this.webContents.debugger.sendCommand(method, params, session);
+    const late = this.lateWorkers.get(session);
+    this.lateWorkers.delete(session);
+    await send("Debugger.removeInstrumentationBreakpoint", { instrumentation: "beforeScriptExecution" }).catch(() => {});
+    await send("Runtime.callFunctionOn", { objectId: late, functionDeclaration: "function () { this(); }", silent: true }).catch(() => {});
+    send("Runtime.releaseObject", { objectId: late }).catch(() => {});
+    // Turned off while still held (which lets the worker go on), then let
+    // go in case it is held still.
+    await send("Debugger.disable", {}).catch(() => {});
+    await send("Debugger.resume", {}).catch(() => {});
   }
 
   watch() {

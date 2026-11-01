@@ -127,12 +127,18 @@ source = (
     + (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "android-fonts.js").read_text(encoding="utf-8")
     + "const protectPage = (window, config) => {\n"
     "\"use strict\";\n"
+    # What a worker gets only once its own script is about to run (what a
+    # secure context alone has: WebGPU, Web HID…): the parts leave it here,
+    # and protectPage hands back the function that does it, which the one
+    # who injected this calls at that moment (see Tab.injectWorker).
+    + "const lateTasks = [];\n"
     + shared
     + "const protect = (window) => {\n"
     + helpers
     + guarded
     + "protectedWindows.add(window);\n};\n"
     + "if (!isProtected(window)) protect(window);\n"
+    + "return () => { for (const task of lateTasks.splice(0)) { try { task(); } catch (e) {} } };\n"
     + "};\n\n"
     + "module.exports = protectPage;\n"
 )

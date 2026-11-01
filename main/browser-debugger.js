@@ -33,6 +33,9 @@ class BrowserDebugger {
     /// Set by keepConnected: how to connect again (see retryLater).
     this.keep = null;
     this.retryTimer = null;
+    /// The workers held for the protection's late part: session → the
+    /// part, a function in the worker (see attached).
+    this.lateWorkers = new Map();
   }
 
   /// Connects, and connects again whenever the connection couldn't be made
@@ -163,7 +166,10 @@ class BrowserDebugger {
       }
     } else if (message.method === "Target.attachedToTarget" && message.params) {
       this.attached(message.params).catch(() => {});
+    } else if (message.method === "Debugger.paused" && message.sessionId && this.lateWorkers.has(message.sessionId)) {
+      this.runLate(message.sessionId).catch(() => {});
     } else if (message.method === "Target.detachedFromTarget" && message.params) {
+      this.lateWorkers.delete(message.params.sessionId);
       this.detached(message.params.sessionId);
     }
   }
@@ -209,20 +215,45 @@ class BrowserDebugger {
         const objectId = global && global.result && global.result.objectId;
         if (objectId) {
           // Given as the argument of a call, as text, it is compiled as the
-          // inspector's own code (see Tab.injectWorker).
-          await this.send("Runtime.callFunctionOn", {
+          // inspector's own code (see Tab.injectWorker). It hands back its
+          // late part, which runs as the worker's own script is about to
+          // (see Tab.atScriptStart).
+          const done = await this.send("Runtime.callFunctionOn", {
             objectId,
-            functionDeclaration: "function () {}",
+            functionDeclaration: "function (late) { return late; }",
             arguments: [{ unserializableValue: script }],
             silent: true,
           }, sessionId);
           this.send("Runtime.releaseObject", { objectId }, sessionId).catch(() => {});
+          const late = done && done.result && done.result.type === "function" ? done.result.objectId : null;
+          if (late) {
+            this.lateWorkers.set(sessionId, late);
+            try {
+              await this.send("Debugger.enable", {}, sessionId);
+              await this.send("Debugger.setInstrumentationBreakpoint", { instrumentation: "beforeScriptExecution" }, sessionId);
+            } catch (error) {
+              this.lateWorkers.delete(sessionId);
+              this.send("Debugger.disable", {}, sessionId).catch(() => {});
+            }
+          }
         }
       } catch (error) {
         // The worker goes on unprotected rather than not at all.
       }
     }
     await this.send("Runtime.runIfWaitingForDebugger", {}, sessionId).catch(() => {});
+  }
+
+  /// A worker paused as its own script is about to run: the protection's
+  /// late part, then the debugger off again before the worker's first line.
+  async runLate(sessionId) {
+    const late = this.lateWorkers.get(sessionId);
+    this.lateWorkers.delete(sessionId);
+    await this.send("Debugger.removeInstrumentationBreakpoint", { instrumentation: "beforeScriptExecution" }, sessionId).catch(() => {});
+    await this.send("Runtime.callFunctionOn", { objectId: late, functionDeclaration: "function () { this(); }", silent: true }, sessionId).catch(() => {});
+    this.send("Runtime.releaseObject", { objectId: late }, sessionId).catch(() => {});
+    await this.send("Debugger.disable", {}, sessionId).catch(() => {});
+    await this.send("Debugger.resume", {}, sessionId).catch(() => {});
   }
 }
 
