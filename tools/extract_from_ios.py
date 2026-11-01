@@ -87,6 +87,8 @@ parts = [
     ("config.chrome", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "chrome.js").read_text(encoding="utf-8")),
     # Noor's WebGL Vendor & Renderer: the profile's graphics card (see main/gpus.js).
     ("config.gpu", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "gpu.js").read_text(encoding="utf-8")),
+    # Noor's battery: plugged in and full, with the hardware protection (see the part).
+    ("config.hardware", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "battery.js").read_text(encoding="utf-8")),
     ("config.languages", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "languages.js").read_text(encoding="utf-8")),
     # Noor's fonts: Windows' own only (see main/fonts.js).
     ("config.fonts", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "fonts.js").read_text(encoding="utf-8")),

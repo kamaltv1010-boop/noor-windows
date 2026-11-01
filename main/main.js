@@ -1272,7 +1272,8 @@ app.whenReady().then(async () => {
 
   // Shared and service workers are held as they start, from now on.
   browserDebugger = new BrowserDebugger({ port: DEBUGGING_PORT, scriptFor: debuggedWorkerScript });
-  await browserDebugger.connect(2500).catch(() => false);
+  await browserDebugger.keepConnected().catch(() => false);
+  app.on("will-quit", () => browserDebugger.stop());
 
   Browser.prototype.workerScript = workerScript;
   // A window shown asks for this computer's fonts from its toolbar (a page

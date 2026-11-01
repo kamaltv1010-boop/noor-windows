@@ -118,3 +118,36 @@ test("what a target was asked as it went is given up, not waited for", async () 
   await other;
   assert.equal(debuggerHere.pending.size, 0);
 });
+
+test("kept connected: a port that answers late is connected to when it does, and a lost connection is made again", async () => {
+  const port = 23461;
+  let ready = false;
+  const fetch = async () => ({ json: async () => (ready ? { webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/browser/late` } : {}) });
+  const debuggerHere = new BrowserDebugger({ port, scriptFor: () => null, Socket: FakeSocket, fetch });
+  assert.equal(await debuggerHere.keepConnected({ firstWaitMs: 30, retryMs: 20, giveUpMs: 5000 }), false);
+  assert.equal(debuggerHere.active, false);
+  ready = true;
+  for (let i = 0; i < 50 && !debuggerHere.active; i++) await settle();
+  assert.equal(debuggerHere.active, true);
+  const first = FakeSocket.last;
+  first.dispatchEvent(new Event("close"));
+  assert.equal(debuggerHere.active, false);
+  for (let i = 0; i < 50 && !debuggerHere.active; i++) await settle();
+  assert.equal(debuggerHere.active, true);
+  assert.notEqual(FakeSocket.last, first);
+  debuggerHere.stop();
+});
+
+test("stopped: a lost connection isn't made again", async () => {
+  const port = 23462;
+  const fetch = answering({ webSocketDebuggerUrl: `ws://127.0.0.1:${port}/devtools/browser/x` });
+  const debuggerHere = new BrowserDebugger({ port, scriptFor: () => null, Socket: FakeSocket, fetch });
+  assert.equal(await debuggerHere.keepConnected({ retryMs: 10 }), true);
+  debuggerHere.stop();
+  const socket = FakeSocket.last;
+  socket.dispatchEvent(new Event("close"));
+  await settle();
+  await settle();
+  assert.equal(debuggerHere.active, false);
+  assert.equal(FakeSocket.last, socket);
+});

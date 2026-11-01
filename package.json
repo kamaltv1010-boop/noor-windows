@@ -18,7 +18,7 @@
     "dist:android": "node tools/build-android.js"
   },
   "devDependencies": {
-    "electron": "45.1.0",
+    "electron": "45.2.1",
     "electron-builder": "26.18.0"
   },
   "build": {
@@ -64,7 +64,7 @@
     }
   },
   "dependencies": {
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.1",
     "electron-chrome-extensions": "^4.10.0"
   }
 }

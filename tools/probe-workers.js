@@ -1,0 +1,135 @@
+// Whether what protects a page also protects its workers, in a build of
+// Noor ("windows", "iphone" or "android"): the same canvas drawing and
+// WebGL drawing are hashed in the page, a dedicated worker, a shared
+// worker and a service worker, in two profiles, and with the canvas and
+// WebGL protections off. A worker that reads this computer's real values
+// (what the protections off show) gives a site the same hash in every
+// profile; a worker that reads other values than its page shows the
+// protection. Prints the hashes; exits 1 if a worker leaks or disagrees.
+// Needs Playwright and a display: `xvfb-run -a node tools/probe-workers.js [windows|iphone|android]`.
+"use strict";
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const http = require("http");
+const { _electron: electron } = require("playwright");
+
+const root = path.join(__dirname, "..");
+const BUILD = ["iphone", "android"].includes(process.argv[2]) ? process.argv[2] : "windows";
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/// The drawings and their hashes, the same code in a page and a worker.
+const DRAW = String.raw`
+const fnv = (bytes) => { let h = 0x811c9dc5; for (let i = 0; i < bytes.length; i++) { h ^= bytes[i]; h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16); };
+const draw2d = (x) => {
+  x.textBaseline = "top"; x.font = "17px Arial"; x.fillStyle = "#f60"; x.fillRect(100, 1, 62, 20);
+  x.fillStyle = "#069"; x.fillText("Noor probe, \u{1F600} 1.0", 2, 15);
+  x.fillStyle = "rgba(102, 204, 0, 0.7)"; x.fillText("Noor probe, \u{1F600} 1.0", 4, 17);
+  const g = x.createLinearGradient(0, 0, 220, 0); g.addColorStop(0, "red"); g.addColorStop(1, "blue");
+  x.fillStyle = g; x.beginPath(); x.arc(170, 40, 18, 0, Math.PI * 2); x.fill();
+};
+const canvasHash = (canvas) => { const x = canvas.getContext("2d"); draw2d(x); return fnv(x.getImageData(0, 0, canvas.width, canvas.height).data); };
+const webglHash = (canvas) => {
+  const gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
+  if (!gl) return "no webgl";
+  const vs = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vs, "attribute vec2 p; varying vec2 v; void main() { v = p; gl_Position = vec4(p, 0.0, 1.0); }"); gl.compileShader(vs);
+  const fs = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fs, "precision mediump float; varying vec2 v; void main() { gl_FragColor = vec4(sin(v.x * 7.3) * 0.5 + 0.5, cos(v.y * 5.1) * 0.5 + 0.5, fract(v.x * v.y * 13.7), 1.0); }"); gl.compileShader(fs);
+  const prog = gl.createProgram(); gl.attachShader(prog, vs); gl.attachShader(prog, fs); gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -0.2, 1, 0.9, 0.8]), gl.STATIC_DRAW);
+  const at = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(at); gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
+  gl.clearColor(0.1, 0.2, 0.3, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  const px = new Uint8Array(64 * 64 * 4); gl.readPixels(0, 0, 64, 64, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  return fnv(px);
+};
+const fontWidth = (x, family) => { x.font = "40px " + family; return x.measureText("mmmmmmmmmmlli Noor 123").width; };
+const fonts = (x) => { const base = fontWidth(x, "monospace"); return Object.fromEntries(["DejaVu Sans", "Liberation Mono", "Arial", "Calibri"].map((f) => [f, fontWidth(x, "'" + f + "', monospace") !== base])); };
+const valuesHere = (makeCanvas) => {
+  const out = {};
+  try { out.canvas = canvasHash(makeCanvas(220, 60)); } catch (e) { out.canvas = "ERR " + e.message; }
+  try { out.webgl = webglHash(makeCanvas(64, 64)); } catch (e) { out.webgl = "ERR " + e.message; }
+  try { out.fonts = fonts(makeCanvas(10, 10).getContext("2d")); } catch (e) { out.fonts = "ERR " + e.message; }
+  return out;
+};
+`;
+
+const WORKER_BODY = `${DRAW}\nconst mine = () => valuesHere((w, h) => new OffscreenCanvas(w, h));`;
+
+const PAGE = `<!doctype html><title>workers</title><script>${DRAW}
+window.probe = async () => {
+  const out = { page: valuesHere((w, h) => Object.assign(document.createElement("canvas"), { width: w, height: h })) };
+  out.dedicated = await new Promise((resolve) => { const w = new Worker("/dedicated.js"); w.onmessage = (e) => resolve(e.data); w.onerror = (e) => resolve("ERR " + e.message); setTimeout(() => resolve("timeout"), 8000); });
+  out.shared = await new Promise((resolve) => { const s = new SharedWorker("/shared.js?" + Math.random()); s.port.onmessage = (e) => resolve(e.data); s.port.start(); s.port.postMessage(1); setTimeout(() => resolve("timeout"), 8000); });
+  out.service = await Promise.race([(async () => {
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    const worker = reg.active || reg.installing || reg.waiting;
+    if (worker.state !== "activated") await new Promise((r) => worker.addEventListener("statechange", () => worker.state === "activated" && r()));
+    const channel = new MessageChannel();
+    const answer = new Promise((r) => { channel.port1.onmessage = (e) => r(e.data); });
+    worker.postMessage(1, [channel.port2]);
+    return answer;
+  })().catch((e) => "ERR " + e), new Promise((r) => setTimeout(() => r("timeout"), 10000))]);
+  return out;
+};
+</script><p>workers</p>`;
+
+(async () => {
+  const web = http.createServer((req, res) => {
+    const url = req.url.split("?")[0];
+    const send = (type, body) => { res.setHeader("content-type", type); res.setHeader("cache-control", "no-store"); res.end(body); };
+    if (url === "/dedicated.js") return send("text/javascript", `${WORKER_BODY}\npostMessage(mine());`);
+    if (url === "/shared.js") return send("text/javascript", `${WORKER_BODY}\nonconnect = (e) => { const port = e.ports[0]; port.onmessage = () => port.postMessage(mine()); };`);
+    if (url === "/sw.js") return send("text/javascript", `${WORKER_BODY}\nself.addEventListener("install", () => self.skipWaiting()); self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim())); self.addEventListener("message", (e) => e.ports[0].postMessage(mine()));`);
+    send("text/html", PAGE);
+  });
+  await new Promise((resolve) => web.listen(0, "127.0.0.1", resolve));
+  const base = `http://127.0.0.1:${web.address().port}/`;
+  const app = await electron.launch({
+    executablePath: require(path.join(root, "node_modules", "electron")),
+    args: [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"],
+    env: { ...process.env, NOOR_TEST: "1", NOOR_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), "noor-workers-")), NOOR_DEVICE: BUILD, NOOR_TEST_TIMEZONE: "Africa/Casablanca" },
+  });
+  const main = (fn, arg) => app.evaluate(fn, arg);
+  for (let i = 0; i < 200; i++) {
+    if (await main(() => Boolean(global.noorTest && global.noorTest.browser && global.noorTest.browser.selected)).catch(() => false)) break;
+    await sleep(100);
+  }
+  const probe = async () => {
+    await main((electron, url) => { global.noorTest.browser.newTab({ url }); }, base);
+    await sleep(2500);
+    return main((electron) => global.noorTest.browser.selected.webContents.executeJavaScript("window.probe()", true));
+  };
+  const result = { build: BUILD, first: await probe() };
+  await main(() => global.noorTest.browser.createProfile("Second"));
+  await sleep(1500);
+  result.second = await probe();
+  await main(() => { global.noorTest.context.fingerprint.setEnabled("canvas", false); global.noorTest.context.fingerprint.setEnabled("webGL", false); });
+  await sleep(300);
+  result.off = await probe();
+  await app.close().catch(() => {});
+  web.close();
+
+  const problems = [];
+  const places = ["page", "dedicated", "shared", "service"];
+  for (const kind of ["canvas", "webgl"]) {
+    const real = result.off.page[kind];
+    for (const where of places) {
+      const a = result.first[where] && result.first[where][kind];
+      const b = result.second[where] && result.second[where][kind];
+      if (typeof a !== "string" || /^ERR|timeout|no webgl/.test(a)) { problems.push(`${kind} in ${where}: ${a}`); continue; }
+      if (a === real) problems.push(`${kind} in ${where}: this computer's real value`);
+      if (a === b) problems.push(`${kind} in ${where}: the same in two profiles`);
+      if (where !== "page" && a !== result.first.page[kind]) problems.push(`${kind} in ${where}: not what its page shows`);
+    }
+  }
+  for (const where of places.slice(1)) {
+    const page = JSON.stringify(result.first.page.fonts);
+    const there = JSON.stringify(result.first[where] && result.first[where].fonts);
+    if (page !== there) problems.push(`fonts in ${where}: ${there}, the page: ${page}`);
+  }
+  result.problems = problems;
+  console.log(JSON.stringify(result, null, 2));
+  process.exit(problems.length ? 1 : 0);
+})().catch((error) => {
+  console.error(error);
+  process.exit(2);
+});

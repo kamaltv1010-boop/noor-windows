@@ -5,6 +5,22 @@ Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
 ## Unreleased
 
+## 1.0.40
+
+- Security: Electron 45.1.0 → 45.2.1 (Chromium 156.0.8078.49 →
+  156.0.8078.75, the newest release); adm-zip 0.5.16 → 0.6.1, which
+  unpacks extension files (high advisories: memory exhaustion,
+  decompression bombs, SUID bits, symlinks). `npm audit --omit=dev`: 0.
+- Noor: the battery (`navigator.getBattery()`) reads as a PC's plugged in
+  and full, the same in every profile, instead of this computer's own
+  level and times, which two profiles read at the same moment would share;
+  its own change events are stopped, a page's own events still reach it.
+  With Processor & Memory on.
+- Shared workers: the connection that protects them is made again if
+  Chromium's port answers late or the connection is lost.
+- Privacy checks in `tools/probe-*.js` (WebRTC, workers, screen, isolation,
+  device APIs, noise, memory).
+
 ## 1.0.39
 
 - Noor: **WebGL Vendor & Renderer**, a protection of its own in

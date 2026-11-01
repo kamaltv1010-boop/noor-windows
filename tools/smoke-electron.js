@@ -113,6 +113,23 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ zone:
       worker.onerror = (event) => { clearTimeout(timer); resolve("error " + event.message); };
     }),
   }))()`);
+  // A page's own event listeners are called, on an element and on an
+  // EventTarget of its own (a protection that replaced addEventListener
+  // from its own realm would leave them uncalled).
+  results.listeners = await inTab(`(() => {
+    let click = 0, custom = 0, handler = 0;
+    document.body.addEventListener("click", () => { click++; });
+    document.body.onclick = () => { handler++; };
+    document.body.click();
+    const target = new EventTarget();
+    target.addEventListener("x", () => { custom++; });
+    target.dispatchEvent(new Event("x"));
+    return { click, custom, handler };
+  })()`);
+  if (!(results.listeners.click === 1 && results.listeners.custom === 1 && results.listeners.handler === 1)) {
+    console.error("LISTENERS FAILED", JSON.stringify(results.listeners));
+    process.exitCode = 1;
+  }
   // A sign-in page that asks the Credential Management API for a saved
   // password, or to stop signing in by itself, gets Chrome's answers.
   results.credentials = await inTab(`(async () => ({

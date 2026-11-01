@@ -30,6 +30,51 @@ class BrowserDebugger {
     this.pending = new Map();
     /// Whether the workers are handled here (connected).
     this.active = false;
+    /// Set by keepConnected: how to connect again (see retryLater).
+    this.keep = null;
+    this.retryTimer = null;
+  }
+
+  /// Connects, and connects again whenever the connection couldn't be made
+  /// yet (Chromium's port may open late on a slow computer) or is lost: a
+  /// shared worker has no other way to get the protection, so without this
+  /// connection it would read this computer's real values. Tries every
+  /// `retryMs`, and gives up after `giveUpMs` of failing in a row.
+  async keepConnected({ firstWaitMs = 2500, retryMs = 2000, giveUpMs = 120000 } = {}) {
+    this.keep = { retryMs, giveUpMs, since: Date.now() };
+    const connected = await this.connect(firstWaitMs).catch(() => false);
+    if (!connected) {
+      this.retryLater();
+    }
+    return connected;
+  }
+
+  retryLater() {
+    if (!this.keep || this.retryTimer || this.active || Date.now() - this.keep.since > this.keep.giveUpMs) {
+      return;
+    }
+    this.retryTimer = setTimeout(async () => {
+      this.retryTimer = null;
+      if (!this.keep || this.active) {
+        return;
+      }
+      const connected = await this.connect(0).catch(() => false);
+      if (connected) {
+        this.keep.since = Date.now();
+      } else {
+        this.retryLater();
+      }
+    }, this.keep.retryMs);
+    if (typeof this.retryTimer.unref === "function") {
+      this.retryTimer.unref();
+    }
+  }
+
+  /// No more connecting again (the app quits).
+  stop() {
+    this.keep = null;
+    clearTimeout(this.retryTimer);
+    this.retryTimer = null;
   }
 
   /// The browser target's address from what the port answers at
@@ -130,6 +175,10 @@ class BrowserDebugger {
       reject(new Error("Closed"));
     }
     this.pending.clear();
+    if (this.keep) {
+      this.keep.since = Date.now();
+      this.retryLater();
+    }
   }
 
   /// A target gone, or left: what it was asked is never answered.
