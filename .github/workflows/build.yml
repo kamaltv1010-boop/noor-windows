@@ -57,7 +57,9 @@ jobs:
             echo
             echo "Windows 10/11, 64-bit. The portable .exe runs without installing; the Setup .exe installs. SmartScreen asks once: More info, then Run anyway."
             echo
-            echo "Noor-iPhone-*.exe is Noor iPhone: the same browser, in which every profile is a real iPhone to the sites it opens (Safari, the iPhone's screen and touch). It keeps its own profiles and data, apart from Noor's."
+            echo "Noor-iPhone-*.exe is Noor iPhone: the same browser, in which every profile is a real iPhone or iPad to the sites it opens (Safari, the device's screen and touch). It keeps its own profiles and data, apart from Noor's."
+            echo
+            echo "Noor-Android-*.exe is Noor Android: the same browser, in which every profile is a real Android phone or tablet to the sites it opens (Chrome on Android, the device's screen, touch, model and graphics card). It keeps its own profiles and data too."
           } > release-notes.md
 
       - name: Build the .exe
@@ -67,6 +69,11 @@ jobs:
       # profile is an iPhone to sites (see main/iphone.js).
       - name: Build Noor iPhone
         run: npm run dist:iphone
+
+      # Noor Android: the same app as an app of its own, in which every
+      # profile is an Android phone or tablet to sites (see main/android.js).
+      - name: Build Noor Android
+        run: npm run dist:android
 
       - name: Keep the .exe
         uses: actions/upload-artifact@v4

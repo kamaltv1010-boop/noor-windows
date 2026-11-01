@@ -24,9 +24,18 @@ const { diskQuota: quotaOfDisk, shownQuota } = require("./quota");
 const { FontList } = require("./fonts");
 const { cookieTools } = require("./cookies");
 const iphone = require("./iphone");
+const android = require("./android");
+const mobile = require("./mobile");
 
-/// Noor iPhone (see main/iphone.js): every profile is an iPhone to sites.
-const IPHONE = iphone.isIPhone();
+/// Noor iPhone (see main/iphone.js): every profile is an iPhone or iPad to
+/// sites, as Safari shows them. Noor Android (see main/android.js): an
+/// Android phone or tablet, as Chrome shows them. MOBILE: either, the
+/// device of each profile shown in each of its tabs (see main/mobile.js).
+const BUILD = mobile.build();
+const IPHONE = BUILD === "iphone";
+const ANDROID = BUILD === "android";
+const MOBILE = IPHONE || ANDROID;
+const PRODUCT = mobile.product(BUILD);
 
 const RENDERER = path.join(__dirname, "..", "renderer");
 const SCRIPTS = path.join(__dirname, "..", "scripts");
@@ -54,8 +63,8 @@ protocol.registerSchemesAsPrivileged([
   { scheme: "crx", privileges: { bypassCSP: true } },
 ]);
 
-app.userAgentFallback = IPHONE ? iphone.userAgent(iphone.IPHONES[0]) : userAgent();
-app.setAppUserModelId(IPHONE ? "ma.noor.iphone" : "ma.noor.browser");
+app.userAgentFallback = MOBILE ? mobile.userAgent(mobile.firstDevice(BUILD)) : userAgent();
+app.setAppUserModelId(mobile.appId(BUILD));
 // Pages see navigator.webdriver as false, as in Chrome, even under a
 // debugger. And they don't find what Chrome no longer has but Electron
 // keeps: XSLT (XSLTProcessor) and the ad auctions of the Privacy Sandbox
@@ -72,19 +81,21 @@ app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled,XSL
 /// browser as automated.
 const DEBUGGING_PORT = 20000 + crypto.randomInt(20000);
 app.commandLine.appendSwitch("remote-debugging-port", String(DEBUGGING_PORT));
-if (IPHONE) {
+if (MOBILE) {
   // Frames of other sites in a page share its process, as in Safari on an
-  // iPhone: Chromium shows them the iPhone too (its touch, pixel density
-  // and screen), which it does only for frames in the page's process.
+  // iPhone (and in Chrome on most Android phones, which keep a process of
+  // their own for few sites): Chromium shows them the device too (its
+  // touch, pixel density and screen), which it does only for frames in the
+  // page's process.
   app.commandLine.appendSwitch("disable-site-isolation-trials");
 }
 if (process.env.NOOR_USER_DATA) {
   // Tests keep their data apart.
   app.setPath("userData", process.env.NOOR_USER_DATA);
-} else if (IPHONE && !app.isPackaged) {
-  // Noor iPhone run from the source keeps its data apart from Noor's, as
-  // the built app does (its own name, its own folder).
-  app.setPath("userData", path.join(app.getPath("appData"), "Noor iPhone"));
+} else if (MOBILE && !app.isPackaged) {
+  // Noor iPhone or Noor Android run from the source keeps its data apart
+  // from Noor's, as the built app does (its own name, its own folder).
+  app.setPath("userData", path.join(app.getPath("appData"), PRODUCT));
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -194,11 +205,34 @@ const iphoneLanguage = () => {
   return iphoneLanguageTag;
 };
 
-/// Noor iPhone: what new profiles are, "iphone" or "ipad" (the settings;
-/// see Windows.setDevices).
+/// Noor iPhone and Noor Android: the kinds of device a profile can be, and
+/// what new profiles are ("iphone" or "ipad", "phone" or "tablet": the
+/// settings; see Windows.setDevices).
+const FAMILIES = mobile.familiesOf(BUILD);
 const newProfileDevice = () => {
-  const value = context ? context.store.get("newProfileDevice", "iphone") : "iphone";
-  return iphone.FAMILIES.includes(value) ? value : "iphone";
+  const value = context ? context.store.get("newProfileDevice", FAMILIES[0]) : FAMILIES[0];
+  return FAMILIES.includes(value) ? value : FAMILIES[0];
+};
+
+/// Noor Android: Chrome's client hints for a device (see main/android.js).
+const androidMetadata = (device) => android.userAgentMetadata(device, { brandList, fullVersionList: fullVersionList() });
+
+/// What a tab of `device` is told (see Tab.emulate): the user agent
+/// override for the debugging protocol and the languages its session sends.
+/// An iPhone's: Safari's agent, platform and single language; an Android
+/// device's: Chrome's agent, with its client hints and Chrome's languages.
+const deviceOverride = (device) => {
+  if (ANDROID) {
+    return {
+      override: { userAgent: android.userAgent(device), platform: device.platform, userAgentMetadata: androidMetadata(device) },
+      sessionLanguages: acceptLanguages(app.getLocale()),
+    };
+  }
+  const language = iphoneLanguage();
+  return {
+    override: { userAgent: iphone.userAgent(device), acceptLanguage: language, platform: device.platform },
+    sessionLanguages: iphone.acceptLanguage(language),
+  };
 };
 
 const setUpSessions = new WeakSet();
@@ -207,11 +241,12 @@ const setUpSession = (ses) => {
     return;
   }
   setUpSessions.add(ses);
-  if (IPHONE) {
-    // The iPhone of the profile in use, whose tabs make the sessions they
-    // are in; a change of iPhone tells its sessions again (see tabs.js).
-    const current = context ? context.fingerprint.iphone() : iphone.IPHONES[0];
-    ses.setUserAgent(iphone.userAgent(current), iphone.acceptLanguage(iphoneLanguage()));
+  if (MOBILE) {
+    // The device of the profile in use, whose tabs make the sessions they
+    // are in; a change of device tells its sessions again (see tabs.js).
+    const current = context ? context.fingerprint.iphone() : mobile.firstDevice(BUILD);
+    const told = deviceOverride(current);
+    ses.setUserAgent(told.override.userAgent, told.sessionLanguages);
   } else {
     ses.setUserAgent(userAgent(), acceptLanguages(app.getLocale()));
   }
@@ -269,10 +304,13 @@ const setUpSession = (ses) => {
     }
     if (IPHONE) {
       // As Safari on the profile's iPhone sends them (see main/iphone.js).
-      const current = context ? fingerprintOfSession(ses).iphone() : iphone.IPHONES[0];
+      const current = context ? fingerprintOfSession(ses).iphone() : mobile.firstDevice(BUILD);
       return callback({ requestHeaders: iphone.safariHeaders(details.requestHeaders, { type: details.resourceType, iphone: current, language: iphoneLanguage() }) });
     }
-    const headers = withClientHints(details);
+    // Noor Android: as Chrome on the profile's device sends them, its
+    // client hints those of the device (see main/android.js).
+    const device = ANDROID ? (context ? fingerprintOfSession(ses).iphone() : mobile.firstDevice(BUILD)) : null;
+    const headers = withClientHints(details, device ? androidMetadata(device) : undefined);
     for (const name of Object.keys(headers)) {
       const lower = name.toLowerCase();
       // A tab's requests carry Chrome's brands already (the override set
@@ -293,7 +331,7 @@ const setUpSession = (ses) => {
       }
     }
     // In Chrome's order (see main/headers.js).
-    callback({ requestHeaders: chromeOrder(headers, details.resourceType) });
+    callback({ requestHeaders: chromeOrder(device ? android.hintHeaders(headers, device) : headers, details.resourceType) });
   });
 };
 
@@ -356,8 +394,8 @@ const rememberAcceptCH = (details) => {
 const structuredString = (value) => `"${String(value).replace(/["\\]/g, "\\$&")}"`;
 
 /// The hints' values, from what the tabs tell of themselves.
-const hintValues = () => {
-  const metadata = context && context.userAgentOverride && context.userAgentOverride.userAgentMetadata;
+/// `metadata`: a device's (Noor Android), or every tab's (Noor).
+const hintValues = (metadata = context && context.userAgentOverride && context.userAgentOverride.userAgentMetadata) => {
   if (!metadata) {
     return null;
   }
@@ -376,13 +414,14 @@ const hintValues = () => {
   };
 };
 
-/// A request's headers with the hints Chrome would send, where it puts them.
-const withClientHints = (details) => {
+/// A request's headers with the hints Chrome would send, where it puts them
+/// (`metadata`: the device's, in Noor Android).
+const withClientHints = (details, metadata = undefined) => {
   const headers = details.requestHeaders;
   if (!isSecureSite(details.url)) {
     return headers;
   }
-  const values = hintValues();
+  const values = hintValues(metadata || undefined);
   if (!values) {
     return headers;
   }
@@ -576,6 +615,25 @@ const configFor = (top, fingerprint = context.fingerprint) => {
     config.realmKey = REALM_KEY;
     return config;
   }
+  if (ANDROID) {
+    // The profile's Android device, on every site: Chromium shows its
+    // screen (see Tab.emulate), frames of other sites get it here; Chrome's
+    // brands and languages, the device's cores and memory, and the rest
+    // Chrome on Android is and lacks (see scripts/parts/android.js).
+    const current = fingerprint.iphone();
+    config.screen = { width: current.width, height: current.height, availHeight: current.height };
+    config.hardware = { cores: current.cores, memory: current.memory };
+    config.chrome = { brands: brandList, fullVersionList: fullVersionList(), fullVersion: process.versions.chrome };
+    config.languages = acceptLanguages(app.getLocale()).split(",");
+    config.android = Object.assign(android.pageConfig(current), {
+      userAgent: android.userAgent(current),
+      metadata: androidMetadata(current),
+      battery: android.batteryOf(fingerprint.seed("device")),
+    });
+    config.mark = LOOKALIKE_MARK;
+    config.realmKey = REALM_KEY;
+    return config;
+  }
   config.chrome = {
     brands: brandList,
     fullVersionList: fullVersionList(),
@@ -600,7 +658,7 @@ const configFor = (top, fingerprint = context.fingerprint) => {
 /// The screen Chromium itself shows a tab's page at `url` (see
 /// Tab.showScreen), or null for the real one.
 const screenFor = (url, fingerprint) => {
-  if (IPHONE || !context || !isWebPage(url)) {
+  if (MOBILE || !context || !isWebPage(url)) {
     return null;
   }
   return configFor(url, fingerprint || context.fingerprint).screen || null;
@@ -769,22 +827,23 @@ const settingsSnapshot = (browser = windows.current) => ({
   // Windows' own, how many of them Noor draws (this computer lacks them),
   // and this computer's fonts it hides; null in Noor iPhone, or while this
   // computer's fonts aren't known.
-  fonts: !IPHONE && context.fonts && context.fonts.known ? (() => {
+  fonts: !MOBILE && context.fonts && context.fonts.known ? (() => {
     const fonts = context.fonts.forSeed(browser.fingerprint.seed("fonts"));
     return { groups: fonts.picked.groups, singles: fonts.picked.singles, drawn: fonts.added.length, hidden: fonts.families };
   })() : null,
   extensions: extensions ? extensions.list() : [],
   kinds: browser.fingerprint.kinds,
   protections: Object.fromEntries(browser.fingerprint.kinds.map((kind) => [kind, browser.fingerprint.isEnabled(kind)])),
-  values: IPHONE ? (() => {
+  values: MOBILE ? (() => {
     const current = browser.fingerprint.iphone();
     return {
       iphone: {
-        family: current.family, name: current.name, iOS: current.iOS, width: current.width, height: current.height, scale: current.scale,
-        pageWidth: current.pageWidth, pageHeight: current.pageHeight, desktop: current.desktop, platform: current.platform, cores: current.cores,
+        family: current.family, name: current.name, iOS: current.iOS, android: current.android, model: current.model,
+        width: current.width, height: current.height, scale: current.scale, pageWidth: current.pageWidth, pageHeight: current.pageHeight,
+        desktop: current.desktop, platform: current.platform, cores: current.cores, memory: current.memory, gpu: current.gpu,
       },
-      userAgent: iphone.userAgent(current),
-      language: iphoneLanguage(),
+      userAgent: mobile.userAgent(current),
+      language: ANDROID ? acceptLanguages(app.getLocale()) : iphoneLanguage(),
     };
   })() : {
     screen: browser.fingerprint.screen(),
@@ -792,14 +851,15 @@ const settingsSnapshot = (browser = windows.current) => ({
     userAgent: userAgent(),
     brands: brandList,
   },
-  device: IPHONE ? "iphone" : "windows",
-  // Noor iPhone: whether this profile is an iPhone or an iPad, and what new
-  // profiles are.
-  deviceFamily: IPHONE ? browser.fingerprint.family() : null,
-  newProfileDevice: IPHONE ? newProfileDevice() : null,
+  device: BUILD,
+  // Noor iPhone and Noor Android: the kinds of device a profile can be
+  // (with their names), this profile's, and what new profiles are.
+  families: FAMILIES.map((family) => ({ id: family, name: mobile.kindName(family), plural: mobile.kindPlural(family) })),
+  deviceFamily: MOBILE ? browser.fingerprint.family() : null,
+  newProfileDevice: MOBILE ? newProfileDevice() : null,
   shieldsDownSites: context.shields.downSites(),
   // Noor iPhone: each profile with the iPhone or iPad it is.
-  profiles: IPHONE ? context.profiles.all().map((profile) => Object.assign({}, profile, { device: context.fingerprint.forProfile(profile).iphone().name })) : context.profiles.all(),
+  profiles: MOBILE ? context.profiles.all().map((profile) => Object.assign({}, profile, { device: context.fingerprint.forProfile(profile).iphone().name })) : context.profiles.all(),
   profile: browser.profile,
   // The profiles open in a window, and whether closing one replaces it.
   openProfiles: windows.shown.map((w) => w.profile.id),
@@ -950,8 +1010,8 @@ const registerIPC = () => {
   on("settings:set", (at, event, key, value) => {
     if (SETTING_KEYS.has(key)) {
       context.store.set(key, key === "searchEngine" ? String(value) : Boolean(value));
-    } else if (key === "newProfileDevice" && IPHONE) {
-      context.store.set(key, iphone.FAMILIES.includes(value) ? value : "iphone");
+    } else if (key === "newProfileDevice" && MOBILE) {
+      context.store.set(key, FAMILIES.includes(value) ? value : FAMILIES[0]);
     } else if (key === "nightMode") {
       windows.setNightMode(Boolean(value));
     } else if (key === "timezoneFromIP") {
@@ -1009,7 +1069,7 @@ const registerIPC = () => {
   });
   // Noor iPhone: this profile becomes an iPhone or an iPad (a new one).
   on("device:family", (at, event, family) => {
-    if (IPHONE && iphone.FAMILIES.includes(family) && family !== at.fingerprint.family()) {
+    if (MOBILE && FAMILIES.includes(family) && family !== at.fingerprint.family()) {
       at.setDeviceFamily(family);
     }
     return settingsSnapshot(at);
@@ -1131,7 +1191,7 @@ app.whenReady().then(async () => {
   store.set("doomedPartitions", []);
 
   const profiles = new Profiles(store);
-  const fingerprint = new Fingerprint(store, profiles, { iphone: IPHONE });
+  const fingerprint = new Fingerprint(store, profiles, { iphone: IPHONE, android: ANDROID });
   const display = screen.getPrimaryDisplay();
   fingerprint.realScreen = { width: display.size.width, height: display.size.height };
   fingerprint.realScale = display.scaleFactor || 1;
@@ -1182,11 +1242,11 @@ app.whenReady().then(async () => {
     await timezone.ready();
   }
 
-  if (IPHONE) {
-    // Each tab is told its iPhone itself (see Tab.emulate).
+  if (MOBILE) {
+    // Each tab is told its device itself (see Tab.emulate).
     context.userAgentOverride = null;
-    context.iphone = { language: iphoneLanguage() };
-    app.userAgentFallback = iphone.userAgent(fingerprint.iphone());
+    app.userAgentFallback = mobile.userAgent(fingerprint.iphone());
+    Browser.prototype.deviceOverride = deviceOverride;
   } else {
     // What Chromium says of the system, kept for the override of every tab
     // (and from the last launch while it is read again).
@@ -1205,7 +1265,7 @@ app.whenReady().then(async () => {
   // A window shown asks for this computer's fonts from its toolbar (a page
   // has to show to be told them; see main/fonts.js); the first run's first
   // pages wait for them.
-  Browser.prototype.fontsKnown = (browser) => (!IPHONE && context && context.fonts && browser.chrome && !browser.chrome.webContents.isDestroyed()
+  Browser.prototype.fontsKnown = (browser) => (!MOBILE && context && context.fonts && browser.chrome && !browser.chrome.webContents.isDestroyed()
     ? context.fonts.whenKnown(browser.chrome.webContents) : null);
   Browser.prototype.tabMade = registerTab;
   Browser.prototype.screenFor = screenFor;
@@ -1219,7 +1279,7 @@ app.whenReady().then(async () => {
       made.menus = new Menus(made);
       return made;
     },
-    appId: IPHONE ? "ma.noor.iphone" : "ma.noor.browser",
+    appId: mobile.appId(BUILD),
     executable: app.isPackaged ? process.env.PORTABLE_EXECUTABLE_FILE || process.execPath : null,
     appIcon: path.join(__dirname, "..", "build", "icon.ico"),
     profileIdOfSession: (ses) => sessionProfiles.get(ses) || null,
@@ -1238,12 +1298,12 @@ app.whenReady().then(async () => {
       get browser() {
         return windows.current;
       },
-      windows, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, warmup: windows.warmup, cookies, fingerprintFor,
+      windows, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, android: ANDROID, build: BUILD, warmup: windows.warmup, cookies, fingerprintFor,
       // What pages of the profile `id` are shown: its user agent and screen.
       shownOf: (id) => {
         const fingerprint = fingerprintFor(id);
-        const screen = IPHONE ? fingerprint.iphone() : fingerprint.screen();
-        return { userAgent: IPHONE ? iphone.userAgent(fingerprint.iphone()) : userAgent(), screen: `${screen.width}x${screen.height}` };
+        const screen = MOBILE ? fingerprint.iphone() : fingerprint.screen();
+        return { userAgent: MOBILE ? mobile.userAgent(fingerprint.iphone()) : userAgent(), screen: `${screen.width}x${screen.height}` };
       },
     };
   }

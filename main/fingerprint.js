@@ -1,6 +1,6 @@
 "use strict";
 const crypto = require("crypto");
-const { DEVICES } = require("./iphone");
+const mobile = require("./mobile");
 const { pickFonts } = require("./fonts");
 
 /// The protections, each with a seed per profile that decides the values
@@ -11,9 +11,10 @@ const { pickFonts } = require("./fonts");
 /// profile's own (see main/fonts.js).
 const KINDS = ["canvas", "webGL", "audio", "clientRects", "screen", "hardware", "fonts"];
 const NOISE_KINDS = ["canvas", "webGL", "audio", "clientRects"];
-/// Noor iPhone's: the noise ones, and "device", the iPhone or iPad a
-/// profile is (its screen, Safari's user agent and the rest, see
-/// main/iphone.js), always on.
+/// Noor iPhone's and Noor Android's: the noise ones, and "device", the
+/// iPhone or iPad, or the Android phone or tablet, a profile is (its
+/// screen, the browser's user agent and the rest, see main/mobile.js),
+/// always on.
 const IPHONE_KINDS = ["canvas", "webGL", "audio", "clientRects", "device"];
 
 /// Common PC screens, in CSS pixels, as on a screen shown at 100%.
@@ -57,12 +58,17 @@ const screensAt = (scale) => {
 const HARDWARE = [4, 6, 8, 12, 16].map((cores) => ({ cores, memory: 8 }));
 
 class Fingerprint {
-  constructor(store, profiles, { iphone = false } = {}) {
+  /// `iphone` for Noor iPhone, `android` for Noor Android.
+  constructor(store, profiles, { iphone = false, android = false } = {}) {
     this.store = store;
     this.profiles = profiles;
-    this.iphoneMode = Boolean(iphone);
-    /// The kinds this build has (Noor iPhone's, or Noor's).
-    this.kinds = this.iphoneMode ? IPHONE_KINDS : KINDS;
+    /// The build whose profiles are devices ("iphone" or "android"), or null.
+    this.mobileBuild = android ? "android" : iphone ? "iphone" : null;
+    this.mobileMode = Boolean(this.mobileBuild);
+    /// The kinds of device its profiles can be, the first the one at first.
+    this.families = this.mobileMode ? mobile.familiesOf(this.mobileBuild) : [];
+    /// The kinds this build has (Noor iPhone's and Noor Android's, or Noor's).
+    this.kinds = this.mobileMode ? IPHONE_KINDS : KINDS;
     /// This PC's screen in CSS pixels, and the scale Windows shows it at
     /// (devicePixelRatio), set at launch.
     this.realScreen = { width: 0, height: 0 };
@@ -95,9 +101,10 @@ class Fingerprint {
   /// the same Windows and fonts, so noise there would single this browser
   /// out rather than hide it.
   ///
-  /// In Noor iPhone every one is on at first, as in the iPhone app: what this
-  /// PC renders is no iPhone's anyway, so the noise keeps a site from
-  /// following a profile to another; and the iPhone itself can't be off.
+  /// In Noor iPhone (and Noor Android) every one is on at first, as in the
+  /// iPhone app: what this PC renders is no phone's anyway, so the noise
+  /// keeps a site from following a profile to another; and the device
+  /// itself can't be off.
   isEnabled(kind) {
     if (kind === "device") {
       return true;
@@ -106,7 +113,7 @@ class Fingerprint {
     if (typeof value === "boolean") {
       return value;
     }
-    return this.iphoneMode || (kind !== "audio" && kind !== "clientRects");
+    return this.mobileMode || (kind !== "audio" && kind !== "clientRects");
   }
 
   setEnabled(kind, isOn) {
@@ -139,20 +146,22 @@ class Fingerprint {
     }
   }
 
-  /// Whether the profile in use is an iPhone or an iPad, in Noor iPhone:
-  /// "iphone" or "ipad" (a profile made before iPads is an iPhone).
+  /// The kind of device the profile in use is: "iphone" or "ipad" in Noor
+  /// iPhone, "phone" or "tablet" in Noor Android (a profile made before
+  /// there was a choice is the first kind).
   family() {
-    return this.store.get(this.familyKey()) === "ipad" ? "ipad" : "iphone";
+    const saved = this.store.get(this.familyKey());
+    return this.families.includes(saved) ? saved : this.families[0];
   }
 
   familyKey() {
     return this.profiles.key("device.family", this.boundProfile || undefined);
   }
 
-  /// Makes the profile in use an iPhone or an iPad, a new one of them: a
-  /// device of the other kind is another device to sites.
+  /// Makes the profile in use a device of the kind `family`, a new one of
+  /// them: a device of the other kind is another device to sites.
   setFamily(family) {
-    const wanted = family === "ipad" ? "ipad" : "iphone";
+    const wanted = this.families.includes(family) ? family : this.families[0];
     if (wanted === this.family() && Number.isInteger(this.store.get(this.seedKey("device")))) {
       return;
     }
@@ -160,12 +169,14 @@ class Fingerprint {
     this.newSeed("device");
   }
 
-  /// The devices the profile in use can be: iPhones, or iPads.
+  /// The devices the profile in use can be: iPhones or iPads, phones or
+  /// tablets.
   devices() {
-    return DEVICES[this.family()];
+    return mobile.devicesOf(this.family());
   }
 
-  /// The iPhone or iPad the profile in use is, in Noor iPhone.
+  /// The device the profile in use is (an iPhone or iPad in Noor iPhone,
+  /// an Android phone or tablet in Noor Android).
   iphone() {
     return this.pick(this.seed("device"), this.devices());
   }
@@ -242,7 +253,7 @@ class Fingerprint {
     for (const kind of NOISE_KINDS) {
       seeds[kind] = protections && this.isEnabled(kind) ? this.seed(kind) : null;
     }
-    if (this.iphoneMode) {
+    if (this.mobileMode) {
       return { seeds, screen: null, hardware: null, fontsSeed: null };
     }
     return {

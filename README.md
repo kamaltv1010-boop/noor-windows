@@ -2,12 +2,13 @@
 
 متصفح خاص لـ Windows، بنفس الفكرة ديال [تطبيق Noor ديال iPhone](https://github.com/kamaltv1010-boop/Amir): **بروفايلات** كل واحد ببصماته والبيانات ديالو، **حماية ضد البصمات** (Canvas، WebGL، الصوت، ClientRects، الشاشة، البروسيسور)، **حجب المتتبعين**، **HTTPS**، **روابط نقية**، و**جلسة جديدة** بضغطة. مبني بـ Electron (Chromium)، وكيتبنى `.exe` أوتوماتيكياً فـ GitHub Actions.
 
-وكاينة حتى **[Noor iPhone](#noor-iphone-)**: نفس المتصفح على Windows، ولكن المواقع كتشوف فيه iPhone ولا iPad حقيقي فيه Safari.
+وكاينة حتى **[Noor iPhone](#noor-iphone-)**: نفس المتصفح على Windows، ولكن المواقع كتشوف فيه iPhone ولا iPad حقيقي فيه Safari. و**[Noor Android](#noor-android-)**: المواقع كتشوف فيه تيليفون ولا تابليت Android حقيقي فيه Chrome.
 
 ## التحميل ⬇️
 
 - **Releases** (https://github.com/kamaltv1010-boop/noor-windows/releases): كل build كيولي Release بوحدو، فيه `Noor-<version>-windows-x64-portable.exe` (portable، بلا تنصيب) و`Noor-Setup-<version>-windows-x64.exe` (installer). كل النسخ القديمة كتبقى هناك، وتقدر ترجع لأي وحدة فيهم.
 - **Noor iPhone**: فنفس الـ Release، `Noor-iPhone-<version>-windows-x64-portable.exe` (portable) و`Noor-iPhone-Setup-<version>-windows-x64.exe` (installer).
+- **Noor Android**: فنفس الـ Release، `Noor-Android-<version>-windows-x64-portable.exe` (portable) و`Noor-Android-Setup-<version>-windows-x64.exe` (installer).
 - **Actions**: نفس الملفات كاينين حتى فـ artifact ديال كل run (90 يوم، وخاصك تكون مسجّل فـ GitHub).
 
 الـ `.exe` ماشي موقّع (code signing)، فـ Windows SmartScreen غادي يسوّل أول مرة: **More info** ← **Run anyway**.
@@ -49,6 +50,20 @@
 - المحرك من الداخل باقي Chromium، ماشي WebKit ديال Safari. أغلب المواقع ما كتفرقش، ولكن الفحص العميق (بحال البصمة ديال الاتصال TLS/HTTP2، ولا تفاصيل دقيقة ديال JavaScript وCSS) يقدر يعرف بلي ماشي Safari حقيقي.
 - باش الـ frames ديال مواقع أخرى ياخدو حتى هوما الشاشة واللمس ديال الـ iPhone، Noor iPhone كيطفي «Site Isolation» ديال Chromium: المواقع فيه أقل معزولة على بعضياتها من Noor العادي.
 
+## Noor Android 🤖
+
+نسخة ثالثة من نفس المتصفح، كتخدم على Windows، ولكن **كل بروفايل كيبان للمواقع بحال تيليفون ولا تابليت Android حقيقي فيه Chrome**. فيها كاع الحوايج ديال Noor iPhone: البروفايلات، كل بروفايل فنافذة ديالو، جمع الكوكيز (بالصبع)، الحماية، الإعدادات…
+
+- **تيليفون ولا تابليت لكل بروفايل**: فالإعدادات › Profiles › **New profiles are** كتختار **Phones** ولا **Tablets** للبروفايلات الجداد (واحد، بزاف دفعة وحدة، ولا اللي كيتصاوب فبلاصة واحد تسد)، و**This profile is** كيبدّل البروفايل ديال النافذة. واحد من 15 تيليفون (Samsung Galaxy S22/S23/S24/A52/A53، Google Pixel 6a/7/7a/8/8 Pro/9، Xiaomi Redmi Note 12/13، OnePlus 11) ولا 8 تابليت (Galaxy Tab S9/S8/A8/S6 Lite، Pixel Tablet، Lenovo Tab P11، Xiaomi Pad 6، Redmi Pad SE)، من Android 13 حتى 15. التيليفون واقف، والتابليت مقلوب على الجنب، والنافذة قد الجهاز.
+- **بحال Chrome على Android**: الـ user agent ديال Chrome على Android (`Android 10; K`، و`Mobile` غير فالتيليفون)، والـ client hints ديالو فكل طلب وفـ `navigator.userAgentData`: `Android`، النسخة ديال Android، **الموديل** (مثلا `SM-S911B`، `Pixel 7`)، تيليفون ولا تابليت. الشاشة، الدقة (×2.625، ×3…)، اللمس (5 ولا 10 صوابع)، `navigator.platform` (`Linux aarch64` ولا `Linux armv8l`)، الذاكرة والـ cores، الكارت ديال الـ GPU فـ WebGL (`Adreno (TM) 740`، `Mali-G710`…)، بلا plugins ولا PDF، الشبكة (`wifi`)، البطارية ديال تيليفون (مستوى ديالو لكل بروفايل)، `navigator.contacts`، الأصوات ديال Android، والخطوط ديال Android (Roboto، Noto، Droid…) والخطوط ديال Windows مخبيين. والحوايج اللي ما عندهاش Chrome على Android محيدين (Web HID، الـ screen capture، Picture-in-Picture ديال الصفحة…). كلشي هادا حتى فالـ frames، فالـ workers، وفالنوافذ اللي كتحل الصفحة.
+- **نفس المحرك**: Chrome على Android هو Chromium حتى هو، فالمحرك، الاتصالات (TLS) والـ headers كيبانو للموقع بحال ديال Chrome على Android.
+- **بوحدو**: عندو البروفايلات والبيانات ديالو (مجلد `Noor Android`)، ما كيختلطوش مع Noor ولا Noor iPhone.
+
+**الحدود** ⚠️:
+
+- الرسم (Canvas، WebGL) والخطوط كيتّرسمو بالـ GPU والخطوط ديال الـ PC، ماشي ديال التيليفون (مع الضجيج ديال الحماية).
+- فـ worker عادي (dedicated)، شي حوايج ديال الصفحات الآمنة (بحال Web HID) كيبقاو، حيت Chromium كيزيدهم من بعد الحماية.
+
 ## كيفاش خدام ⚙️
 
 - **Electron + Chromium**: نافذة (`BaseWindow`) لكل بروفايل محلول (`main/windows.js`)، فيها شريط (`renderer/chrome.html`) وonglet لكل صفحة (`WebContentsView`). كل نافذة ديال بروفايل عندها App User Model ID ديالها (`ma.noor.browser.profile.<id>`) باش Windows يعطيها زر بوحدها فالـ taskbar، وأيقونة `.ico` كتترسم فالشريط ديالها (`main/profile-icon.js`) وكتتحفظ فـ `ProfileIcons`. الزر المثبّت كيعاود يشغّل Noor بـ `--profile=<id>`.
@@ -87,19 +102,24 @@
 | `scripts/preload.js`, `scripts/protect.js` | الحماية المحقونة فالصفحات (مولّدين من `FingerprintProtection.swift` ديال iPhone بـ `tools/extract_from_ios.py`) |
 | `scripts/parts/chrome.js` | الجزء الخاص بـ Chromium: `userAgentData`، `chrome.app/csi/loadTimes`، الأذونات، الأصوات، Widevine، Web Share، والبلاصة (quota) ملي البيانات فالذاكرة |
 | `main/iphone.js` | Noor iPhone: الـ iPhones والـ iPads، الـ user agent والـ headers ديال Safari، الشاشة اللي كيوريها Chromium |
+| `main/android.js` | Noor Android: التيليفونات والتابليتات، الـ user agent والـ client hints ديال Chrome على Android، الشاشة اللي كيوريها Chromium |
+| `main/mobile.js` | شنو كيتشاركو Noor iPhone وNoor Android: جهاز لكل بروفايل، الأنواع ديالو، السمية ديال البرنامج |
 | `scripts/parts/iphone.js`, `scripts/parts/iphone-surface.js`, `scripts/parts/iphone-fonts.js` | شنو كتشوف الصفحة فـ Noor iPhone: اللي عند Safari واللي ماعندوش (وفين كيختلف الـ iPad)، الخطوط |
+| `scripts/parts/android.js`, `scripts/parts/android-surface.js`, `scripts/parts/android-fonts.js` | شنو كتشوف الصفحة فـ Noor Android: الـ platform، الـ GPU، الأصوات، الخطوط، واللي ماعندوش Chrome على Android (`tools/android_surface.js` كيولّد القائمة من البيانات ديال MDN) |
 | `main/extensions.js`, `main/extension-bridge.js` | الإضافات، والقنطرة اللي كتعطي الـ background ديالها الـ API (Electron ما كيخدّمش preload فالـ service worker ديال إضافة) |
 | `renderer/` | الشريط، صفحة البداية، الإعدادات (بحال Chrome: الأقسام، البحث)، المكتبة، صفحة الخطأ |
 | `rules/trackers.json` | المتتبعين المحجوبين (نفس قائمة iPhone) |
 | `test/` | tests ديال Node (`npm test`) |
 | `tools/smoke-electron.js` | كيشغّل التطبيق بصح وكيتأكد من الأساسيات (Playwright) |
 | `tools/smoke-iphone.js` | كيشغّل Noor iPhone بحال مستخدم وكيتأكد أن الصفحة، الـ frames، الـ workers والنوافذ كيشوفو iPhone |
+| `tools/smoke-android.js` | كيشغّل Noor Android بحال مستخدم وكيتأكد أن الصفحة، الـ frames، الـ workers، النوافذ والطلبات كيشوفو Chrome على تيليفون ولا تابليت Android |
 | `tools/smoke-warmup.js` | كيجرّب جمع الكوكيز على مواقع محلية: الكوكيز، البانر، السكرول، المقالات، المواقع ديالك، البروفايل الجديد، صفحة الكوكيز، وشنو ما خاصوش يدير |
 | `tools/smoke-windows.js` | كيجرّب النوافذ: نافذة لكل بروفايل، الأيقونة والزر ديالها، الكوكيز بوحدهم، التعويض ملي يتسد، الحذف، والنوافذ اللي كيتحلو من جديد |
 | `tools/smoke-menu.js` | كيجرّب القوائم (البلاصة، الأيقونات، الاختصارات، الـ Zoom، القوائم الفرعية، Escape والكليك برا) وصفحة الإعدادات (الأقسام، البحث، الـ switches)، وكيصوّرهم |
 | `tools/smoke-fonts.js` | كيجرّب الخطوط: Noor كيقرا خطوط الـ PC، كل بروفيل كيبيّن خطوط ديالو (المصاوبين كيتلقاو من أول سطر بلا ما يبان التحميل)، الخطوط الأخرى ديال الـ PC ما كيتلقاوش (العرض، canvas، worker، `local()`، `document.fonts`)، New كيبدّلهم، والـ web fonts ديال الصفحة كيخدمو |
 | `tools/smoke-quota.js` | كيجرّب البلاصة (quota) اللي كتشوف الصفحات ملي «مسح كل شيء عند الخروج» مشعل وملي الديسك تقريباً عامر: الصفحة، الـ workers والطرق القديمة كيشوفو ديال Chrome عادي، والـ onglet الخاص ديال Incognito |
 | `tools/build-iphone.js` | كيبني الـ `.exe` ديال Noor iPhone |
+| `tools/build-android.js` | كيبني الـ `.exe` ديال Noor Android |
 | `tools/dump-surface.js`, `tools/iphone_surface.js` | كيولّدو `scripts/parts/iphone-surface.js` (شنو كاين فـ Chromium وماكاينش فـ Safari) |
 | `.github/workflows/build.yml` | البناء ديال `.exe` على Windows |
 
@@ -113,6 +133,9 @@ npm run dist       # كيبني .exe فـ dist/ (على Windows)
 npm run start:iphone   # كيشغّل Noor iPhone
 npm run dist:iphone    # كيبني .exe ديال Noor iPhone
 xvfb-run -a node tools/smoke-iphone.js   # test كامل ديال Noor iPhone
+npm run start:android  # كيشغّل Noor Android
+npm run dist:android   # كيبني .exe ديال Noor Android
+xvfb-run -a node tools/smoke-android.js [phone|tablet]   # test كامل ديال Noor Android
 xvfb-run -a node tools/smoke-warmup.js [iphone]   # test ديال جمع الكوكيز
 xvfb-run -a node tools/smoke-windows.js [iphone]  # test ديال النوافذ ديال البروفايلات
 xvfb-run -a node tools/smoke-menu.js [iphone]     # test ديال القوائم والإعدادات

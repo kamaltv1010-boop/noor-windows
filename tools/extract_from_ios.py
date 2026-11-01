@@ -91,6 +91,9 @@ parts = [
     # Noor iPhone's (see main/iphone.js), last: it takes away, at its end,
     # what an iPhone lacks.
     ("config.iphone", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "iphone.js").read_text(encoding="utf-8")),
+    # Noor Android's (see main/android.js), last too: it takes away, at its
+    # end, what Chrome on Android lacks.
+    ("config.android", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "android.js").read_text(encoding="utf-8")),
 ]
 assert "\\#(" not in shared + helpers + frames, "unreplaced interpolation"
 
@@ -115,6 +118,9 @@ source = (
     # Noor iPhone's data (see scripts/parts/iphone.js).
     + (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "iphone-surface.js").read_text(encoding="utf-8")
     + (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "iphone-fonts.js").read_text(encoding="utf-8")
+    # Noor Android's data (see scripts/parts/android.js).
+    + (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "android-surface.js").read_text(encoding="utf-8")
+    + (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "android-fonts.js").read_text(encoding="utf-8")
     + "const protectPage = (window, config) => {\n"
     "\"use strict\";\n"
     + shared

@@ -1,6 +1,7 @@
 "use strict";
 const fs = require("fs");
 const path = require("path");
+const mobile = require("./mobile");
 const crypto = require("crypto");
 const { session, screen } = require("electron");
 const { DEFAULT_ID } = require("./profiles");
@@ -57,12 +58,13 @@ class Windows {
     return this.context.timezone;
   }
 
-  get isIPhone() {
-    return Boolean(this.context.fingerprint && this.context.fingerprint.iphoneMode);
+  /// Noor iPhone and Noor Android: each profile a device (see main/mobile.js).
+  get isMobile() {
+    return Boolean(this.context.fingerprint && this.context.fingerprint.mobileMode);
   }
 
   get product() {
-    return this.isIPhone ? "Noor iPhone" : "Noor";
+    return this.isMobile ? mobile.product(this.context.fingerprint.mobileBuild) : "Noor";
   }
 
   /// The profile of the window in front (before any window opens, the one
@@ -432,14 +434,15 @@ class Windows {
     return made;
   }
 
-  /// Noor iPhone: new profiles, those made in a closed one's place too, are
-  /// iPhones or iPads, as the settings say ("newProfileDevice"); each a
+  /// Noor iPhone and Noor Android: new profiles, those made in a closed
+  /// one's place too, are of the kind of device the settings say
+  /// ("newProfileDevice": iPhones or iPads, phones or tablets); each a
   /// device of its own.
   setDevices(profiles) {
-    if (!this.isIPhone) {
+    if (!this.isMobile) {
       return;
     }
-    const wanted = this.store.get("newProfileDevice", "iphone");
+    const wanted = this.store.get("newProfileDevice", null);
     for (const profile of profiles) {
       this.context.fingerprint.forProfile(profile).setFamily(wanted);
     }

@@ -6,18 +6,24 @@
 /// the iPhone's screen, pixel density and touch, and what Safari on that
 /// iPhone has and lacks (see scripts/parts/iphone.js).
 
-/// The device this build shows: "iphone" in Noor iPhone (written into its
-/// package.json by tools/build-iphone.js; from the source, `npm run
-/// start:iphone` or NOOR_DEVICE=iphone), "windows" otherwise.
+/// The device this build shows: "iphone" in Noor iPhone, "android" in Noor
+/// Android (written into its package.json by tools/build-iphone.js or
+/// tools/build-android.js; from the source, `npm run start:iphone` or
+/// `start:android`, or NOOR_DEVICE), "windows" otherwise (see main/mobile.js).
+const BUILDS = ["iphone", "android"];
 const device = () => {
   if (process.env.NOOR_DEVICE) {
-    return process.env.NOOR_DEVICE === "iphone" ? "iphone" : "windows";
+    return BUILDS.includes(process.env.NOOR_DEVICE) ? process.env.NOOR_DEVICE : "windows";
   }
   if (process.argv.includes("--noor-iphone")) {
     return "iphone";
   }
+  if (process.argv.includes("--noor-android")) {
+    return "android";
+  }
   try {
-    return require("../package.json").noorDevice === "iphone" ? "iphone" : "windows";
+    const written = require("../package.json").noorDevice;
+    return BUILDS.includes(written) ? written : "windows";
   } catch (error) {
     return "windows";
   }

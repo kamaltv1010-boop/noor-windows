@@ -762,10 +762,10 @@ class Collection {
   }
 
   /// A tap where `x`, `y` is in the page's window (CSS pixels): in Noor
-  /// iPhone a finger's (touchstart, touchend, then the click a tap makes),
-  /// elsewhere the mouse's, moved there first.
+  /// iPhone and Noor Android a finger's (touchstart, touchend, then the
+  /// click a tap makes), elsewhere the mouse's, moved there first.
   async tap(x, y) {
-    if (this.browser.isIPhone) {
+    if (this.browser.isMobile) {
       await this.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y }] });
       await this.wait(60 + Math.round(this.random() * 80));
       await this.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
@@ -791,11 +791,11 @@ class Collection {
   }
 
   /// A scroll down by about `distance` CSS pixels in a page `width` by
-  /// `height`: a finger's flick up the screen in Noor iPhone, the mouse
-  /// wheel's turns elsewhere.
+  /// `height`: a finger's flick up the screen on a device (Noor iPhone,
+  /// Noor Android), the mouse wheel's turns elsewhere.
   async scrollDown(width, height, distance) {
     const x = Math.round(width * (0.35 + this.random() * 0.3));
-    if (this.browser.isIPhone) {
+    if (this.browser.isMobile) {
       const from = Math.round(height * (0.7 + this.random() * 0.15));
       const to = Math.max(10, from - Math.round(distance));
       const steps = 10 + Math.floor(this.random() * 8);

@@ -5,8 +5,9 @@
 // scrolled, an article of the site opened from its page; and what it
 // didn't: a link that signs out, an account's page, a file, a window the
 // page tried to open, a dialog, history, a tab. A site that doesn't answer
-// is counted and passed. With "iphone", in Noor iPhone. Needs Playwright and
-// a display: on Linux, `xvfb-run -a node tools/smoke-warmup.js [iphone]`.
+// is counted and passed. With "iphone", in Noor iPhone; with "android", in
+// Noor Android. Needs Playwright and a display: on Linux,
+// `xvfb-run -a node tools/smoke-warmup.js [iphone|android]`.
 "use strict";
 const fs = require("fs");
 const os = require("os");
@@ -15,7 +16,9 @@ const http = require("http");
 const { _electron: electron } = require("playwright");
 
 const root = path.join(__dirname, "..");
-const iphone = process.argv[2] === "iphone";
+const build = ["iphone", "android"].includes(process.argv[2]) ? process.argv[2] : "windows";
+/// A device's build: its pages are touched with a finger.
+const iphone = build !== "windows";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const SITES = ["a", "b", "c"];
 
@@ -90,7 +93,7 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
       ...process.env,
       NOOR_TEST: "1",
       NOOR_USER_DATA: userData,
-      NOOR_DEVICE: iphone ? "iphone" : "windows",
+      NOOR_DEVICE: build,
       NOOR_TEST_TIMEZONE: "Africa/Casablanca",
       NOOR_TEST_WARMUP_SITES: JSON.stringify(sites),
       NOOR_TEST_WARMUP_FAST: "1",
@@ -284,7 +287,7 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
     check(`${site}: the page scrolled`, cookie(site, "scrolled") === "1", after.cookies);
     check(`${site}: a dialog the page asked for didn't hold it`, cookie(site, "dialog") === "passed", cookie(site, "dialog"));
     check(`${site}: an article of the site opened from its page`, cookie(site, "article") === "1" && hits.some((h) => h.startsWith(`${site} /news/`) && h.includes(`from http://warm-${site}.test:${port}/`)), hits);
-    check(`${site}: the page shown, with the profile's protection`, cookie(site, "vis") === "visible" && cookie(site, "webdriver") === "false" && (iphone ? /iPhone/.test(cookie(site, "ua")) : /Windows NT.*Chrome\//.test(cookie(site, "ua"))), { vis: cookie(site, "vis"), ua: cookie(site, "ua"), webdriver: cookie(site, "webdriver") });
+    check(`${site}: the page shown, with the profile's protection`, cookie(site, "vis") === "visible" && cookie(site, "webdriver") === "false" && (build === "iphone" ? /iPhone/.test(cookie(site, "ua")) : build === "android" ? /Android 10; K.*Chrome\//.test(cookie(site, "ua")) : /Windows NT.*Chrome\//.test(cookie(site, "ua"))), { vis: cookie(site, "vis"), ua: cookie(site, "ua"), webdriver: cookie(site, "webdriver") });
   }
   const never = hits.filter((h) => / \/(logout|account|files|popup|elsewhere)/.test(h));
   check("no sign-out, account, file, window or other site", never.length === 0, never);
@@ -305,7 +308,7 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
   check("one at a time when chosen: the others wait their turn", many.queued.saved === 1 && many.queued.atOnce === 1 && many.queued.running === 1 && many.queued.waiting === 1 && many.queued.second.waiting && many.queued.second.position === 1 && /Waiting their turn \(1 at a time\): Farm/.test(many.queued.text), many.queued);
   check("a profile collecting in the background shows its own fingerprints", many.farms.every((f) => f.ua === f.mine.userAgent && f.screen === f.mine.screen), many.farms.map((f) => ({ name: f.name, ua: f.ua, screen: f.screen, mine: f.mine })));
   check("a profile's collection goes on when another profile is opened", switching.right.inUse && switching.right.status.running && !switching.status.stopped && switching.status.finished && switching.status.done === 2 && switching.sites.includes("warm-a.test") && switching.sites.includes("warm-c.test"), switching);
-  console.log(JSON.stringify({ iphone, status, hits: hits.length, failures }, null, 2));
+  console.log(JSON.stringify({ build, status, hits: hits.length, failures }, null, 2));
   process.exit(failures.length ? 1 : 0);
 })().catch((error) => {
   console.error(error);

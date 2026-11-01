@@ -10,8 +10,15 @@
     fonts: ["Fonts", "Sites find the fonts every Windows has and others of this profile's own (Office's, Adobe Acrobat's, a language's…), so each profile has a list of its own, as PCs with different programs do. The other fonts of this PC are hidden."],
     device: ["iPhone", "The iPhone this profile is to every site: its screen, touch, Safari and iOS version."],
   };
-  // Noor iPhone: a profile is an iPhone or an iPad.
-  const IPAD_DEVICE = ["iPad", "The iPad this profile is to every site, held sideways: its screen, touch, Safari and iPadOS version. As on a real iPad, Safari shows sites what it shows a Mac (an iPad mini aside), and they find the iPad by its touch."];
+  // Noor iPhone and Noor Android: a profile is a device of one of the
+  // build's kinds.
+  const DEVICE_TITLES = {
+    iphone: ["iPhone", "The iPhone this profile is to every site: its screen, touch, Safari and iOS version."],
+    ipad: ["iPad", "The iPad this profile is to every site, held sideways: its screen, touch, Safari and iPadOS version. As on a real iPad, Safari shows sites what it shows a Mac (an iPad mini aside), and they find the iPad by its touch."],
+    phone: ["Phone", "The Android phone this profile is to every site, in Chrome: its screen, touch, model, Android version, graphics card and memory."],
+    tablet: ["Tablet", "The Android tablet this profile is to every site, held sideways, in Chrome: its screen, touch, model, Android version, graphics card and memory."],
+  };
+  const ARTICLE = { iphone: "An iPhone", ipad: "An iPad", phone: "A phone", tablet: "A tablet" };
   // Noor iPhone: the noise is on at first, as in the iPhone app.
   const IPHONE_HINTS = {
     audio: "Sound processing gets noise, so a site can't follow this profile to another.",
@@ -231,36 +238,50 @@
     $("deleteallrow").hidden = settings.profiles.length < 2;
     $("newprofilename").placeholder = `Profile ${settings.profiles.length + 1}`;
 
-    const isIPhone = settings.device === "iphone";
-    // Noor iPhone: what new profiles are, and what this one is.
-    $("newdevicerow").hidden = !isIPhone;
-    $("thisdevicerow").hidden = !isIPhone;
-    if (isIPhone) {
-      $("newdevice").value = settings.newProfileDevice || "iphone";
-      $("thisdevice").value = settings.deviceFamily || "iphone";
+    // Noor iPhone and Noor Android: what new profiles are, and what this
+    // one is, of the build's kinds of device.
+    const isDevice = settings.device === "iphone" || settings.device === "android";
+    const families = settings.families || [];
+    const fill = (select, label) => {
+      if (select.dataset.filled === settings.device) return;
+      select.textContent = "";
+      for (const family of families) {
+        const option = document.createElement("option");
+        option.value = family.id;
+        option.textContent = label(family);
+        select.append(option);
+      }
+      select.dataset.filled = settings.device;
+    };
+    $("newdevicerow").hidden = !isDevice;
+    $("thisdevicerow").hidden = !isDevice;
+    if (isDevice) {
+      fill($("newdevice"), (family) => family.plural);
+      fill($("thisdevice"), (family) => ARTICLE[family.id] || family.name);
+      $("newdevice").value = settings.newProfileDevice || (families[0] && families[0].id);
+      $("thisdevice").value = settings.deviceFamily || (families[0] && families[0].id);
       $("thisdevicehint").textContent = `“${settings.profile.name}”, the profile of this window: ${settings.values.iphone.name}. Made the other kind, it is a new device of that kind to every site (better before its accounts are signed in).`;
     }
     const protections = $("protections");
     protections.textContent = "";
     for (const kind of settings.kinds || Object.keys(KIND_TITLES)) {
       const [title, plainHint] = KIND_TITLES[kind];
-      const hint = (isIPhone && IPHONE_HINTS[kind]) || plainHint;
+      const hint = (isDevice && IPHONE_HINTS[kind]) || plainHint;
       if (kind === "device") {
-        // The iPhone or iPad can't be off: only changed, for another of its
-        // kind, or for one of the other kind.
-        const isIPad = settings.deviceFamily === "ipad";
-        const [deviceTitle, deviceHint] = isIPad ? IPAD_DEVICE : [title, hint];
+        // The device can't be off: only changed, for another of its kind,
+        // or for one of the other kind.
+        const [deviceTitle, deviceHint] = DEVICE_TITLES[settings.deviceFamily] || [title, hint];
         const controls = document.createElement("div");
         controls.style.display = "flex";
         controls.style.alignItems = "center";
         controls.style.gap = "10px";
         const family = document.createElement("select");
         family.title = "This profile is";
-        for (const [id, name] of [["iphone", "iPhone"], ["ipad", "iPad"]]) {
+        for (const kindOf of families) {
           const option = document.createElement("option");
-          option.value = id;
-          option.textContent = name;
-          option.selected = id === (settings.deviceFamily || "iphone");
+          option.value = kindOf.id;
+          option.textContent = kindOf.name;
+          option.selected = kindOf.id === settings.deviceFamily;
           family.append(option);
         }
         family.addEventListener("change", () => noor.invoke("device:family", family.value).then(apply));
@@ -292,7 +313,18 @@
       element.textContent = text;
       return element;
     };
-    if (isIPhone) {
+    if (settings.device === "android") {
+      const device = settings.values.iphone;
+      const tablet = device.family === "tablet";
+      values.append(row(tablet ? "Tablet" : "Phone", `Model ${device.model}.`, value(`${device.name} · Android ${device.android}`)));
+      values.append(row("Screen size", tablet ? `Held sideways: the page is ${device.pageWidth} × ${device.pageHeight}.` : `The page is ${device.pageWidth} × ${device.pageHeight}.`, value(`${device.width} × ${device.height} · ×${device.scale}`)));
+      values.append(row("Graphics card", "", value(device.gpu)));
+      values.append(row("Processor & memory", "", value(`${device.cores} cores · ${device.memory} GB`)));
+      values.append(row("User agent", "", value(settings.values.userAgent)));
+      values.append(row("Languages", "", value(settings.values.language)));
+      $("fingerprintfooter").textContent = "Every profile is one real Android phone or tablet to the sites it opens, in Chrome: Chrome on Android's user agent and client hints (Android and its version, the model), the device's screen, pixel density and touch, its graphics card, memory, voices and fonts, and what Chrome on Android has and lacks, sign-in sites included. Canvas, WebGL and audio values and ClientRects get noise of their own on each site.";
+      $("appname").textContent = "Noor Android for Windows";
+    } else if (isDevice) {
       const iphone = settings.values.iphone;
       if (iphone.family === "ipad") {
         values.append(row("iPad", "", value(`${iphone.name} · iPadOS ${iphone.iOS}`)));

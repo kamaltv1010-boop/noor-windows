@@ -4,6 +4,7 @@ const { Shields } = require("./shields");
 const { SETTINGS_URL, LIBRARY_URL, COOKIES_URL, isWebPage } = require("./address");
 const { STORE_URL } = require("./crx");
 const { iconLook } = require("./profile-icon");
+const mobile = require("./mobile");
 
 const KIND_TITLES = {
   canvas: "Canvas", webGL: "WebGL", audio: "Audio", clientRects: "ClientRects", screen: "Screen Size", hardware: "Processor & Memory",
@@ -34,7 +35,7 @@ class Menus {
     const zoom = tab && !tab.webContents.isDestroyed() ? Math.round(tab.webContents.getZoomFactor() * 100) : 100;
     const warmup = browser.windows && browser.windows.warmup;
     const status = warmup ? warmup.status(browser.profile.id) : null;
-    const product = browser.isIPhone ? "Noor iPhone" : "Noor";
+    const product = browser.product;
     return [
       { icon: "newTab", label: "New tab", shortcut: "Ctrl+T", click: () => browser.newTab() },
       { icon: "private", label: "New private tab", shortcut: "Ctrl+Shift+N", click: () => browser.newTab({ isPrivate: true }) },
@@ -103,10 +104,10 @@ class Menus {
     const browser = this.browser;
     const items = browser.fingerprint.kinds.map((kind) => (kind === "device" ? {
       icon: "refresh",
-      label: "New iPhone",
+      label: `New ${mobile.kindName(browser.fingerprint.family())}`,
       click: () => {
         browser.newFingerprint([kind]);
-        browser.toast(`Now an ${browser.fingerprint.iphone().name}`);
+        browser.toast(`Now: ${browser.fingerprint.iphone().name}`);
       },
     } : {
       icon: "refresh",
