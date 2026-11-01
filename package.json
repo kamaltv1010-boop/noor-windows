@@ -9,6 +9,7 @@
   "repository": "github:kamaltv1010-boop/noor-windows",
   "scripts": {
     "start": "electron .",
+    "pretest": "node node_modules/electron/install.js",
     "test": "node --test \"test/*.test.js\"",
     "dist": "electron-builder --win --x64 --publish never",
     "start:iphone": "electron . --noor-iphone",
