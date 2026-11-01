@@ -213,6 +213,23 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
     const tab = browser.newTab({ url: "noor://app/settings.html" });
     await new Promise((r) => setTimeout(r, 1500));
     const select = await tab.webContents.executeJavaScript("({ value: document.getElementById('warmupparallel').value, label: document.getElementById('warmupparallel').selectedOptions[0].textContent })");
+    // As on a slower computer (Windows, its cookies encrypted on disk), each
+    // profile counts its cookies at its own pace before it begins: the
+    // first ready 1.4 s before the last. Still one toast for the three.
+    const collectionFor = warmup.collectionFor;
+    let slow = 0;
+    warmup.collectionFor = function (...args) {
+      const collection = collectionFor.apply(this, args);
+      const late = 700 * slow++;
+      const count = collection.count;
+      let first = true;
+      collection.count = function (...countArgs) {
+        if (!first) return count.apply(this, countArgs);
+        first = false;
+        return new Promise((r) => setTimeout(r, late)).then(() => count.apply(this, countArgs));
+      };
+      return collection;
+    };
     await tab.webContents.executeJavaScript("document.getElementById('manycount').value = '3'; document.getElementById('manyname').value = 'Farm'; document.getElementById('manycreate').click();");
     let waited = false;
     let most = 0;
@@ -229,6 +246,7 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
       }
       await new Promise((r) => setTimeout(r, 50));
     }
+    warmup.collectionFor = collectionFor;
     const listed = await tab.webContents.executeJavaScript("[...document.querySelectorAll('#profiles .row .label')].map((l) => l.firstChild.textContent)");
     const farmsMade = global.noorTest.context.profiles.all().filter((p) => /^Farm \d+$/.test(p.name));
     const firstRun = new Map(farmsMade.map((profile) => [profile.id, warmup.status(profile.id)]));

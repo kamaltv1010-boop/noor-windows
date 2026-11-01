@@ -907,7 +907,15 @@ const makeWarmup = (target) => {
   const wasRunning = new Map();
   const news = { started: [], ended: [] };
   let newsTimer = null;
+  let newsSince = 0;
   const tell = () => {
+    // Profiles started together are told together: while some of them are
+    // still beginning (each counts its cookies first, at its own pace on a
+    // slower computer), the line waits for them, 5 s at most.
+    if (warmup.beginning.size && Date.now() - newsSince < 5000) {
+      newsTimer = setTimeout(tell, 200);
+      return;
+    }
     newsTimer = null;
     const { started, ended } = news;
     news.started = [];
@@ -941,6 +949,7 @@ const makeWarmup = (target) => {
     if (status.running !== before) {
       (status.running ? news.started : news.ended).push(status);
       if (!newsTimer) {
+        newsSince = Date.now();
         newsTimer = setTimeout(tell, 400);
       }
     }

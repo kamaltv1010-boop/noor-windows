@@ -887,6 +887,9 @@ class Warmup {
     this.waiting = [];
     /// What each profile's last collection did, by profile id.
     this.results = new Map();
+    /// The profiles started together whose collection is still beginning
+    /// (counting their cookies first: slower on some computers), by id.
+    this.beginning = new Set();
   }
 
   onChange(listener) {
@@ -1049,7 +1052,9 @@ class Warmup {
       }
       const collection = this.collectionFor(profile, count);
       this.active.set(profile.id, collection);
+      this.beginning.add(profile.id);
       starting.push(collection.begin().catch(() => collection.stop()).then(() => {
+        this.beginning.delete(profile.id);
         collection.ended.then(() => this.ended(collection));
       }));
     }
