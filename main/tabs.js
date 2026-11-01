@@ -391,12 +391,14 @@ class Tab {
       this.url = url;
       this.visited(url);
       this.changed();
+      this.saveSoon();
     });
     wc.on("did-navigate-in-page", (event, url, isMainFrame) => {
       if (isMainFrame) {
         this.url = url;
         this.visited(url);
         this.changed();
+        this.saveSoon();
       }
     });
     wc.on("page-title-updated", (event, title) => {
@@ -472,6 +474,15 @@ class Tab {
   changed() {
     if (!this.background) {
       this.browser.pushState();
+    }
+  }
+
+  /// A page reached in this tab (a link followed): the window's tabs are
+  /// saved a moment later, so the next start opens it even if the app
+  /// doesn't quit as usual (Windows ending the session ends the process).
+  saveSoon() {
+    if (!this.isPrivate && !this.background && this.browser) {
+      this.browser.saveTabsSoon();
     }
   }
 
@@ -898,6 +909,11 @@ class Browser {
         this.windows.closing(this);
       }
     });
+    // Windows ending the session (a shutdown, a restart, a sign-out):
+    // Electron emits no "before-quit" then, and Windows ends the process
+    // right after; what the next start opens is saved now, and the
+    // profile's cookies are written out (as far as there is time).
+    this.win.on("session-end", () => this.sessionEnding());
     this.win.on("closed", () => {
       this.closed = true;
       for (const tab of this.allTabs.concat(this.backgroundTabs)) {
@@ -1414,6 +1430,47 @@ class Browser {
     }
     const index = list.indexOf(this.selected);
     this.select(list[(index + offset + list.length) % list.length]);
+  }
+
+  /// The tabs saved a second after a page changed in one of them (several
+  /// changes, one save).
+  saveTabsSoon() {
+    if (this.saveTimer || this.closing || this.closed) {
+      return;
+    }
+    this.saveTimer = setTimeout(() => {
+      this.saveTimer = null;
+      if (!this.closing && !this.closed && !this.deleting) {
+        this.saveTabs();
+      }
+    }, 1000);
+    if (typeof this.saveTimer.unref === "function") {
+      this.saveTimer.unref();
+    }
+  }
+
+  /// Windows ending the session (see the window's "session-end"): its tabs
+  /// and the windows open saved at once, its pages' cookies written out.
+  sessionEnding() {
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+      this.saveTimer = null;
+    }
+    if (!this.deleting && !this.closing && !this.closed) {
+      this.saveTabs();
+    }
+    if (this.windows) {
+      this.windows.saveOpen();
+    }
+    const sessions = new Set();
+    for (const tab of this.allTabs) {
+      if (!tab.isPrivate && tab.webContents && !tab.webContents.isDestroyed()) {
+        sessions.add(tab.webContents.session);
+      }
+    }
+    for (const ses of sessions) {
+      ses.cookies.flushStore().catch(() => {});
+    }
   }
 
   /// Remembers the open normal tabs for the next launch (per profile),

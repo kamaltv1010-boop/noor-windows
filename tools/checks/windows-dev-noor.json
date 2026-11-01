@@ -50,6 +50,16 @@
   "minutes": 6
  },
  {
+  "name": "smoke-session-end",
+  "title": "إيقاف Windows أو تسجيل الخروج: الصفحات المفتوحة تعود كما كانت، وملف الإعدادات سليم",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-session-end.js"
+  ],
+  "minutes": 6
+ },
+ {
   "name": "smoke-gpu",
   "title": "WebGL Vendor & Renderer لكل بروفايل",
   "kind": "app",
