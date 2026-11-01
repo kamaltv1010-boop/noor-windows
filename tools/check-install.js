@@ -104,6 +104,10 @@ const entry = () => {
     probed = null;
   }
   report.firstStart = probed;
+  // What it noted (how long its window took, what the machine can't do).
+  for (const line of (probe.stderr || "").split(/\r?\n/).filter((l) => l.startsWith("note "))) {
+    console.error(line);
+  }
   // What failed, by name; without its report, the lines it wrote that say FAIL.
   const failedLines = (probe.stderr || "").split(/\r?\n/).filter((line) => line.startsWith("FAIL")).map((line) => line.slice(0, 600));
   step(`the installed app's first start and use (probe-built-app.js${dataBefore ? ", its data folder was already there" : ""})`, probe.status === 0, probed ? (probed.problems.length ? probed.problems : `${probed.steps.length} steps passed`) : failedLines.length ? failedLines : (probe.stderr || "").slice(-600));

@@ -130,6 +130,12 @@ const verdict = (check, code) => {
     const judged = verdict(check, run.code);
     results.push({ name: check.name, title: check.title || check.name, kind: check.kind || "app", expect: check.expect || "pass", ...run, log: path.relative(out, run.log).split(path.sep).join("/"), ...judged, leftProcesses: left.map(([name, pid]) => `${name} ${pid}`) });
     console.log(`${judged.label} (${Math.round(run.ms / 1000)} s${left.length ? `, ${left.length} processes left` : ""})`);
+    // What a check notes beside its verdict (a time, what a machine can't
+    // do), passed or not: its lines that start with "note ", ten at most.
+    const notes = fs.readFileSync(run.log, "utf8").split(/\r?\n/).filter((line) => line.startsWith("note ")).slice(0, 10);
+    for (const note of notes) {
+      console.log(`    ↳ ${note.slice(5, 300)}`);
+    }
     if (!judged.ok) {
       // What it said, in the job's own log too (the artifact may not be
       // reachable): its last lines, without Chromium's own chatter.

@@ -350,6 +350,7 @@ const visit = async (id, tag, mode) => {
     }
     report.windowAfterMs = Date.now() - app.started;
     step("first start: a window is on the screen", Boolean(shown) && shown.handle !== 0, { ...shown, afterStartMs: report.windowAfterMs, toolbarMs: app.readyMs });
+    console.error(`note first start: its window on the screen ${report.windowAfterMs} ms after it was started (its toolbar answered after ${app.readyMs} ms)`);
   }
   if (WINDOWS && out) {
     // What the screen shows (a machine with no desktop can't be captured:
