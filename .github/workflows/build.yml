@@ -48,18 +48,28 @@ jobs:
           npm version "$version" --no-git-tag-version --allow-same-version
           echo "NOOR_VERSION=$version" >> "$GITHUB_ENV"
           echo "Building Noor $version"
+          # The release's description, in Arabic (CLAUDE.md): what this
+          # build fixes and changes, from its own section of CHANGELOG.md, or
+          # "Unreleased" until the version has one; then how to download.
+          section() { awk -v h="## $1" '$0 == h { on = 1; next } on && /^## / { exit } on' CHANGELOG.md; }
+          changes="$(section "$version")"
+          if [ -z "$(printf '%s' "$changes" | tr -d '[:space:]')" ]; then changes="$(section "Unreleased")"; fi
           {
-            echo "Build $version of commit ${GITHUB_SHA::7}."
+            echo "## نور $version"
             echo
-            echo '```'
-            git log -1 --pretty=%B
-            echo '```'
+            echo "### ما الذي أُصلح وتغيّر في هذه النسخة"
             echo
-            echo "Windows 10/11, 64-bit. The portable .exe runs without installing; the Setup .exe installs. SmartScreen asks once: More info, then Run anyway."
+            if [ -n "$(printf '%s' "$changes" | tr -d '[:space:]')" ]; then printf '%s\n' "$changes"; else git log -1 --pretty=%B; fi
             echo
-            echo "Noor-iPhone-*.exe is Noor iPhone: the same browser, in which every profile is a real iPhone or iPad to the sites it opens (Safari, the device's screen and touch). It keeps its own profiles and data, apart from Noor's."
+            echo "### التحميل"
             echo
-            echo "Noor-Android-*.exe is Noor Android: the same browser, in which every profile is a real Android phone or tablet to the sites it opens (Chrome on Android, the device's screen, touch, model and graphics card). It keeps its own profiles and data too."
+            echo "- **Noor** (متصفح Windows): ملف \`Noor-$version-windows-x64-portable.exe\` يعمل بدون تثبيت، وملف \`Noor-Setup-$version-windows-x64.exe\` يثبّت البرنامج."
+            echo "- **Noor iPhone**: ملفات \`Noor-iPhone-…\`: نفس المتصفح بواجهة iPhone وiPad، وبروفايلاته وبياناته منفصلة عن Noor."
+            echo "- **Noor Android**: ملفات \`Noor-Android-…\`: نفس المتصفح بواجهة هاتف أو تابلت Android، وبروفايلاته وبياناته منفصلة أيضاً."
+            echo
+            echo "يعمل على Windows 10 و11 (64-bit). عند أول تشغيل قد يسأل SmartScreen مرة واحدة: اضغط More info ثم Run anyway."
+            echo
+            echo "الـ commit: \`${GITHUB_SHA::7}\`"
           } > release-notes.md
 
       - name: Build the .exe
