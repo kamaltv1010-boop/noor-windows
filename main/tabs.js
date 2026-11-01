@@ -761,7 +761,15 @@ class Browser {
           }
           this.pushState();
         }
-        this.markShown();
+        // The toolbar, shown now, asks for this computer's fonts (see
+        // main/fonts.js): the pages wait for them the first time.
+        let known = null;
+        try {
+          known = !this.win.isDestroyed() && this.fontsKnown ? this.fontsKnown(this) : null;
+        } catch (error) {
+          known = null;
+        }
+        Promise.resolve(known).then(() => this.markShown(), () => this.markShown());
       });
     });
     this.chrome.webContents.on("did-finish-load", () => this.pushState());

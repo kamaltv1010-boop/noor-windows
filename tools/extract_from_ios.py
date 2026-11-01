@@ -86,6 +86,8 @@ parts = [
     # Chromium-only, written by hand for this app (not in the Swift file).
     ("config.chrome", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "chrome.js").read_text(encoding="utf-8")),
     ("config.languages", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "languages.js").read_text(encoding="utf-8")),
+    # Noor's fonts: Windows' own only (see main/fonts.js).
+    ("config.fonts", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "fonts.js").read_text(encoding="utf-8")),
     # Noor iPhone's (see main/iphone.js), last: it takes away, at its end,
     # what an iPhone lacks.
     ("config.iphone", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "iphone.js").read_text(encoding="utf-8")),

@@ -21,6 +21,7 @@ const { BrowserDebugger } = require("./browser-debugger");
 const { Warmup, FAST } = require("./warmup");
 const { chromeOrder } = require("./headers");
 const { diskQuota: quotaOfDisk, shownQuota } = require("./quota");
+const { FontList } = require("./fonts");
 const { cookieTools } = require("./cookies");
 const iphone = require("./iphone");
 
@@ -208,8 +209,11 @@ const setUpSession = (ses) => {
     ses.setUserAgent(userAgent(), acceptLanguages(app.getLocale()));
   }
   ses.protocol.handle("noor", serveAppPage);
-  ses.setPermissionRequestHandler((webContents, permission, callback, details) => callback(isAllowed(permission, details)));
-  ses.setPermissionCheckHandler((webContents, permission, origin, details) => isAllowed(permission, details));
+  // The app's own pages may list this computer's fonts (see main/fonts.js);
+  // a site may not.
+  const appAsksFonts = (permission, url) => permission === "local-fonts" && /^noor:\/\/app(\/|$)/.test(String(url || ""));
+  ses.setPermissionRequestHandler((webContents, permission, callback, details) => callback(isAllowed(permission, details) || appAsksFonts(permission, details && details.requestingUrl)));
+  ses.setPermissionCheckHandler((webContents, permission, origin, details) => isAllowed(permission, details) || appAsksFonts(permission, origin));
   guardServiceWorkers(ses);
   // A profile's session (not the app's own pages', nor the default one)
   // runs the extensions.
@@ -569,6 +573,11 @@ const configFor = (top, fingerprint = context.fingerprint) => {
     fullVersion: process.versions.chrome,
   };
   config.languages = acceptLanguages(app.getLocale()).split(",");
+  // Fonts: Windows' own only, where the shields are up (see main/fonts.js).
+  const hidden = protections && context.store.get("windowsFontsOnly", true) && context.fonts ? context.fonts.hidden() : null;
+  if (hidden && hidden.shadow.length) {
+    config.fonts = { shadow: hidden.shadow, local: hidden.local };
+  }
   config.mark = LOOKALIKE_MARK;
   config.realmKey = REALM_KEY;
   return config;
@@ -742,6 +751,10 @@ const settingsSnapshot = (browser = windows.current) => ({
   timezoneFromIP: context.timezone.enabled(),
   timezone: context.timezone.current,
   timezoneInfo: context.timezone.info,
+  windowsFontsOnly: context.store.get("windowsFontsOnly", true),
+  // The fonts of this computer's that aren't Windows' own, or null while
+  // they aren't known.
+  fonts: !IPHONE && context.fonts && context.fonts.known ? { hidden: context.fonts.hidden().families } : null,
   extensions: extensions ? extensions.list() : [],
   kinds: browser.fingerprint.kinds,
   protections: Object.fromEntries(browser.fingerprint.kinds.map((kind) => [kind, browser.fingerprint.isEnabled(kind)])),
@@ -838,7 +851,7 @@ const profileFor = (id, event = null) => context.profiles.find(String(id || ""))
 /// session, the one its tabs use.
 const cookies = cookieTools((profile) => session.fromPartition(windows.partitionFor(false, profile)));
 
-const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit", "freshOnClose"]);
+const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit", "freshOnClose", "windowsFontsOnly"]);
 
 const registerIPC = () => {
   ipcMain.on("noor:page-config", (event) => {
@@ -1097,7 +1110,11 @@ app.whenReady().then(async () => {
   const stats = new Stats(store);
   const bookmarks = new Bookmarks(path.join(userData, "bookmarks.json"));
   const timezone = new Timezone(store, { forced: process.env.NOOR_TEST_TIMEZONE || null });
-  context = { store, profiles, fingerprint, shields, stats, bookmarks, timezone, userData };
+  // This computer's fonts (see main/fonts.js); tests give theirs.
+  const fonts = new FontList(path.join(userData, "fonts.json"), {
+    faces: process.env.NOOR_TEST && process.env.NOOR_TEST_FONTS ? JSON.parse(process.env.NOOR_TEST_FONTS) : null,
+  });
+  context = { store, profiles, fingerprint, shields, stats, bookmarks, timezone, userData, fonts };
   extensions = new Extensions({ store, userData });
 
   if (store.get("clearOnQuit", false)) {
@@ -1146,6 +1163,11 @@ app.whenReady().then(async () => {
   await browserDebugger.connect(2500).catch(() => false);
 
   Browser.prototype.workerScript = workerScript;
+  // A window shown asks for this computer's fonts from its toolbar (a page
+  // has to show to be told them; see main/fonts.js); the first run's first
+  // pages wait for them.
+  Browser.prototype.fontsKnown = (browser) => (!IPHONE && context && context.fonts && browser.chrome && !browser.chrome.webContents.isDestroyed()
+    ? context.fonts.whenKnown(browser.chrome.webContents) : null);
   Browser.prototype.tabMade = registerTab;
   Browser.prototype.screenFor = screenFor;
   Browser.prototype.extensions = extensions;

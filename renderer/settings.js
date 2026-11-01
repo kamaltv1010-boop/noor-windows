@@ -226,6 +226,8 @@
     $("newprofilename").placeholder = `Profile ${settings.profiles.length + 1}`;
 
     const isIPhone = settings.device === "iphone";
+    // Noor iPhone shows an iPhone's fonts (scripts/parts/iphone.js).
+    $("fontscard").hidden = isIPhone;
     const protections = $("protections");
     protections.textContent = "";
     for (const kind of settings.kinds || Object.keys(KIND_TITLES)) {
@@ -269,6 +271,12 @@
       $("fingerprintfooter").textContent = "Every profile is one real iPhone to the sites it opens, the same ones as in the iPhone app: Safari's user agent and requests, the iPhone's screen, pixel density and touch, its graphics card, voices and fonts, and what Safari on its iOS version has and lacks, sign-in sites included. Canvas, WebGL and audio values and ClientRects get noise of their own on each site.";
       $("appname").textContent = "Noor iPhone for Windows";
     } else {
+      const fonts = settings.fonts;
+      $("fontsfound").textContent = !fonts
+        ? "Looking at this PC's fonts…"
+        : fonts.hidden.length
+          ? `${fonts.hidden.length} font${fonts.hidden.length === 1 ? "" : "s"} of other programs on this PC: ${fonts.hidden.slice(0, 12).join(", ")}${fonts.hidden.length > 12 ? "…" : ""}`
+          : "This PC has Windows' own fonts only: nothing to hide.";
       values.append(row("Screen size", "", value(`${settings.values.screen.width} × ${settings.values.screen.height}`)));
       values.append(row("Processor & memory", "", value(`${settings.values.hardware.cores} cores · ${settings.values.hardware.memory} GB`)));
       values.append(row("User agent", "", value(settings.values.userAgent)));
