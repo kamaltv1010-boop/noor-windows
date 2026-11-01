@@ -1,7 +1,7 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { Fingerprint, KINDS, SCREENS } = require("../main/fingerprint");
+const { Fingerprint, KINDS, SCREENS, PANELS, screensAt } = require("../main/fingerprint");
 const { Profiles } = require("../main/profiles");
 const { tempStore } = require("./helpers");
 
@@ -32,13 +32,33 @@ test("a new seed changes the screen size and hardware pages see", () => {
   }
 });
 
-test("screens pages see are at least as big as this PC's", () => {
+test("screens pages see are at least as big as this PC's, or this PC's own", () => {
   const { fingerprint } = make();
   for (const screen of fingerprint.screens()) {
     assert.ok(screen.width >= 1920 && screen.height >= 1080);
   }
   fingerprint.realScreen = { width: 5120, height: 2880 };
-  assert.deepEqual(fingerprint.screens(), [SCREENS[SCREENS.length - 1]]);
+  assert.deepEqual(fingerprint.screens(), [{ width: 5120, height: 2880 }]);
+});
+
+test("screens pages see are displays shown at this PC's scale", () => {
+  const { fingerprint } = make();
+  // A laptop at 225% (3000×2000, 1333×889 in CSS pixels): never a wide
+  // screen, whose own pixels at that scale no display has.
+  fingerprint.realScreen = { width: 1333, height: 889 };
+  fingerprint.realScale = 2.25;
+  const seen = fingerprint.screens().map((s) => `${s.width}x${s.height}`);
+  assert.deepEqual(seen, ["1333x889", "1422x889", "1707x960", "1707x1067"]);
+  for (const screen of fingerprint.screens()) {
+    const own = [Math.round(screen.width * 2.25), Math.round(screen.height * 2.25)];
+    assert.ok(PANELS.some((p) => Math.abs(p.width - own[0]) <= 2 && Math.abs(p.height - own[1]) <= 2), own.join("x"));
+  }
+  // At 125%: 1920×1080 is 1536×864.
+  assert.ok(screensAt(1.25).some((s) => s.width === 1536 && s.height === 864));
+  // A scale Windows doesn't offer (110%, set by hand): this PC's own screen.
+  fingerprint.realScreen = { width: 1745, height: 982 };
+  fingerprint.realScale = 1.1;
+  assert.deepEqual(fingerprint.screens(), [{ width: 1745, height: 982 }]);
 });
 
 test("seeds are per profile", () => {

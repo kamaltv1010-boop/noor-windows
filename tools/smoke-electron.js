@@ -213,6 +213,19 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ zone:
     process.on("uncaughtException", (error) => global.__mainErrors.push(String((error && error.message) || error)));
   });
   await open(base);
+  // A page opens a window on its own: blocked, as by Chrome's popup blocker.
+  results.popupWithoutClick = await inTab(`Boolean(window.open(${JSON.stringify(base + "popup")}, "nope", "width=480,height=600"))`);
+  if (results.popupWithoutClick) {
+    console.error("POPUP WITHOUT A CLICK WAS NOT BLOCKED");
+    process.exitCode = 1;
+  }
+  // The user clicks the page, which then opens the sign-in window.
+  await main((electron) => {
+    const wc = global.noorTest.browser.selected.webContents;
+    wc.sendInputEvent({ type: "mouseDown", x: 20, y: 20, button: "left", clickCount: 1 });
+    wc.sendInputEvent({ type: "mouseUp", x: 20, y: 20, button: "left", clickCount: 1 });
+  });
+  await sleep(200);
   const popupOpened = await inTab(`Boolean(window.open(${JSON.stringify(base + "popup")}, "signin", "width=480,height=600"))`);
   await sleep(2000);
   results.popup = await main(async (electron, [target]) => {

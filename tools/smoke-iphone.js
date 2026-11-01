@@ -71,7 +71,9 @@ const check = (name, ok, detail) => {
 (async () => {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const port = server.address().port;
-  const env = { ...process.env, NOOR_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), "noor-iphone-smoke-")), NOOR_DEVICE: "iphone" };
+  // No click can reach the app here, so its page may open a window on its
+  // own (see Tab.opensWindow), to check that window.
+  const env = { ...process.env, NOOR_USER_DATA: fs.mkdtempSync(path.join(os.tmpdir(), "noor-iphone-smoke-")), NOOR_DEVICE: "iphone", NOOR_TEST_OPEN_WINDOWS: "1" };
   delete env.NOOR_TEST;
   const args = [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader"];
   const first = spawn(electronPath, args, { env, stdio: process.env.SMOKE_LOG ? ["ignore", fs.openSync(process.env.SMOKE_LOG, "w"), fs.openSync(process.env.SMOKE_LOG, "a")] : "ignore" });

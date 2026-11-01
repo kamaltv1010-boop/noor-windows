@@ -19,6 +19,7 @@ const { ENGINES, APP_ORIGIN, ERROR_URL, COOKIES_URL, isAppPage, isWebPage } = re
 const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages, userAgentMetadata } = require("./useragent");
 const { BrowserDebugger } = require("./browser-debugger");
 const { Warmup, FAST } = require("./warmup");
+const { chromeOrder } = require("./headers");
 const { cookieTools } = require("./cookies");
 const iphone = require("./iphone");
 
@@ -54,8 +55,11 @@ protocol.registerSchemesAsPrivileged([
 app.userAgentFallback = IPHONE ? iphone.userAgent(iphone.IPHONES[0]) : userAgent();
 app.setAppUserModelId(IPHONE ? "ma.noor.iphone" : "ma.noor.browser");
 // Pages see navigator.webdriver as false, as in Chrome, even under a
-// debugger.
-app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled");
+// debugger. And they don't find what Chrome no longer has but Electron
+// keeps: XSLT (XSLTProcessor) and the ad auctions of the Privacy Sandbox
+// (navigator.joinAdInterestGroup, runAdAuction and the rest), which tell a
+// page that this isn't Chrome.
+app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled,XSLT,AdInterestGroupAPI,Fledge,FledgeBiddingAndAuctionServer");
 /// Chromium's own debugging port, for the workers no tab's debugger reaches
 /// (shared workers, and service workers; see main/browser-debugger.js): one
 /// of its own for each run, on this computer only. A port given, as a
@@ -112,6 +116,30 @@ const serveAppPage = (request) => {
 /// The page a request comes from: the top frame's address, or the tab's,
 /// or for a request a service worker makes (no frame, no tab) the
 /// referrer. Empty when it can't be told.
+/// Whether `url` is of this computer or its own network: localhost, a
+/// loopback, private or link-local address.
+const isLocalAddress = (url) => {
+  let host;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch (error) {
+    return false;
+  }
+  if (host === "localhost" || host.endsWith(".localhost") || host === "0.0.0.0") {
+    return true;
+  }
+  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (v4) {
+    const [a, b] = [Number(v4[1]), Number(v4[2])];
+    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || a === 0;
+  }
+  if (host.startsWith("[") && host.endsWith("]")) {
+    const v6 = host.slice(1, -1);
+    return v6 === "::1" || v6 === "::" || /^f[cd][0-9a-f]{0,2}:/.test(v6) || /^fe[89ab][0-9a-f]?:/.test(v6) || /^::ffff:(127|10|192\.168)\./.test(v6);
+  }
+  return false;
+};
+
 const pageURLOf = (details) => {
   const candidates = [];
   try {
@@ -184,11 +212,19 @@ const setUpSession = (ses) => {
   if (extensions && ses !== session.defaultSession && !isChromeSession(ses)) {
     extensions.attach(ses);
   }
-  ses.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {
+  ses.webRequest.onBeforeRequest({ urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] }, (details, callback) => {
     if (details.resourceType === "mainFrame" || !context) {
       return callback({});
     }
     const page = pageURLOf(details);
+    // A site's page reaching into this computer or its network (127.0.0.1,
+    // a router's 192.168.…): Chrome asks the user first ("local network
+    // access"), Electron doesn't, and a site could look for what runs here
+    // (Noor's debugging port among the rest). Refused, as by a user who
+    // says no; a page of this computer or network may still.
+    if (isLocalAddress(details.url) && isWebPage(page) && !isLocalAddress(page)) {
+      return callback({ cancel: true });
+    }
     // A request that can't be put to a page (a service worker's, say) and
     // the app's own pages (a tab's favicon in the toolbar) aren't blocked:
     // a tracker is a third party on a page.
@@ -241,7 +277,8 @@ const setUpSession = (ses) => {
         headers[name] = formatBrands(fullVersionList());
       }
     }
-    callback({ requestHeaders: headers });
+    // In Chrome's order (see main/headers.js).
+    callback({ requestHeaders: chromeOrder(headers, details.resourceType) });
   });
 };
 
@@ -641,6 +678,7 @@ const settingsSnapshot = (browser = windows.current) => ({
   nightMode: browser.nightMode,
   timezoneFromIP: context.timezone.enabled(),
   timezone: context.timezone.current,
+  timezoneInfo: context.timezone.info,
   extensions: extensions ? extensions.list() : [],
   kinds: browser.fingerprint.kinds,
   protections: Object.fromEntries(browser.fingerprint.kinds.map((kind) => [kind, browser.fingerprint.isEnabled(kind)])),
@@ -798,6 +836,11 @@ const registerIPC = () => {
     bookmarks: context.bookmarks.all(),
   }));
   on("settings:get", (at) => settingsSnapshot(at));
+  // The time zone's address looked at again now (see main/timezone.js).
+  on("timezone:check", async (at) => {
+    await context.timezone.refresh();
+    return settingsSnapshot(at);
+  });
   on("settings:set", (at, event, key, value) => {
     if (SETTING_KEYS.has(key)) {
       context.store.set(key, key === "searchEngine" ? String(value) : Boolean(value));
@@ -976,6 +1019,7 @@ app.whenReady().then(async () => {
   const fingerprint = new Fingerprint(store, profiles, { iphone: IPHONE });
   const display = screen.getPrimaryDisplay();
   fingerprint.realScreen = { width: display.size.width, height: display.size.height };
+  fingerprint.realScale = display.scaleFactor || 1;
   let rules = [];
   try {
     rules = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "rules", "trackers.json"), "utf8"));

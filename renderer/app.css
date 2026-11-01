@@ -112,3 +112,4 @@ html:has(> body.settingsbody) { scrollbar-gutter: stable; }
   .sidebar { display: none; }
   .topbar .brand { width: auto; }
 }
+.row .controls { display: flex; align-items: center; gap: 10px; flex: none; }

@@ -14,11 +14,41 @@ const NOISE_KINDS = ["canvas", "webGL", "audio", "clientRects"];
 /// always on.
 const IPHONE_KINDS = ["canvas", "webGL", "audio", "clientRects", "device"];
 
-/// Common PC screens, in CSS pixels.
+/// Common PC screens, in CSS pixels, as on a screen shown at 100%.
 const SCREENS = [
   [1366, 768], [1440, 900], [1536, 864], [1600, 900], [1680, 1050], [1920, 1080],
   [1920, 1200], [2560, 1080], [2560, 1440], [2560, 1600], [3440, 1440], [3840, 2160],
 ].map(([width, height]) => ({ width, height }));
+
+/// Common PC displays, in their own pixels, and the scales Windows shows
+/// them at (100%, 125%…). A page sees a screen's size in CSS pixels, its
+/// own divided by that scale (the devicePixelRatio, which stays this PC's):
+/// 1920×1080 at 125% is 1536×864. A screen picked at a scale no one shows
+/// it at would make a display no one has (3440×1440 at 225% is 7740×3240).
+const PANELS = [
+  [1366, 768, [1]], [1600, 900, [1, 1.25]], [1920, 1080, [1, 1.25, 1.5]], [1920, 1200, [1, 1.25, 1.5]],
+  [2256, 1504, [1.25, 1.5, 1.75]], [2560, 1080, [1]], [2560, 1440, [1, 1.25, 1.5]], [2560, 1600, [1.25, 1.5, 1.75, 2]],
+  [2736, 1824, [1.75, 2]], [2880, 1800, [1.75, 2]], [2880, 1920, [1.75, 2, 2.25]], [3000, 2000, [2, 2.25]],
+  [3200, 2000, [2, 2.25]], [3440, 1440, [1, 1.25]], [3840, 2160, [1.5, 1.75, 2, 2.25, 2.5]], [3840, 2400, [2, 2.25, 2.5]],
+].map(([width, height, scales]) => ({ width, height, scales }));
+
+/// The screens of the displays shown at `scale`, in CSS pixels, as Chrome
+/// rounds them (2560×1440 at 150% is 1707×960).
+const screensAt = (scale) => {
+  const s = Math.round((Number(scale) > 0 ? Number(scale) : 1) * 100) / 100;
+  const list = [];
+  for (const panel of PANELS) {
+    if (!panel.scales.includes(s)) {
+      continue;
+    }
+    const width = Math.round(panel.width / s);
+    const height = Math.round(panel.height / s);
+    if (!list.some((screen) => screen.width === width && screen.height === height)) {
+      list.push({ width, height });
+    }
+  }
+  return list;
+};
 
 /// Core counts common on PCs. Chrome reports memory as 8 GB at most, so
 /// that is what every choice shows.
@@ -31,8 +61,10 @@ class Fingerprint {
     this.iphoneMode = Boolean(iphone);
     /// The kinds this build has (Noor iPhone's, or Noor's).
     this.kinds = this.iphoneMode ? IPHONE_KINDS : KINDS;
-    /// This PC's screen in CSS pixels, set at launch.
+    /// This PC's screen in CSS pixels, and the scale Windows shows it at
+    /// (devicePixelRatio), set at launch.
     this.realScreen = { width: 0, height: 0 };
+    this.realScale = 1;
   }
 
   enabledKey(kind) {
@@ -110,11 +142,16 @@ class Fingerprint {
     return this.pick(this.seed("device"), IPHONES);
   }
 
-  /// The screens pages may see: those at least as big as this PC's, since
-  /// a window bigger than the screen happens on no real PC.
+  /// The screens pages may see: displays shown at this PC's scale (see
+  /// PANELS), at least as big as this PC's screen, since a window bigger
+  /// than the screen happens on no real PC; this PC's own if none is.
   screens() {
-    const fitting = SCREENS.filter((s) => s.width >= this.realScreen.width && s.height >= this.realScreen.height);
-    return fitting.length ? fitting : [SCREENS[SCREENS.length - 1]];
+    const real = { width: this.realScreen.width, height: this.realScreen.height };
+    const fitting = screensAt(this.realScale).filter((s) => s.width >= real.width && s.height >= real.height);
+    if (fitting.length) {
+      return fitting;
+    }
+    return real.width > 0 && real.height > 0 ? [real] : [SCREENS[SCREENS.length - 1]];
   }
 
   pick(seed, list) {
@@ -189,4 +226,4 @@ class Fingerprint {
   }
 }
 
-module.exports = { Fingerprint, KINDS, IPHONE_KINDS, NOISE_KINDS, SCREENS, HARDWARE };
+module.exports = { Fingerprint, KINDS, IPHONE_KINDS, NOISE_KINDS, SCREENS, PANELS, screensAt, HARDWARE };

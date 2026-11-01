@@ -169,7 +169,8 @@ const callLater = (callback, value) => {
 // "default"), and asking leaves them so.
 {
   const ASKS = new Set(["notifications", "push", "camera", "microphone", "geolocation", "clipboard-read", "display-capture",
-    "idle-detection", "local-fonts", "midi", "persistent-storage", "window-management", "captured-surface-control", "storage-access"]);
+    "idle-detection", "local-fonts", "midi", "persistent-storage", "window-management", "captured-surface-control", "storage-access",
+    "local-network-access", "local-network", "loopback-network"]);
   // A status names some permissions as Chromium does inside
   // ("video_capture" for the camera…).
   const INNER = { video_capture: "camera", audio_capture: "microphone", durable_storage: "persistent-storage" };

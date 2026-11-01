@@ -13,6 +13,12 @@ const CHROME_PARTITION = "persist:noor-chrome";
 const CHROME_URL = "noor://app/chrome.html";
 /// The window's menus, drawn over it (see Browser.showMenu).
 const MENU_URL = "noor://app/menu.html";
+/// The isolated world a tab reads its page's canonical link in.
+const CANONICAL_WORLD = 1009;
+/// What the user does that lets a page open a window (Chrome's "user
+/// activation"), and for how long after.
+const ACTIVATING_INPUTS = new Set(["mouseDown", "mouseUp", "rawKeyDown", "keyDown", "touchEnd", "gestureTap"]);
+const ACTIVATION_MS = 5000;
 /// The tab strip and the toolbar, in CSS pixels.
 const CHROME_HEIGHT = 86;
 /// The room Noor iPhone leaves around the iPhone's page, and the shortest
@@ -368,7 +374,31 @@ class Tab {
         this.browser.chrome.webContents.send("noor:found", { activeMatchOrdinal: result.activeMatchOrdinal, matches: result.matches });
       }
     });
+    // The last time the user acted on the page (a click, a key, a touch):
+    // a page opens a window only just after one (see opensWindow).
+    this.activatedAt = 0;
+    wc.on("input-event", (event, input) => {
+      if (input && ACTIVATING_INPUTS.has(input.type)) {
+        this.activatedAt = Date.now();
+      }
+    });
     wc.setWindowOpenHandler((details) => this.browser.openWindow(this, details));
+  }
+
+  /// Whether the page may open a window now, as Chrome's popup blocker
+  /// lets it: within a few seconds of the user's click, key or touch, one
+  /// window for each (the act is used up), never by itself.
+  opensWindow() {
+    // A test that runs the app with no way to click (tools/smoke-iphone.js)
+    // lets its page open windows.
+    if (process.env.NOOR_TEST_OPEN_WINDOWS) {
+      return true;
+    }
+    if (Date.now() - this.activatedAt > ACTIVATION_MS) {
+      return false;
+    }
+    this.activatedAt = 0;
+    return true;
   }
 
   changed() {
@@ -384,7 +414,9 @@ class Tab {
       return;
     }
     const code = "(() => { const link = document.querySelector('link[rel=\"canonical\"]'); return link && link.href ? String(link.href) : \"\"; })()";
-    this.webContents.executeJavaScript(code, true).then((href) => {
+    // In a world of its own: a page can't see it (a call of the page's
+    // querySelector it watches would show a script not its own).
+    this.webContents.executeJavaScriptInIsolatedWorld(CANONICAL_WORLD, [{ code }], false).then((href) => {
       this.canonicalURL = isWebPage(href) && sameSite(href, this.url) ? href : null;
       this.changed();
     }).catch(() => {
@@ -409,6 +441,25 @@ class Tab {
   /// Opens a page, over https:// and without tracking codes when the
   /// shields say so; `referrer`: the page a link to it was on.
   load(url, { referrer = null } = {}) {
+    // A page loads once its window is on the screen: before, it would read
+    // a window of no size (outerWidth and outerHeight 0), as in a headless
+    // browser.
+    if (!this.background && this.browser && !this.browser.onScreen) {
+      this.url = url;
+      this.waitingLoad = { url, referrer };
+      if (!this.waitingForWindow) {
+        this.waitingForWindow = true;
+        Promise.resolve(this.browser.shown).then(() => {
+          this.waitingForWindow = false;
+          const next = this.waitingLoad;
+          this.waitingLoad = null;
+          if (next && !this.closing && !this.webContents.isDestroyed()) {
+            this.load(next.url, { referrer: next.referrer });
+          }
+        });
+      }
+      return;
+    }
     this.deferredURL = null;
     this.needsReload = false;
     const target = this.browser.rewrite(url, this) || url;
@@ -576,9 +627,14 @@ class Browser {
     /// Settled once the taskbar shows this window as its profile's (see
     /// Windows.dress): the window shows then.
     this.dressing = null;
+    /// Whether the window is on the screen yet (see Tab.load).
+    this.onScreen = false;
     /// Settled once the window shows.
     this.shown = new Promise((resolve) => {
-      this.markShown = resolve;
+      this.markShown = () => {
+        this.onScreen = true;
+        resolve();
+      };
     });
     /// The menu open (see showMenu): what it is made from, where its button
     /// is, and what its items do.
@@ -900,8 +956,11 @@ class Browser {
     }
     // Where the shown tab is, under it, so no edge of one shows; another
     // profile's iPhone keeps the page area of its own (see Tab.emulate).
-    for (const tab of this.backgroundTabs) {
-      tab.view.setBounds(shown || area);
+    // The tabs out of sight have the shown one's size, as in Chrome.
+    for (const tab of this.backgroundTabs.concat(this.allTabs)) {
+      if (tab !== this.selected && (tab.background || tab.attached)) {
+        tab.view.setBounds(shown || area);
+      }
     }
   }
 
@@ -1031,6 +1090,36 @@ class Browser {
     const list = tab.isPrivate ? this.privateTabs : this.tabs;
     const index = after ? list.indexOf(after) + 1 : list.length;
     list.splice(index > 0 ? index : list.length, 0, tab);
+    this.attach(tab);
+  }
+
+  /// Keeps a tab's page in the window, out of sight unless it is the one
+  /// shown, as Chrome keeps its tabs: a page in no window has no window to
+  /// read, its window.outerWidth and outerHeight 0, as in a headless
+  /// browser, where a page in a tab of Chrome's in the background reads its
+  /// window's (and is hidden, as here).
+  attach(tab) {
+    if (tab.attached || !this.win || this.win.isDestroyed() || tab.webContents.isDestroyed()) {
+      return;
+    }
+    tab.view.setVisible(tab === this.selected);
+    this.win.contentView.addChildView(tab.view, 0);
+    tab.attached = true;
+    this.layout();
+  }
+
+  detach(tab) {
+    if (!tab.attached) {
+      return;
+    }
+    tab.attached = false;
+    try {
+      if (this.win && !this.win.isDestroyed()) {
+        this.win.contentView.removeChildView(tab.view);
+      }
+    } catch (error) {
+      // The window is going.
+    }
   }
 
   /// A window a page opens (window.open, a link to a new tab) becomes a
@@ -1043,6 +1132,11 @@ class Browser {
   openWindow(opener, details) {
     const { url, disposition } = details;
     if (disposition !== "new-window" && disposition !== "foreground-tab" && disposition !== "background-tab") {
+      return { action: "deny" };
+    }
+    // A window the page opens by itself is blocked, as in Chrome: the
+    // page's window.open gets null.
+    if (!opener.opensWindow()) {
       return { action: "deny" };
     }
     // The page's session is the opener's.
@@ -1109,10 +1203,14 @@ class Browser {
     // otherwise cover.
     this.hideMenu();
     if (this.selected && !this.selected.webContents.isDestroyed()) {
-      this.win.contentView.removeChildView(this.selected.view);
+      // Out of sight, in the window still (see attach).
+      this.selected.view.setVisible(false);
     }
     this.selected = tab;
+    tab.view.setVisible(true);
+    // On top of the others, where it was or not.
     this.win.contentView.addChildView(tab.view);
+    tab.attached = true;
     this.layout();
     tab.loadIfNeeded();
     tab.webContents.focus();
@@ -1136,14 +1234,14 @@ class Browser {
       return;
     }
     const wasSelected = this.selected === tab;
+    this.detach(tab);
     if (!tab.isPrivate && this.tabs.length === 0) {
       // There is always a normal tab.
       const blank = new Tab(this, { isPrivate: false, partition: this.partitionFor(false) });
-      this.tabs.push(blank);
+      this.insert(blank, null);
       blank.load(this.startURL(false));
     }
     if (wasSelected) {
-      this.win.contentView.removeChildView(tab.view);
       this.selected = null;
       let next = null;
       if (tab.opener && list.includes(tab.opener)) {
@@ -1174,11 +1272,9 @@ class Browser {
 
   /// Closes every tab, without opening a new one.
   destroyTabs() {
-    if (this.selected) {
-      this.win.contentView.removeChildView(this.selected.view);
-      this.selected = null;
-    }
+    this.selected = null;
     for (const tab of this.allTabs) {
+      this.detach(tab);
       tab.close();
     }
     this.tabs = [];
@@ -1222,13 +1318,13 @@ class Browser {
       tab.deferredURL = entry.url;
       tab.url = entry.url;
       tab.title = entry.title || "";
-      this.tabs.push(tab);
+      this.insert(tab, null);
     }
     if (this.tabs.length === 0) {
       const blank = new Tab(this, { isPrivate: false, partition: this.partitionFor(false) });
       blank.deferredURL = this.startURL(false);
       blank.url = blank.deferredURL;
-      this.tabs.push(blank);
+      this.insert(blank, null);
     }
     const index = this.store.get(this.profiles.key("selectedTab", this.profile), this.tabs.length - 1);
     this.select(this.tabs[Math.max(0, Math.min(Number(index) || 0, this.tabs.length - 1))]);

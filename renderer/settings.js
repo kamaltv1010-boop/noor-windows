@@ -325,9 +325,32 @@
         ? `Pages see ${settings.timezone}, the time zone where your connection is (a VPN's, when one is on), as a visitor from there would.`
         : "Pages see the time zone where your connection is (a VPN's, when one is on). It couldn't be found yet; pages see this PC's for now.")
       : "Pages see this PC's time zone. On, they see the one where your connection is (a VPN's, when one is on).";
+    // What was found: the address sites see, its country and its zone.
+    const found = settings.timezoneInfo || {};
+    let country = found.country || "";
+    try {
+      if (country) country = new Intl.DisplayNames(["en"], { type: "region" }).of(country) || country;
+    } catch (error) {
+      // The code as it is.
+    }
+    const when = found.checkedAt ? new Date(found.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "";
+    $("timezonefound").textContent = found.ip
+      ? `Your IP address: ${found.ip}${country ? ` (${country})` : ""} · its time zone: ${found.found || "not found yet"}${when ? ` · checked at ${when}` : ""}. A VPN turned on or off is seen within half a minute.`
+      : "Your IP address hasn't been read yet.";
+    $("timezonecheck").hidden = !settings.timezoneFromIP;
     $("version").textContent = settings.version;
     $("chromium").textContent = `${settings.chromium} (Electron ${settings.electron})`;
   };
+
+  $("timezonecheck").addEventListener("click", () => {
+    const check = $("timezonecheck");
+    check.disabled = true;
+    check.textContent = "Checking…";
+    noor.invoke("timezone:check").then(apply).finally(() => {
+      check.disabled = false;
+      check.textContent = "Check Now";
+    });
+  });
 
   for (const box of document.querySelectorAll("input[data-setting]")) {
     box.addEventListener("change", () => noor.invoke("settings:set", box.dataset.setting, box.checked).then(apply));
