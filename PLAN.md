@@ -70,9 +70,13 @@ PROGRESS.md.
    (cookies: encrypted on the disk since the Electron fuses, see
    PROGRESS.md); no way into the app's main process for another program;
    the debugging port only on 127.0.0.1, random, and refused to web
-   pages (checked); still open to any program on the PC, other Windows
-   accounts' too: a pipe instead of the port, once Windows can be tested
-   in CI.
+   pages (checked on Linux and, built and from the code, on Windows: CI
+   run 41356355550, `debug-port` and `debug-port-dev`). Still open to any
+   program on the PC (a known limit, see PROGRESS.md). A pipe instead of
+   the port can't be set up from inside the app: tried on Windows, the
+   app's script got descriptors 5 and 6, and Chromium reads 3 and 4. Left
+   for later: a small launcher that starts Noor with the pipes as 3 and 4
+   (as Playwright starts Chromium on Windows).
 9. Dependencies: Electron/Chromium security releases, `npm audit`.
 10. Memory and speed: the page script in every frame, background cookie
     collection, closed tabs and windows.
