@@ -226,13 +226,16 @@
     addGetter(navigatorProto, "contacts", () => contacts || (contacts = Object.create(Contacts.prototype)));
   }
 
-  // WebGL: the device's graphics card as Chrome on it tells it (once the
-  // page asked for WEBGL_debug_renderer_info, as Chrome wants), its limits
-  // (or this card's where it allows less, so a page that goes by them
-  // still draws), and no texture formats only a PC's cards read.
-  {
+  // WebGL: the graphics card of the device's processor as Chrome on it
+  // tells it (once the page asked for WEBGL_debug_renderer_info, as Chrome
+  // wants), its limits (or this card's where it allows less, so a page that
+  // goes by them still draws), and no texture formats only a PC's cards
+  // read. WebGPU: the same card's maker and family. All of it unless the
+  // profile's WebGL Vendor & Renderer is off: then this PC's own card.
+  if (device.graphics) {
+    const graphics = device.graphics;
     const PC_ONLY = new Set(["webgl_compressed_texture_s3tc", "webgl_compressed_texture_s3tc_srgb", "ext_texture_compression_bptc", "ext_texture_compression_rgtc"]);
-    const mali = device.gpuVendor === "ARM";
+    const mali = graphics.family === "mali";
     const LIMITS = mali
       ? { 0x0D33: 8192, 0x851C: 8192, 0x84E8: 8192, 0x8869: 16, 0x8DFB: 256, 0x8DFD: 256, 0x8DFC: 15, 0x8872: 16, 0x8B4C: 16, 0x8B4D: 32 }
       : { 0x0D33: 16384, 0x851C: 16384, 0x84E8: 16384, 0x8869: 32, 0x8DFB: 256, 0x8DFD: 256, 0x8DFC: 31, 0x8872: 16, 0x8B4C: 16, 0x8B4D: 32 };
@@ -258,8 +261,8 @@
         if (!arguments.length) return original.apply(this, arguments);
         const value = original.apply(this, arguments);
         const p = +pname;
-        if (p === 0x9245) return value === null || !debugInfo.has(this) ? value : device.gpuVendor;
-        if (p === 0x9246) return value === null || !debugInfo.has(this) ? value : device.gpu;
+        if (p === 0x9245) return value === null || !debugInfo.has(this) ? value : graphics.vendor;
+        if (p === 0x9246) return value === null || !debugInfo.has(this) ? value : graphics.renderer;
         if (p === 0x0D3A && value && typeof value.length === "number") return new window.Int32Array([min(value[0], VIEWPORT), min(value[1], VIEWPORT)]);
         if (p === 0x846D && value && typeof value.length === "number") return new window.Float32Array([1, min(value[1], POINTS)]);
         const limit = LIMITS[p];
@@ -269,6 +272,18 @@
     };
     patch(window.WebGLRenderingContext);
     patch(window.WebGL2RenderingContext);
+
+    // WebGPU (an adapter's info, and a device's): the card's maker and
+    // family, no model or description (as Chrome tells neither), and the
+    // width its subgroups run at.
+    const Info = window.GPUAdapterInfo;
+    const infoProto = Info && Info.prototype;
+    if (infoProto) {
+      const told = { vendor: graphics.webgpu.vendor, architecture: graphics.webgpu.architecture, device: "", description: "", subgroupMinSize: graphics.webgpu.subgroupMinSize, subgroupMaxSize: graphics.webgpu.subgroupMaxSize };
+      // (The browser's getter still runs first, and refuses what isn't
+      // an adapter's info.)
+      for (const name of Object.keys(told)) regetter(infoProto, name, () => told[name]);
+    }
   }
 
   // Voices: Chrome on Android lists one for each language and country the
@@ -362,22 +377,30 @@
     }
   }
 
-  // Fonts: Android's, not this PC's (see scripts/parts/android-fonts.js).
-  // Each page gets a face of its own for every font of ANDROID_FONTS: a
-  // Windows font's covers no character, so text asked in it falls through
-  // to the next font, as where it isn't installed; an Android font's draws
-  // the text with a font of this PC's much like it. A font asked for by
-  // name (FontFace's local()) is looked for the same way, and these faces
-  // are left out of what the page's own font list shows.
+  // Fonts: Android's, not this PC's (see scripts/parts/android-fonts.js),
+  // with the Noto fonts the profile's Android has (device.fonts: those it
+  // has, and those it lacks, see main/android.js). Each page gets a face of
+  // its own for every one: a Windows font's, or a missing Noto font's,
+  // covers no character, so text asked in it falls through to the next
+  // font, as where it isn't installed; an Android font's draws the text
+  // with a font of this PC's much like it. A font asked for by name
+  // (FontFace's local()) is looked for the same way, and these faces are
+  // left out of what the page's own font list shows.
   {
-    const blocked = new Set(ANDROID_FONTS.block.map((name) => name.toLowerCase()));
-    const added = new Map(Object.entries(ANDROID_FONTS.add).map(([name, local]) => [name.toLowerCase(), local]));
+    const profileFonts = device.fonts || { add: [], block: [] };
+    const blockedNames = ANDROID_FONTS.block.concat(profileFonts.block);
+    const addedFonts = Object.entries(ANDROID_FONTS.add).concat(profileFonts.add);
+    const blocked = new Set(blockedNames.map((name) => name.toLowerCase()));
+    const added = new Map(addedFonts.map(([name, local]) => [name.toLowerCase(), local]));
+    // A font's family: its name, or the longest family it is a face of
+    // ("Noto Sans Thai Bold" is Noto Sans Thai's, not Noto Sans's).
     const familyOf = (name) => {
       const lower = name.toLowerCase();
       if (blocked.has(lower) || added.has(lower)) return lower;
-      for (const family of added.keys()) if (lower.indexOf(family + " ") === 0) return family;
-      for (const family of blocked) if (lower.indexOf(family + " ") === 0) return family;
-      return null;
+      let found = null;
+      for (const family of added.keys()) if (lower.indexOf(family + " ") === 0 && (!found || family.length > found.length)) found = family;
+      for (const family of blocked) if (lower.indexOf(family + " ") === 0 && (!found || family.length > found.length)) found = family;
+      return found;
     };
     const missing = "Noor No Such Font " + String(config.mark || "").slice(0, 6);
     const FALLBACK = ["Arial", "Liberation Sans", "DejaVu Sans"];
@@ -407,8 +430,8 @@
           if (loading && typeof loading.catch === "function") loading.catch(() => {});
         } catch (e) {}
       };
-      for (const name of ANDROID_FONTS.block) face(name, "Arial", "U+10FFFF");
-      for (const name of Object.keys(ANDROID_FONTS.add)) face(name, ANDROID_FONTS.add[name], "U+0-10FFFE");
+      for (const name of blockedNames) face(name, "Arial", "U+10FFFF");
+      for (const [name, local] of addedFonts) face(name, local, "U+0-10FFFE");
 
       const FontFace = {
         FontFace: function (family, source) {

@@ -9,6 +9,7 @@
     hardware: ["Processor & Memory", "Sites see another common core count."],
     fonts: ["Fonts", "Sites find the fonts every Windows has and others of this profile's own (Office's, Adobe Acrobat's, a language's…), so each profile has a list of its own, as PCs with different programs do. The other fonts of this PC are hidden."],
     device: ["iPhone", "The iPhone this profile is to every site: its screen, touch, Safari and iOS version."],
+    gpu: ["WebGL Vendor & Renderer", "Sites see the graphics card of the phone's own processor, the one it came out with, in WebGL and WebGPU. Off, they see this PC's own card, which no phone has."],
   };
   // Noor iPhone and Noor Android: a profile is a device of one of the
   // build's kinds.
@@ -19,6 +20,10 @@
     tablet: ["Tablet", "The Android tablet this profile is to every site, held sideways, in Chrome: its screen, touch, model, Android version, graphics card and memory."],
   };
   const ARTICLE = { iphone: "An iPhone", ipad: "An iPad", phone: "A phone", tablet: "A tablet" };
+  // Noor Android: its fonts are Android's.
+  const ANDROID_HINTS = {
+    fonts: "Sites find Android's fonts, not this PC's (Roboto, Noto, Droid…), and of Android's Noto fonts for other writing systems, a pick of this profile's own, so each profile has a list of its own, as Androids of different makers and versions do. Off: all of them, as on a plain Android.",
+  };
   // Noor iPhone: the noise is on at first, as in the iPhone app.
   const IPHONE_HINTS = {
     audio: "Sound processing gets noise, so a site can't follow this profile to another.",
@@ -266,7 +271,7 @@
     protections.textContent = "";
     for (const kind of settings.kinds || Object.keys(KIND_TITLES)) {
       const [title, plainHint] = KIND_TITLES[kind];
-      const hint = (isDevice && IPHONE_HINTS[kind]) || plainHint;
+      const hint = (settings.device === "android" && ANDROID_HINTS[kind]) || (isDevice && IPHONE_HINTS[kind]) || plainHint;
       if (kind === "device") {
         // The device can't be off: only changed, for another of its kind,
         // or for one of the other kind.
@@ -294,6 +299,22 @@
       controls.style.display = "flex";
       controls.style.alignItems = "center";
       controls.style.gap = "10px";
+      if (kind === "gpu") {
+        // Noor Android: the graphics card comes with the device's processor,
+        // so there is nothing to make new here, only a switch.
+        const device = settings.values.iphone;
+        const what = device.family === "tablet" ? "tablet" : "phone";
+        const box = document.createElement("input");
+        box.type = "checkbox";
+        box.checked = Boolean(settings.protections[kind]);
+        box.addEventListener("change", () => noor.invoke("settings:set", "protection." + kind, box.checked).then(apply));
+        controls.append(box);
+        const said = settings.protections[kind]
+          ? `Sites see the graphics card of this ${what}'s own processor, the ${device.soc}: ${device.gpu}, in WebGL and WebGPU, as Chrome on it tells it (below). Off, they see this PC's own card, which no ${what} has.`
+          : `Off: sites see this PC's own graphics card, which no ${what} has. On, they see the one of this ${what}'s own processor, the ${device.soc}: ${device.gpu}.`;
+        protections.append(row(title, said, controls));
+        continue;
+      }
       const renew = button("New", "secondary", () => noor.invoke("fingerprint:new", [kind]).then(apply));
       renew.title = `New ${title} fingerprint`;
       renew.disabled = !settings.protections[kind];
@@ -318,11 +339,15 @@
       const tablet = device.family === "tablet";
       values.append(row(tablet ? "Tablet" : "Phone", `Model ${device.model}.`, value(`${device.name} · Android ${device.android}`)));
       values.append(row("Screen size", tablet ? `Held sideways: the page is ${device.pageWidth} × ${device.pageHeight}.` : `The page is ${device.pageWidth} × ${device.pageHeight}.`, value(`${device.width} × ${device.height} · ×${device.scale}`)));
-      values.append(row("Graphics card", "", value(device.gpu)));
-      values.append(row("Processor & memory", "", value(`${device.cores} cores · ${device.memory} GB`)));
+      values.append(row("Processor", `${device.cores} cores, ${device.memory} GB of memory as Chrome tells it.`, value(device.soc)));
+      const ownCard = settings.protections.gpu === false;
+      values.append(row("WebGL Vendor", ownCard ? "WebGL Vendor & Renderer is off." : "", value(ownCard ? "This PC's own" : device.graphics.vendor)));
+      values.append(row("WebGL Renderer", ownCard ? "WebGL Vendor & Renderer is off." : `The graphics of the ${device.soc}.`, value(ownCard ? "This PC's own" : device.graphics.renderer)));
+      const noto = settings.values.notoFonts || [];
+      values.append(row("Fonts", `Android's own, and of its Noto fonts for other writing systems: ${noto.join(", ")}.`, value(`Android's · ${noto.length} Noto`)));
       values.append(row("User agent", "", value(settings.values.userAgent)));
       values.append(row("Languages", "", value(settings.values.language)));
-      $("fingerprintfooter").textContent = "Every profile is one real Android phone or tablet to the sites it opens, in Chrome: Chrome on Android's user agent and client hints (Android and its version, the model), the device's screen, pixel density and touch, its graphics card, memory, voices and fonts, and what Chrome on Android has and lacks, sign-in sites included. Canvas, WebGL and audio values and ClientRects get noise of their own on each site.";
+      $("fingerprintfooter").textContent = "Every profile is one real Android phone or tablet to the sites it opens, in Chrome: Chrome on Android's user agent and client hints (Android and its version, the model), the device's screen, pixel density and touch, its processor and the graphics card it came out with, its memory, voices and fonts, and what Chrome on Android has and lacks, sign-in sites included. Canvas, WebGL and audio values and ClientRects get noise of their own on each site.";
       $("appname").textContent = "Noor Android for Windows";
     } else if (isDevice) {
       const iphone = settings.values.iphone;

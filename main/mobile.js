@@ -46,6 +46,16 @@ const firstDevice = (which = build()) => devicesOf(familiesOf(which)[0])[0] || n
 const kindName = (family) => (KINDS[family] ? KINDS[family].name : String(family));
 const kindPlural = (family) => (KINDS[family] ? KINDS[family].plural : String(family));
 
+/// Noor Android: the Noto fonts a profile's Android has, from its fonts
+/// seed (see main/android.js).
+const androidFonts = (seed) => android.fontsOf(seed);
+
+/// The version of a build's device lists (Noor Android's grew after a
+/// release; Noor iPhone's lists only ever grew a kind, so it has none),
+/// and the name of the device a seed picked from an older one.
+const catalogVersion = (which = build()) => (which === "android" ? android.CATALOG : null);
+const legacyDeviceName = (which, family, seed, version) => (which === "android" ? android.legacyDeviceName(family, seed, version) : null);
+
 module.exports = {
-  build, KINDS, familiesOf, devicesOf, platformOf, userAgent, deviceMetrics, pageConfig, product, appId, firstDevice, kindName, kindPlural,
+  build, KINDS, familiesOf, devicesOf, platformOf, userAgent, deviceMetrics, pageConfig, product, appId, firstDevice, kindName, kindPlural, androidFonts, catalogVersion, legacyDeviceName,
 };

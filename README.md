@@ -54,14 +54,24 @@
 
 نسخة ثالثة من نفس المتصفح، كتخدم على Windows، ولكن **كل بروفايل كيبان للمواقع بحال تيليفون ولا تابليت Android حقيقي فيه Chrome**. فيها كاع الحوايج ديال Noor iPhone: البروفايلات، كل بروفايل فنافذة ديالو، جمع الكوكيز (بالصبع)، الحماية، الإعدادات…
 
-- **تيليفون ولا تابليت لكل بروفايل**: فالإعدادات › Profiles › **New profiles are** كتختار **Phones** ولا **Tablets** للبروفايلات الجداد (واحد، بزاف دفعة وحدة، ولا اللي كيتصاوب فبلاصة واحد تسد)، و**This profile is** كيبدّل البروفايل ديال النافذة. واحد من 15 تيليفون (Samsung Galaxy S22/S23/S24/A52/A53، Google Pixel 6a/7/7a/8/8 Pro/9، Xiaomi Redmi Note 12/13، OnePlus 11) ولا 8 تابليت (Galaxy Tab S9/S8/A8/S6 Lite، Pixel Tablet، Lenovo Tab P11، Xiaomi Pad 6، Redmi Pad SE)، من Android 13 حتى 15. التيليفون واقف، والتابليت مقلوب على الجنب، والنافذة قد الجهاز.
-- **بحال Chrome على Android**: الـ user agent ديال Chrome على Android (`Android 10; K`، و`Mobile` غير فالتيليفون)، والـ client hints ديالو فكل طلب وفـ `navigator.userAgentData`: `Android`، النسخة ديال Android، **الموديل** (مثلا `SM-S911B`، `Pixel 7`)، تيليفون ولا تابليت. الشاشة، الدقة (×2.625، ×3…)، اللمس (5 ولا 10 صوابع)، `navigator.platform` (`Linux aarch64` ولا `Linux armv8l`)، الذاكرة والـ cores، الكارت ديال الـ GPU فـ WebGL (`Adreno (TM) 740`، `Mali-G710`…)، بلا plugins ولا PDF، الشبكة (`wifi`)، البطارية ديال تيليفون (مستوى ديالو لكل بروفايل)، `navigator.contacts`، الأصوات ديال Android، والخطوط ديال Android (Roboto، Noto، Droid…) والخطوط ديال Windows مخبيين. والحوايج اللي ما عندهاش Chrome على Android محيدين (Web HID، الـ screen capture، Picture-in-Picture ديال الصفحة…). كلشي هادا حتى فالـ frames، فالـ workers، وفالنوافذ اللي كتحل الصفحة.
+- **تيليفون ولا تابليت لكل بروفايل**: فالإعدادات › Profiles › **New profiles are** كتختار **Phones** ولا **Tablets** للبروفايلات الجداد (واحد، بزاف دفعة وحدة، ولا اللي كيتصاوب فبلاصة واحد تسد)، و**This profile is** كيبدّل البروفايل ديال النافذة. واحد من 40 تيليفون ولا 8 تابليت، من Android 13 حتى 15:
+  - **Samsung (18)**: Galaxy S25، S24 Ultra، S24، S23، S23 Ultra، S22، A54، A35، A34، A53، A52، A25، A24، A16 5G، A15 5G، A15، A14، A05s
+  - **Google (9)**: Pixel 9، 8 Pro، 8، 8a، 7 Pro، 7، 7a، 6، 6a
+  - **Xiaomi (9)**: Redmi Note 13 Pro، Note 13 5G، Note 13، Note 12 Pro 5G، Note 12، Redmi 13C، Redmi 12، POCO F5، POCO X5 Pro 5G
+  - **OnePlus (3)**: OnePlus 12، OnePlus 11، Nord CE 3 Lite 5G · **Nothing (1)**: Phone (2)
+  - **التابليتات (8)**: Galaxy Tab S9، Tab S8، Tab A9+، Tab S6 Lite، Pixel Tablet، Lenovo Tab P11 (2nd Gen)، Xiaomi Pad 6، Redmi Pad SE
+
+   التيليفون واقف، والتابليت مقلوب على الجنب، والنافذة قد الجهاز.
+- **البروسيسور والكارت ديال الرسم ديال كل جهاز**: كل تيليفون عندو البروسيسور اللي خرج معاه (Snapdragon، Exynos، Google Tensor، Helio، Dimensity)، بعدد الـ cores ديالو (`navigator.hardwareConcurrency`: مثلا 9 فـ Tensor G3)، والكارت ديال الرسم ديالو. المواقع كتشوفو فـ WebGL بحال ما كيعطيه Chrome على Android (عبر ANGLE): **WebGL Vendor** `Google Inc. (Qualcomm)` و**WebGL Renderer** `ANGLE (Qualcomm, Adreno (TM) 740, OpenGL ES 3.2)`، ولا `ANGLE (ARM, Mali-G57 MC2, OpenGL ES 3.2)` فـ Helio G99… وفـ WebGPU السمية ديال الشركة والعائلة (`qualcomm` · `adreno-7xx`، `arm` · `valhall`). فالإعدادات › Fingerprint protection كاين الخيار **WebGL Vendor & Renderer**: شاعل من الأول؛ إلا طفيتيه، المواقع كتشوف الكارت ديال الـ PC (ماشي مزيان لتيليفون).
+- **الخطوط ديال Android لكل بروفايل**: الخيار **Fonts** (مع **New**): المواقع كتلقى الخطوط ديال Android (Roboto، Noto، Droid…)، ومن الخطوط Noto ديال Android للغات أخرى (العربية، تيفيناغ، الصينية، الهندية…) كل بروفايل عندو مجموعة ديالو، باش تكون بصمة الخطوط مختلفة من بروفايل لآخر. **New** كيعطي مجموعة جديدة. إلا طفيتيه، كاع الخطوط Noto كيبانو، بحال Android عادي.
+- **بحال Chrome على Android**: الـ user agent ديال Chrome على Android (`Android 10; K`، و`Mobile` غير فالتيليفون)، والـ client hints ديالو فكل طلب وفـ `navigator.userAgentData`: `Android`، النسخة ديال Android، **الموديل** (مثلا `SM-S911B`، `Pixel 7`)، تيليفون ولا تابليت. الشاشة، الدقة (×2.625، ×3…)، اللمس (5 ولا 10 صوابع)، `navigator.platform` (`Linux aarch64` ولا `Linux armv8l`)، الذاكرة والـ cores ديال البروسيسور، الكارت ديال الرسم فـ WebGL وWebGPU، بلا plugins ولا PDF، الشبكة (`wifi`)، البطارية ديال تيليفون (مستوى ديالو لكل بروفايل)، `navigator.contacts`، الأصوات ديال Android، والخطوط ديال Android (Roboto، Noto، Droid…) والخطوط ديال Windows مخبيين. والحوايج اللي ما عندهاش Chrome على Android محيدين (Web HID، الـ screen capture، Picture-in-Picture ديال الصفحة…). كلشي هادا حتى فالـ frames، فالـ workers، وفالنوافذ اللي كتحل الصفحة.
 - **نفس المحرك**: Chrome على Android هو Chromium حتى هو، فالمحرك، الاتصالات (TLS) والـ headers كيبانو للموقع بحال ديال Chrome على Android.
 - **بوحدو**: عندو البروفايلات والبيانات ديالو (مجلد `Noor Android`)، ما كيختلطوش مع Noor ولا Noor iPhone.
 
 **الحدود** ⚠️:
 
 - الرسم (Canvas، WebGL) والخطوط كيتّرسمو بالـ GPU والخطوط ديال الـ PC، ماشي ديال التيليفون (مع الضجيج ديال الحماية).
+- فـ WebGPU غير السمية ديال الكارت (الشركة والعائلة) اللي كتبدل؛ الحدود (limits) والـ features كيبقاو ديال الكارت ديال الـ PC.
 - فـ worker عادي (dedicated)، شي حوايج ديال الصفحات الآمنة (بحال Web HID) كيبقاو، حيت Chromium كيزيدهم من بعد الحماية.
 
 ## كيفاش خدام ⚙️

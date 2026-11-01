@@ -618,14 +618,19 @@ const configFor = (top, fingerprint = context.fingerprint) => {
   if (ANDROID) {
     // The profile's Android device, on every site: Chromium shows its
     // screen (see Tab.emulate), frames of other sites get it here; Chrome's
-    // brands and languages, the device's cores and memory, and the rest
-    // Chrome on Android is and lacks (see scripts/parts/android.js).
+    // brands and languages, the cores of the device's processor and its
+    // memory, its graphics card (unless WebGL Vendor & Renderer is off),
+    // and the rest Chrome on Android is and lacks (see
+    // scripts/parts/android.js).
     const current = fingerprint.iphone();
     config.screen = { width: current.width, height: current.height, availHeight: current.height };
     config.hardware = { cores: current.cores, memory: current.memory };
     config.chrome = { brands: brandList, fullVersionList: fullVersionList(), fullVersion: process.versions.chrome };
     config.languages = acceptLanguages(app.getLocale()).split(",");
-    config.android = Object.assign(android.pageConfig(current), {
+    config.android = Object.assign(android.pageConfig(current, { graphics: fingerprint.isEnabled("gpu") }), {
+      // Android's Noto fonts this profile's Android has (all of them with
+      // Fonts off).
+      fonts: android.fontsOf(fingerprint.isEnabled("fonts") ? fingerprint.seed("fonts") : null),
       userAgent: android.userAgent(current),
       metadata: androidMetadata(current),
       battery: android.batteryOf(fingerprint.seed("device")),
@@ -841,7 +846,12 @@ const settingsSnapshot = (browser = windows.current) => ({
         family: current.family, name: current.name, iOS: current.iOS, android: current.android, model: current.model,
         width: current.width, height: current.height, scale: current.scale, pageWidth: current.pageWidth, pageHeight: current.pageHeight,
         desktop: current.desktop, platform: current.platform, cores: current.cores, memory: current.memory, gpu: current.gpu,
+        // Noor Android: the device's processor, and its graphics card as
+        // Chrome on it tells sites (see main/android.js).
+        soc: current.soc, graphics: ANDROID ? android.graphicsOf(current) : null,
       },
+      // Noor Android: the Noto fonts of the profile's Android.
+      notoFonts: ANDROID ? android.fontsOf(browser.fingerprint.isEnabled("fonts") ? browser.fingerprint.seed("fonts") : null).add.map((font) => font[0]) : null,
       userAgent: mobile.userAgent(current),
       language: ANDROID ? acceptLanguages(app.getLocale()) : iphoneLanguage(),
     };

@@ -5,10 +5,11 @@ const { SETTINGS_URL, LIBRARY_URL, COOKIES_URL, isWebPage } = require("./address
 const { STORE_URL } = require("./crx");
 const { iconLook } = require("./profile-icon");
 const mobile = require("./mobile");
+const { SWITCH_ONLY } = require("./fingerprint");
 
 const KIND_TITLES = {
   canvas: "Canvas", webGL: "WebGL", audio: "Audio", clientRects: "ClientRects", screen: "Screen Size", hardware: "Processor & Memory",
-  device: "iPhone",
+  fonts: "Fonts", device: "iPhone", gpu: "WebGL Vendor & Renderer",
 };
 
 /// The menus: the ⋯ menu, the profile menu, the shields menu, a tab's
@@ -102,7 +103,8 @@ class Menus {
   /// New values for one kind of fingerprint, or for all.
   fingerprintItems() {
     const browser = this.browser;
-    const items = browser.fingerprint.kinds.map((kind) => (kind === "device" ? {
+    // (WebGL Vendor & Renderer comes with the device: nothing to make new.)
+    const items = browser.fingerprint.kinds.filter((kind) => !SWITCH_ONLY.has(kind)).map((kind) => (kind === "device" ? {
       icon: "refresh",
       label: `New ${mobile.kindName(browser.fingerprint.family())}`,
       click: () => {

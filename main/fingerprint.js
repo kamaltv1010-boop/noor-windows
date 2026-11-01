@@ -16,6 +16,15 @@ const NOISE_KINDS = ["canvas", "webGL", "audio", "clientRects"];
 /// screen, the browser's user agent and the rest, see main/mobile.js),
 /// always on.
 const IPHONE_KINDS = ["canvas", "webGL", "audio", "clientRects", "device"];
+/// Noor Android's: Noor iPhone's; "gpu", WebGL Vendor & Renderer: the
+/// graphics card of the device's processor, which sites see in WebGL and
+/// WebGPU (see main/android.js), which comes with the device, so it has no
+/// seed of its own (off, sites see this PC's own card); and "fonts",
+/// Android's fonts with a pick of its Noto fonts of the profile's own
+/// (off, all of them, as on a plain Android).
+const ANDROID_KINDS = ["canvas", "webGL", "gpu", "audio", "clientRects", "fonts", "device"];
+/// The kinds that are only a switch, with no seed to make new.
+const SWITCH_ONLY = new Set(["gpu"]);
 
 /// Common PC screens, in CSS pixels, as on a screen shown at 100%.
 const SCREENS = [
@@ -68,7 +77,7 @@ class Fingerprint {
     /// The kinds of device its profiles can be, the first the one at first.
     this.families = this.mobileMode ? mobile.familiesOf(this.mobileBuild) : [];
     /// The kinds this build has (Noor iPhone's and Noor Android's, or Noor's).
-    this.kinds = this.mobileMode ? IPHONE_KINDS : KINDS;
+    this.kinds = this.mobileBuild === "android" ? ANDROID_KINDS : this.mobileMode ? IPHONE_KINDS : KINDS;
     /// This PC's screen in CSS pixels, and the scale Windows shows it at
     /// (devicePixelRatio), set at launch.
     this.realScreen = { width: 0, height: 0 };
@@ -135,12 +144,46 @@ class Fingerprint {
       seed = crypto.randomInt(0, 2 ** 32);
     } while (canChange && Number.isInteger(old) && this.visibleValue(old >>> 0, kind) === this.visibleValue(seed, kind));
     this.store.set(this.seedKey(kind), seed);
+    const catalog = kind === "device" ? mobile.catalogVersion(this.mobileBuild || "windows") : null;
+    if (catalog) {
+      this.store.set(this.catalogKey(), catalog);
+    }
     return seed;
+  }
+
+  /// The key of the version of the device lists the profile's device seed
+  /// picks from (see migrateDevice).
+  catalogKey() {
+    return this.profiles.key("device.catalog", this.boundProfile || undefined);
+  }
+
+  /// Noor Android: a profile whose device was picked from an older list
+  /// (before the list grew) stays that device: its seed becomes one that
+  /// picks it from today's list.
+  migrateDevice() {
+    const current = mobile.catalogVersion(this.mobileBuild || "windows");
+    if (!current) {
+      return;
+    }
+    const was = this.store.get(this.catalogKey());
+    if (was === current) {
+      return;
+    }
+    const saved = this.store.get(this.seedKey("device"));
+    if (Number.isInteger(saved)) {
+      const name = mobile.legacyDeviceName(this.mobileBuild, this.family(), saved >>> 0, Number.isInteger(was) ? was : 1);
+      const list = this.devices();
+      const index = list.findIndex((device) => device.name === name);
+      if (index >= 0) {
+        this.store.set(this.seedKey("device"), index + list.length * crypto.randomInt(0, Math.floor(2 ** 32 / list.length)));
+      }
+    }
+    this.store.set(this.catalogKey(), current);
   }
 
   newSeeds(kinds) {
     for (const kind of kinds) {
-      if (this.kinds.includes(kind)) {
+      if (this.kinds.includes(kind) && !SWITCH_ONLY.has(kind)) {
         this.newSeed(kind);
       }
     }
@@ -178,6 +221,7 @@ class Fingerprint {
   /// The device the profile in use is (an iPhone or iPad in Noor iPhone,
   /// an Android phone or tablet in Noor Android).
   iphone() {
+    this.migrateDevice();
     return this.pick(this.seed("device"), this.devices());
   }
 
@@ -218,6 +262,9 @@ class Fingerprint {
     }
     if (kind === "hardware") {
       return String(this.pick(seed, HARDWARE).cores);
+    }
+    if (kind === "fonts" && this.mobileBuild === "android") {
+      return mobile.androidFonts(seed).add.map((font) => font[0]).join(", ");
     }
     if (kind === "fonts") {
       const picked = pickFonts(seed);
@@ -268,8 +315,8 @@ class Fingerprint {
 
   /// Changes whenever a switch or a seed changes.
   signature() {
-    return this.kinds.map((kind) => `${this.isEnabled(kind)}:${this.seed(kind)}`).join(",");
+    return this.kinds.map((kind) => `${this.isEnabled(kind)}:${SWITCH_ONLY.has(kind) ? "" : this.seed(kind)}`).join(",");
   }
 }
 
-module.exports = { Fingerprint, KINDS, IPHONE_KINDS, NOISE_KINDS, SCREENS, PANELS, screensAt, HARDWARE };
+module.exports = { Fingerprint, KINDS, IPHONE_KINDS, ANDROID_KINDS, SWITCH_ONLY, NOISE_KINDS, SCREENS, PANELS, screensAt, HARDWARE };
