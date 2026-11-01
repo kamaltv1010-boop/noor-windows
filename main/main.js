@@ -798,7 +798,8 @@ const settingsSnapshot = (browser = windows.current) => ({
   deviceFamily: IPHONE ? browser.fingerprint.family() : null,
   newProfileDevice: IPHONE ? newProfileDevice() : null,
   shieldsDownSites: context.shields.downSites(),
-  profiles: context.profiles.all(),
+  // Noor iPhone: each profile with the iPhone or iPad it is.
+  profiles: IPHONE ? context.profiles.all().map((profile) => Object.assign({}, profile, { device: context.fingerprint.forProfile(profile).iphone().name })) : context.profiles.all(),
   profile: browser.profile,
   // The profiles open in a window, and whether closing one replaces it.
   openProfiles: windows.shown.map((w) => w.profile.id),

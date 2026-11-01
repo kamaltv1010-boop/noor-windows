@@ -252,7 +252,7 @@ test("new profiles open in a window of their own; many at once open none, and co
   assert.deepEqual(started, [one.id, ...many.map((p) => p.id)]);
 });
 
-test("Noor iPhone: new profiles are what the settings say, iPhones or iPads; one in a closed one's place is what that one was", async () => {
+test("Noor iPhone: new profiles are what the settings say, iPhones or iPads, those made in a closed one's place too", async () => {
   const { Fingerprint } = require("../main/fingerprint");
   const store = tempStore();
   const profiles = new Profiles(store);
@@ -273,7 +273,7 @@ test("Noor iPhone: new profiles are what the settings say, iPhones or iPads; one
   assert.deepEqual(many.map(familyOf), ["ipad", "ipad", "ipad"]);
   // The first profile stays what it was.
   assert.equal(familyOf(profiles.find(DEFAULT_ID)), "iphone");
-  // A profile made in an iPhone's place is an iPhone, whatever new ones are.
+  // A profile made in an iPhone's place is what new ones are: an iPad.
   store.set("freshOnClose", true);
   const phone = profiles.all().find((p) => p.name === "Phone");
   windows.open(phone).close();
@@ -281,5 +281,5 @@ test("Noor iPhone: new profiles are what the settings say, iPhones or iPads; one
   const fresh = profiles.all()[profiles.all().length - 1];
   assert.equal(fresh.name, "Phone 2");
   assert.equal(profiles.find(phone.id), null);
-  assert.equal(familyOf(fresh), "iphone");
+  assert.equal(familyOf(fresh), "ipad");
 });

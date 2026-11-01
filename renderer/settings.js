@@ -217,6 +217,9 @@
         controls.append(button("Delete", "danger", () => noor.invoke("profiles:delete", profile.id).then(apply)));
       }
       const hints = [];
+      if (profile.device) {
+        hints.push(profile.device + ".");
+      }
       if (profile.isDefault) {
         hints.push("The first profile; it can't be deleted.");
       }
@@ -229,10 +232,13 @@
     $("newprofilename").placeholder = `Profile ${settings.profiles.length + 1}`;
 
     const isIPhone = settings.device === "iphone";
-    // Noor iPhone: what new profiles are.
+    // Noor iPhone: what new profiles are, and what this one is.
     $("newdevicerow").hidden = !isIPhone;
+    $("thisdevicerow").hidden = !isIPhone;
     if (isIPhone) {
       $("newdevice").value = settings.newProfileDevice || "iphone";
+      $("thisdevice").value = settings.deviceFamily || "iphone";
+      $("thisdevicehint").textContent = `“${settings.profile.name}”, the profile of this window: ${settings.values.iphone.name}. Made the other kind, it is a new device of that kind to every site (better before its accounts are signed in).`;
     }
     const protections = $("protections");
     protections.textContent = "";
@@ -413,6 +419,7 @@
   $("extfile").addEventListener("click", () => noor.invoke("extensions:install", "file").then(apply));
   $("extfolder").addEventListener("click", () => noor.invoke("extensions:install", "folder").then(apply));
   $("newdevice").addEventListener("change", () => noor.invoke("settings:set", "newProfileDevice", $("newdevice").value).then(apply));
+  $("thisdevice").addEventListener("change", () => noor.invoke("device:family", $("thisdevice").value).then(apply));
   $("newprofile").addEventListener("click", () => {
     const name = $("newprofilename").value.trim() || $("newprofilename").placeholder;
     $("newprofilename").value = "";

@@ -726,7 +726,28 @@ class Browser {
     return { width: Math.min(work.width - 16, width), height: Math.max(560, height) };
   }
 
-  makeWindow(bounds = null) {
+  /// Noor iPhone: where a window opens next to another (`bounds`, see
+  /// Windows.nextBounds), as big as its own device's page needs, not as the
+  /// other (an iPad's page is wider than an iPhone's), all of it on that
+  /// screen.
+  ownBounds(bounds) {
+    const size = this.windowSize();
+    let area = null;
+    try {
+      area = require("electron").screen.getDisplayMatching(bounds).workArea;
+    } catch (error) {
+      area = null;
+    }
+    if (!area) {
+      return { x: bounds.x, y: bounds.y, width: size.width, height: size.height };
+    }
+    const x = Math.max(area.x, Math.min(bounds.x, area.x + area.width - size.width));
+    const y = Math.max(area.y, Math.min(bounds.y, area.y + area.height - size.height));
+    return { x, y, width: size.width, height: size.height };
+  }
+
+  makeWindow(given = null) {
+    const bounds = given && this.isIPhone ? this.ownBounds(given) : given;
     const size = bounds || this.windowSize();
     this.win = new BaseWindow({
       width: size.width,

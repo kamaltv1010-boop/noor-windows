@@ -432,13 +432,14 @@ class Windows {
     return made;
   }
 
-  /// Noor iPhone: new profiles are iPhones or iPads, as the settings say
-  /// ("newProfileDevice"), or `family`; each a device of its own.
-  setDevices(profiles, family = null) {
+  /// Noor iPhone: new profiles, those made in a closed one's place too, are
+  /// iPhones or iPads, as the settings say ("newProfileDevice"); each a
+  /// device of its own.
+  setDevices(profiles) {
     if (!this.isIPhone) {
       return;
     }
-    const wanted = family || this.store.get("newProfileDevice", "iphone");
+    const wanted = this.store.get("newProfileDevice", "iphone");
     for (const profile of profiles) {
       this.context.fingerprint.forProfile(profile).setFamily(wanted);
     }
@@ -519,13 +520,11 @@ class Windows {
     if (this.warmup) {
       this.warmup.stop(old.id);
     }
-    // In its place, the same kind of device (a new one).
-    const family = this.isIPhone ? this.context.fingerprint.forProfile(old).family() : null;
     const fresh = this.profiles.replace(old.id);
     if (!fresh) {
       return null;
     }
-    this.setDevices([fresh], family);
+    this.setDevices([fresh]);
     // Its place among the windows of the next launch is the new one's.
     const open = this.store.get("openWindows", []);
     if (Array.isArray(open) && open.includes(old.id)) {

@@ -28,8 +28,12 @@
   <div class="card" id="profiles"></div>
   <div class="card">
     <div class="row" id="newdevicerow" hidden>
-      <div class="label">New profiles are<small>Each profile made from now on, one or many at once, is a real iPhone or a real iPad of its own to every site. One made in a closed profile's place is what that one was. To make the profile in use the other kind, see Fingerprint protection.</small></div>
+      <div class="label">New profiles are<small>Each profile made from now on (one, many at once, or one made in a closed profile's place) is a real iPhone or a real iPad of its own to every site. The profiles made before stay what they are.</small></div>
       <select id="newdevice" title="New profiles are"><option value="iphone">iPhones</option><option value="ipad">iPads</option></select>
+    </div>
+    <div class="row" id="thisdevicerow" hidden>
+      <div class="label">This profile is<small id="thisdevicehint"></small></div>
+      <select id="thisdevice" title="This profile is"><option value="iphone">An iPhone</option><option value="ipad">An iPad</option></select>
     </div>
     <div class="row">
       <input type="text" id="newprofilename" placeholder="Name" style="flex:1">

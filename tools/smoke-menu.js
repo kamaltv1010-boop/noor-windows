@@ -189,7 +189,14 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const nothing = await run("!document.getElementById('nomatch').hidden && [...document.querySelectorAll('.settingspage .row')].every((r) => !r.offsetParent)");
     await run("{ const s = document.getElementById('settingsearch'); s.value = ''; s.dispatchEvent(new Event('input')); }");
     await run("document.querySelector('.sidebar a[href=\"#about\"]').click()");
-    await new Promise((r) => setTimeout(r, 1200));
+    // The smooth scroll down the page (a long one in Noor iPhone's narrow
+    // window) takes a while: until it stops.
+    for (let i = 0, last = -1, still = 0; i < 60 && still < 4; i++) {
+      await new Promise((r) => setTimeout(r, 150));
+      const y = await run("scrollY");
+      still = y === last ? still + 1 : 0;
+      last = y;
+    }
     const about = await run("(document.querySelector('.sidebar a.active') || {}).textContent");
     // On and off as switches, as Chrome's: one clicked turns its setting
     // over, and back.
