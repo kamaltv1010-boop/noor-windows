@@ -11,6 +11,21 @@
   "minutes": 2
  },
  {
+  "name": "icons",
+  "title": "الشعار الذي يُظهره Windows لـ Noor.exe (شعاره هو، لا شعار النسختين الأخريين)",
+  "kind": "headless",
+  "command": [
+   "node",
+   "tools/check-icons.js",
+   "Noor|{exe}|build/icon.ico",
+   "Noor iPhone||build/icon-iphone.ico",
+   "Noor Android||build/icon-android.ico",
+   "--out",
+   "{out}/icons"
+  ],
+  "minutes": 3
+ },
+ {
   "name": "install",
   "title": "مثبّت Noor: التثبيت، أول تشغيل، البروفايلات، الإغلاق وإعادة الفتح، إزالة التثبيت",
   "kind": "app",

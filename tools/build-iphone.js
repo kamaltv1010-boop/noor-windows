@@ -12,6 +12,11 @@ const config = {
   productName: "Noor iPhone",
   // Read by main/iphone.js, and Electron's app name (the data folder).
   extraMetadata: { noorDevice: "iphone", productName: "Noor iPhone" },
+  // Its own logo (the .exe, the installer, the shortcuts, the taskbar).
+  win: {
+    ...base.win,
+    icon: "build/icon-iphone.ico",
+  },
   nsis: {
     ...base.nsis,
     shortcutName: "Noor iPhone",

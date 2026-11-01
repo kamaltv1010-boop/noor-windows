@@ -1297,7 +1297,7 @@ app.whenReady().then(async () => {
     },
     appId: mobile.appId(BUILD),
     executable: app.isPackaged ? process.env.PORTABLE_EXECUTABLE_FILE || process.execPath : null,
-    appIcon: path.join(__dirname, "..", "build", "icon.ico"),
+    appIcon: mobile.iconPath(BUILD),
     profileIdOfSession: (ses) => sessionProfiles.get(ses) || null,
   });
   extensions.windows = windows;

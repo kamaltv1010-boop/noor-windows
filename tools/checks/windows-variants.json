@@ -24,6 +24,21 @@
   "minutes": 25
  },
  {
+  "name": "icons",
+  "title": "الشعار الذي يُظهره Windows لكل نسخة (لكل واحدة شعارها)",
+  "kind": "headless",
+  "command": [
+   "node",
+   "tools/check-icons.js",
+   "Noor iPhone|{exe:iphone}|build/icon-iphone.ico",
+   "Noor Android|{exe:android}|build/icon-android.ico",
+   "Noor||build/icon.ico",
+   "--out",
+   "{out}/icons"
+  ],
+  "minutes": 3
+ },
+ {
   "name": "built-app-iphone",
   "title": "Noor iPhone المبني: بروفايل ثانٍ، العزل، الصلاحيات، الإعدادات، إعادة التشغيل",
   "kind": "app",

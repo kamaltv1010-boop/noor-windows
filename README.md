@@ -10,6 +10,7 @@
 - **Noor iPhone**: فنفس الـ Release، `Noor-iPhone-<version>-windows-x64-portable.exe` (portable) و`Noor-iPhone-Setup-<version>-windows-x64.exe` (installer).
 - **Noor Android**: فنفس الـ Release، `Noor-Android-<version>-windows-x64-portable.exe` (portable) و`Noor-Android-Setup-<version>-windows-x64.exe` (installer).
 - **Actions**: نفس الملفات كاينين حتى فـ artifact ديال كل run (90 يوم، وخاصك تكون مسجّل فـ GitHub).
+- **الشعارات**: كل نسخة عندها الشعار ديالها باش تفرّق بيناتهم فالـ taskbar والـ desktop: **Noor** بنفسجي فيه درع، **Noor iPhone** زرق فيه iPhone، **Noor Android** خضر فيه تيليفون Android؛ والنجمة ديال Noor فالثلاثة (`build/icon.ico`، `build/icon-iphone.svg`، `build/icon-android.svg`، كيترسمو بـ `tools/make-icons.js`).
 
 الـ `.exe` ماشي موقّع (code signing)، فـ Windows SmartScreen غادي يسوّل أول مرة: **More info** ← **Run anyway**.
 

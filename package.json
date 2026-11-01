@@ -30,7 +30,7 @@
       "renderer/**/*",
       "scripts/**/*",
       "rules/**/*",
-      "build/icon.*",
+      "build/icon*",
       "package.json"
     ],
     "directories": {

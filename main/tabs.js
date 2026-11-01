@@ -826,7 +826,7 @@ class Browser {
       title: this.product,
       backgroundColor: "#f6f5f1",
       show: false,
-      icon: path.join(__dirname, "..", "build", "icon.ico"),
+      icon: mobile.iconPath(),
     });
     this.win.setMenuBarVisibility(false);
     // The toolbar: the app's own page, with a preload of its own that

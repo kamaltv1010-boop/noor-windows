@@ -32,14 +32,18 @@ const userAgent = (device) => platformOf(device).userAgent(device);
 const deviceMetrics = (device, pageHeight, scale) => platformOf(device).deviceMetrics(device, pageHeight, scale);
 const pageConfig = (device) => platformOf(device).pageConfig(device);
 
-/// The app's name, its Windows id and the device a build starts with.
+/// The app's name, its Windows id, its logo (each its own, told apart on
+/// the taskbar and the desktop: Noor's purple shield, Noor iPhone's blue
+/// iPhone, Noor Android's green phone; see tools/make-icons.js) and the
+/// device a build starts with.
 const PRODUCTS = {
-  iphone: { product: "Noor iPhone", appId: "ma.noor.iphone" },
-  android: { product: "Noor Android", appId: "ma.noor.android" },
-  windows: { product: "Noor", appId: "ma.noor.browser" },
+  iphone: { product: "Noor iPhone", appId: "ma.noor.iphone", icon: "icon-iphone.ico" },
+  android: { product: "Noor Android", appId: "ma.noor.android", icon: "icon-android.ico" },
+  windows: { product: "Noor", appId: "ma.noor.browser", icon: "icon.ico" },
 };
 const product = (which = build()) => PRODUCTS[which].product;
 const appId = (which = build()) => PRODUCTS[which].appId;
+const iconPath = (which = build()) => require("path").join(__dirname, "..", "build", PRODUCTS[which].icon);
 const firstDevice = (which = build()) => devicesOf(familiesOf(which)[0])[0] || null;
 
 /// A kind's name ("iPhone", "Tablet"…) and plural ("iPads"…).
@@ -57,5 +61,5 @@ const catalogVersion = (which = build()) => (which === "android" ? android.CATAL
 const legacyDeviceName = (which, family, seed, version) => (which === "android" ? android.legacyDeviceName(family, seed, version) : null);
 
 module.exports = {
-  build, KINDS, familiesOf, devicesOf, platformOf, userAgent, deviceMetrics, pageConfig, product, appId, firstDevice, kindName, kindPlural, androidFonts, catalogVersion, legacyDeviceName,
+  build, KINDS, familiesOf, devicesOf, platformOf, userAgent, deviceMetrics, pageConfig, product, appId, iconPath, firstDevice, kindName, kindPlural, androidFonts, catalogVersion, legacyDeviceName,
 };
