@@ -130,6 +130,14 @@ const verdict = (check, code) => {
     const judged = verdict(check, run.code);
     results.push({ name: check.name, title: check.title || check.name, kind: check.kind || "app", expect: check.expect || "pass", ...run, log: path.relative(out, run.log).split(path.sep).join("/"), ...judged, leftProcesses: left.map(([name, pid]) => `${name} ${pid}`) });
     console.log(`${judged.label} (${Math.round(run.ms / 1000)} s${left.length ? `, ${left.length} processes left` : ""})`);
+    if (!judged.ok) {
+      // What it said, in the job's own log too (the artifact may not be
+      // reachable): its last lines, without Chromium's own chatter.
+      const said = fs.readFileSync(run.log, "utf8").split(/\r?\n/).filter((line) => line.trim() && !/^\[\d+:\d+\/\d+\.\d+:(WARNING|INFO|VERBOSE)/.test(line) && !/^\[electron\] \[\d+:/.test(line));
+      console.log(`::group::${check.name}: آخر ما كتبه`);
+      console.log(said.slice(-70).join("\n"));
+      console.log("::endgroup::");
+    }
   }
   const kinds = { headless: "بدون واجهة", app: "التطبيق بواجهته، يُقاد بالكود" };
   const lines = [
