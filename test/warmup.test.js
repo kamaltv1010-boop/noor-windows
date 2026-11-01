@@ -120,6 +120,40 @@ test("a link followed is another page of the same site a reader opens, never one
   assert.equal(pickLink(all, "not a url"), null);
 });
 
+test("a visit never opens a search: not Google's popular searches, nor any site's results", () => {
+  // Google's home page as a phone gets it: its popular searches have the
+  // longest words on the page.
+  const google = "https://www.google.com/";
+  const searches = [
+    { href: "https://www.google.com/search?q=pronostics+quint%C3%A9&oi=ddle", text: "pronostics quinté" },
+    { href: "https://www.google.com/search?q=prix+gasoil+maroc", text: "prix gasoil maroc" },
+    { href: "https://www.google.com/search?q=onu+sahara+marocain", text: "onu sahara marocain" },
+    { href: "https://www.google.com/search?q=accident+ferroviaire+espagne", text: "accident ferroviaire espagne" },
+  ];
+  assert.equal(pickLink(searches, google, seeded(1)), null);
+  const images = "https://www.google.com/imghp?hl=fr";
+  const random = seeded(2);
+  for (let i = 0; i < 30; i++) {
+    assert.equal(pickLink(searches.concat([{ href: images, text: "IMAGES" }]), google, random), images);
+  }
+  // Other engines' and shops' results pages.
+  for (const [page, href] of [
+    ["https://www.bing.com/", "https://www.bing.com/search?q=weather+in+rabat&form=QBLH"],
+    ["https://duckduckgo.com/", "https://duckduckgo.com/?q=news+today+morocco"],
+    ["https://www.yahoo.com/", "https://search.yahoo.com/search?p=football+results+today"],
+    ["https://www.youtube.com/", "https://www.youtube.com/results?search_query=moroccan+music"],
+    ["https://www.amazon.com/", "https://www.amazon.com/s?k=wireless+headphones+deals"],
+    ["https://www.ebay.com/", "https://www.ebay.com/sch/i.html?_nkw=vintage+watches+for+men"],
+    ["https://www.avito.ma/", "https://www.avito.ma/fr/maroc/voitures?q=dacia+logan+2018"],
+    ["https://www.example.ma/", "https://www.example.ma/recherche?mot=les+nouvelles+du+jour"],
+  ]) {
+    assert.equal(pickLink([{ href, text: "A search with long words in it" }], page, seeded(3)), null, href);
+  }
+  // An article whose address merely has the word in it is still read.
+  const article = "https://www.example.ma/news/how-to-search-for-a-flat-in-rabat";
+  assert.equal(pickLink([{ href: article, text: "How to search for a flat in Rabat" }], "https://www.example.ma/", seeded(4)), article);
+});
+
 test("what runs in the page is a script of its own, and knows the usual banners", () => {
   new vm.Script(warmup.consentScript());
   new vm.Script(warmup.LINKS_SCRIPT);

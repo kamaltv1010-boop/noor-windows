@@ -278,9 +278,20 @@ const AVOID_PATH = /(^|[\/_\-.?=&#])(log-?in|log-?out|log-?off|sign-?in|sign-?ou
 const AVOID_TEXT = /\b(log ?in|log ?out|sign ?in|sign ?out|sign ?up|register|subscribe|unsubscribe|my account|account|cart|checkout|delete|download)\b|s'inscrire|se connecter|se déconnecter|déconnexion|connexion|mon compte|panier|supprimer|télécharger|تسجيل|الدخول|الخروج|اشترك|حسابي|حذف|تحميل/i;
 const FILES = /\.(pdf|zip|rar|7z|gz|exe|msi|dmg|apk|ipa|iso|mp3|mp4|m4a|avi|mov|wav|jpe?g|png|gif|webp|svg|ico|docx?|xlsx?|pptx?|csv|txt|xml|json|rss|torrent)$/i;
 
+/// A search: its results page (Google's, Bing's, YouTube's, a shop's…), by
+/// its path or its words. A visit never opens one: a search engine counts
+/// the searches from an address, and many profiles searching at once (the
+/// popular searches a search engine's home page links to, say) are what it
+/// takes for a robot, to every browser on that address ("Our systems have
+/// detected unusual traffic from your computer network").
+const SEARCH_PATH = /(^|\/)(search|results|s|sch|find|recherche|buscar|suche)(\/|\.[a-z]+)?$/i;
+const SEARCH_WORDS = ["q", "query", "search_query", "search", "searchtext", "searchterm", "k", "p", "text", "keyword", "keywords", "term", "s", "_nkw", "wd", "kw"];
+const isSearch = (url) => SEARCH_PATH.test(url.pathname.replace(/\/+$/, "")) || SEARCH_WORDS.some((name) => url.searchParams.has(name));
+
 /// Another page of the site of `pageURL` among `links` ({ href, text,
 /// download } as the page has them), one a person reading the page might
-/// open: an article's, a product's, a section's. Null when there is none.
+/// open: an article's, a product's, a section's, never a search's. Null
+/// when there is none.
 const pickLink = (links, pageURL, random = Math.random) => {
   let page;
   try {
@@ -314,7 +325,7 @@ const pickLink = (links, pageURL, random = Math.random) => {
       // As it is.
     }
     const text = String(link.text || "").trim();
-    if (AVOID_PATH.test(path) || FILES.test(url.pathname) || AVOID_TEXT.test(text)) {
+    if (AVOID_PATH.test(path) || FILES.test(url.pathname) || AVOID_TEXT.test(text) || isSearch(url)) {
       continue;
     }
     fine.push({ href: url.href, text });
