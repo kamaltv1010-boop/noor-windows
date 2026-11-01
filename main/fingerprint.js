@@ -2,14 +2,16 @@
 const crypto = require("crypto");
 const mobile = require("./mobile");
 const { pickFonts } = require("./fonts");
+const { GPUS, graphicsOf } = require("./gpus");
 
 /// The protections, each with a seed per profile that decides the values
 /// pages see. The noise ones give canvas, WebGL and audio values and
 /// ClientRects that differ from this PC's but stay the same on a site;
 /// "screen" and "hardware" show another common PC's screen size, core
 /// count and memory; "fonts", Windows' own fonts and others of the
-/// profile's own (see main/fonts.js).
-const KINDS = ["canvas", "webGL", "audio", "clientRects", "screen", "hardware", "fonts"];
+/// profile's own (see main/fonts.js); "gpu", WebGL Vendor & Renderer,
+/// another graphics card PCs commonly have (see main/gpus.js).
+const KINDS = ["canvas", "webGL", "gpu", "audio", "clientRects", "screen", "hardware", "fonts"];
 const NOISE_KINDS = ["canvas", "webGL", "audio", "clientRects"];
 /// Noor iPhone's and Noor Android's: the noise ones, and "device", the
 /// iPhone or iPad, or the Android phone or tablet, a profile is (its
@@ -23,8 +25,6 @@ const IPHONE_KINDS = ["canvas", "webGL", "audio", "clientRects", "device"];
 /// Android's fonts with a pick of its Noto fonts of the profile's own
 /// (off, all of them, as on a plain Android).
 const ANDROID_KINDS = ["canvas", "webGL", "gpu", "audio", "clientRects", "fonts", "device"];
-/// The kinds that are only a switch, with no seed to make new.
-const SWITCH_ONLY = new Set(["gpu"]);
 
 /// Common PC screens, in CSS pixels, as on a screen shown at 100%.
 const SCREENS = [
@@ -78,6 +78,9 @@ class Fingerprint {
     this.families = this.mobileMode ? mobile.familiesOf(this.mobileBuild) : [];
     /// The kinds this build has (Noor iPhone's and Noor Android's, or Noor's).
     this.kinds = this.mobileBuild === "android" ? ANDROID_KINDS : this.mobileMode ? IPHONE_KINDS : KINDS;
+    /// The kinds that are only a switch, with no seed to make new: Noor
+    /// Android's graphics card, which comes with the device.
+    this.switchOnly = new Set(this.mobileBuild === "android" ? ["gpu"] : []);
     /// This PC's screen in CSS pixels, and the scale Windows shows it at
     /// (devicePixelRatio), set at launch.
     this.realScreen = { width: 0, height: 0 };
@@ -183,7 +186,7 @@ class Fingerprint {
 
   newSeeds(kinds) {
     for (const kind of kinds) {
-      if (this.kinds.includes(kind) && !SWITCH_ONLY.has(kind)) {
+      if (this.kinds.includes(kind) && !this.switchOnly.has(kind)) {
         this.newSeed(kind);
       }
     }
@@ -251,6 +254,11 @@ class Fingerprint {
     return this.pick(this.seed("hardware"), HARDWARE);
   }
 
+  /// Noor: the graphics card pages see (see main/gpus.js).
+  gpu() {
+    return this.pick(this.seed("gpu"), GPUS);
+  }
+
   /// What a seed shows for a kind; a new seed must change it.
   visibleValue(seed, kind) {
     if (kind === "device") {
@@ -262,6 +270,9 @@ class Fingerprint {
     }
     if (kind === "hardware") {
       return String(this.pick(seed, HARDWARE).cores);
+    }
+    if (kind === "gpu") {
+      return this.pick(seed, GPUS).name;
     }
     if (kind === "fonts" && this.mobileBuild === "android") {
       return mobile.androidFonts(seed).add.map((font) => font[0]).join(", ");
@@ -283,6 +294,9 @@ class Fingerprint {
     }
     if (kind === "hardware") {
       return HARDWARE.length;
+    }
+    if (kind === "gpu") {
+      return new Set(GPUS.map((gpu) => gpu.name)).size;
     }
     return Infinity;
   }
@@ -310,13 +324,16 @@ class Fingerprint {
       // The profile's fonts, on sign-in sites too: they are the
       // computer's, which such a site doesn't hold against the device.
       fontsSeed: protections && this.isEnabled("fonts") ? this.seed("fonts") : null,
+      // The profile's graphics card, on sign-in sites too: a site sees
+      // one card on all its pages.
+      gpu: protections && this.isEnabled("gpu") ? graphicsOf(this.gpu()) : null,
     };
   }
 
   /// Changes whenever a switch or a seed changes.
   signature() {
-    return this.kinds.map((kind) => `${this.isEnabled(kind)}:${SWITCH_ONLY.has(kind) ? "" : this.seed(kind)}`).join(",");
+    return this.kinds.map((kind) => `${this.isEnabled(kind)}:${this.switchOnly.has(kind) ? "" : this.seed(kind)}`).join(",");
   }
 }
 
-module.exports = { Fingerprint, KINDS, IPHONE_KINDS, ANDROID_KINDS, SWITCH_ONLY, NOISE_KINDS, SCREENS, PANELS, screensAt, HARDWARE };
+module.exports = { Fingerprint, KINDS, IPHONE_KINDS, ANDROID_KINDS, NOISE_KINDS, SCREENS, PANELS, screensAt, HARDWARE };

@@ -9,7 +9,7 @@
     hardware: ["Processor & Memory", "Sites see another common core count."],
     fonts: ["Fonts", "Sites find the fonts every Windows has and others of this profile's own (Office's, Adobe Acrobat's, a language's…), so each profile has a list of its own, as PCs with different programs do. The other fonts of this PC are hidden."],
     device: ["iPhone", "The iPhone this profile is to every site: its screen, touch, Safari and iOS version."],
-    gpu: ["WebGL Vendor & Renderer", "Sites see the graphics card of the phone's own processor, the one it came out with, in WebGL and WebGPU. Off, they see this PC's own card, which no phone has."],
+    gpu: ["WebGL Vendor & Renderer", "Sites see another graphics card than this PC's, one PCs commonly have (NVIDIA, Intel, AMD), the profile's own: its vendor and renderer in WebGL, its maker and family in WebGPU. Off, they see this PC's own card."],
   };
   // Noor iPhone and Noor Android: a profile is a device of one of the
   // build's kinds.
@@ -299,7 +299,7 @@
       controls.style.display = "flex";
       controls.style.alignItems = "center";
       controls.style.gap = "10px";
-      if (kind === "gpu") {
+      if (kind === "gpu" && settings.device === "android") {
         // Noor Android: the graphics card comes with the device's processor,
         // so there is nothing to make new here, only a switch.
         const device = settings.values.iphone;
@@ -367,6 +367,9 @@
     } else {
       values.append(row("Screen size", "", value(`${settings.values.screen.width} × ${settings.values.screen.height}`)));
       values.append(row("Processor & memory", "", value(`${settings.values.hardware.cores} cores · ${settings.values.hardware.memory} GB`)));
+      const ownCard = settings.protections.gpu === false;
+      values.append(row("WebGL Vendor", ownCard ? "WebGL Vendor & Renderer is off." : "", value(ownCard ? "This PC's own" : settings.values.gpu.vendor)));
+      values.append(row("WebGL Renderer", ownCard ? "WebGL Vendor & Renderer is off." : "", value(ownCard ? "This PC's own" : settings.values.gpu.renderer)));
       values.append(row("User agent", "", value(settings.values.userAgent)));
       values.append(row("Brands", "", value(settings.values.brands.map((b) => `${b.brand} ${b.version}`).join(" · "))));
       // The profile's fonts: Windows' own and its picks.

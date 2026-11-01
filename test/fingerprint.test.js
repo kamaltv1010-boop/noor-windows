@@ -87,7 +87,7 @@ test("config: everything with shields up (audio and ClientRects off at first), n
   assert.ok(full.screen.width > 0 && full.hardware.cores > 0);
   assert.ok(Number.isInteger(full.fontsSeed));
   const down = fingerprint.config({ protections: false });
-  assert.deepEqual(down, { seeds: { canvas: null, webGL: null, audio: null, clientRects: null }, screen: null, hardware: null, fontsSeed: null });
+  assert.deepEqual(down, { seeds: { canvas: null, webGL: null, audio: null, clientRects: null }, screen: null, hardware: null, fontsSeed: null, gpu: null });
   const signIn = fingerprint.config({ realDevice: true });
   assert.equal(signIn.screen, null);
   assert.equal(signIn.hardware, null);
@@ -109,7 +109,7 @@ test("the signature changes with a switch or a seed", () => {
   assert.notEqual(second, first);
   fingerprint.setEnabled("webGL", false);
   assert.notEqual(fingerprint.signature(), second);
-  assert.equal(KINDS.length, 7);
+  assert.equal(KINDS.length, 8);
 });
 
 test("a new font seed shows other fonts", () => {
@@ -121,4 +121,32 @@ test("a new font seed shows other fonts", () => {
     fingerprint.newSeed("fonts");
     assert.notEqual(fingerprint.visibleValue(fingerprint.seed("fonts"), "fonts"), before);
   }
+});
+
+test("WebGL Vendor & Renderer: on at first, a common card of the profile's own as Chrome on Windows names it, made new with New", () => {
+  const { GPUS, graphicsOf } = require("../main/gpus");
+  const { fingerprint } = make();
+  assert.ok(fingerprint.kinds.includes("gpu"));
+  assert.equal(fingerprint.isEnabled("gpu"), true);
+  assert.equal(fingerprint.switchOnly.size, 0);
+  assert.ok(GPUS.length >= 20);
+  assert.equal(new Set(GPUS.map((gpu) => `${gpu.name} ${gpu.id}`)).size, GPUS.length);
+  for (const gpu of GPUS) {
+    const told = graphicsOf(gpu);
+    assert.equal(told.vendor, `Google Inc. (${gpu.maker})`);
+    assert.match(told.renderer, /^ANGLE \((NVIDIA|Intel|AMD), .+ \(0x[0-9A-F]{8}\) Direct3D11 vs_5_0 ps_5_0, D3D11\)$/);
+    assert.ok(["nvidia", "intel", "amd"].includes(told.webgpu.vendor) && /^[a-z0-9-]+$/.test(told.webgpu.architecture), gpu.name);
+  }
+  assert.equal(graphicsOf(GPUS.find((gpu) => gpu.name === "NVIDIA GeForce RTX 3060")).renderer, "ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 (0x00002504) Direct3D11 vs_5_0 ps_5_0, D3D11)");
+  // Pages get it, on sign-in sites too, and not with the shields down or the switch off.
+  assert.deepEqual(fingerprint.config().gpu, graphicsOf(fingerprint.gpu()));
+  assert.deepEqual(fingerprint.config({ realDevice: true }).gpu, graphicsOf(fingerprint.gpu()));
+  assert.equal(fingerprint.config({ protections: false }).gpu, null);
+  for (let i = 0; i < 10; i++) {
+    const before = fingerprint.gpu().name;
+    fingerprint.newSeeds(["gpu"]);
+    assert.notEqual(fingerprint.gpu().name, before);
+  }
+  fingerprint.setEnabled("gpu", false);
+  assert.equal(fingerprint.config().gpu, null);
 });

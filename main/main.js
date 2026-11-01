@@ -25,6 +25,7 @@ const { FontList } = require("./fonts");
 const { cookieTools } = require("./cookies");
 const iphone = require("./iphone");
 const android = require("./android");
+const gpus = require("./gpus");
 const mobile = require("./mobile");
 
 /// Noor iPhone (see main/iphone.js): every profile is an iPhone or iPad to
@@ -858,6 +859,8 @@ const settingsSnapshot = (browser = windows.current) => ({
   })() : {
     screen: browser.fingerprint.screen(),
     hardware: browser.fingerprint.hardware(),
+    // The profile's graphics card (see main/gpus.js).
+    gpu: gpus.graphicsOf(browser.fingerprint.gpu()),
     userAgent: userAgent(),
     brands: brandList,
   },
