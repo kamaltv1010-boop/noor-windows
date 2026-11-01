@@ -309,6 +309,31 @@ main/tabs.js:1715` — عمل مؤجَّل (`pushState` في `setImmediate`) ي�
 `.github/workflows/windows-checks.yml` (أربع مهام، على الفرع
 `windows-checks` حتى لا يُصدر نسخة).
 
+**الأدوات والـ Skills (طلب المستخدم):** بحثت في Skills الحساب (لا شيء
+مثبّت لهذه الحاجات) وفي دليل Anthropic للإضافات: **Security Guidance**
+و**code-review** من نشر Anthropic نفسها (الأوثق؛ code-review يعتمد على عدة
+agents)، و**finecomb** (مراجعة كود وأمان شاملة، للقراءة فقط، بلا agents،
+مجتمعية مراجَعة في الدليل)، و**Security Audit Loop** (يغلّف أدوات مفتوحة
+المصدر لفحص الأسرار والتبعيات، مجتمعية). عُرضت بطاقة تثبيتها على المستخدم
+(التثبيت بموافقته). استُعمل الآن ما لا يحتاج تثبيتاً في الحساب:
+- **secretlint 13.1.0** (MIT، github.com/secretlint/secretlint، من npm في
+  مجلد منفصل `/tmp/tools/secretlint`؛ Gitleaks تعذّر تنزيله: وكيل GitHub في
+  هذه البيئة يقصر الوصول على مستودعات الجلسة، 403). اختبار ضبط: يكتشف رمز
+  GitHub مزيفاً (رمز الخروج 1). النتيجة: noor-windows (145 ملفاً حالياً،
+  وتاريخ git كامل: 44 commit) و Amir (54 ملفاً، 57 commit): **لا سرّ**
+  (رمز الخروج 0). (المستودع androi.noor لم يُفحص: ليس في الجلسة.)
+- **npm audit:** تبعيات Noor التي تُشحن معه: 0 ثغرات. أدوات البناء: 15
+  متوسطة، كلها من `minimatch` (بطء مع أنماط glob خبيثة) داخل electron-builder؛
+  تعمل وقت البناء على أنماطنا نحن فقط: خطر ضئيل، تُركت.
+
+**شعار لكل متصفح (طلب المستخدم):** Noor بنفسجي بدرع (كما كان)، Noor iPhone
+أزرق فيه iPhone (Dynamic Island)، Noor Android أخضر فيه هاتف Android (ثقب
+الكاميرا)؛ النجمة البرتقالية في الثلاثة. `build/icon-*.svg` →
+`tools/make-icons.js` (كل حجم يُرسم بحجمه: 16…256) → `.ico`. تأخذه كل نسخة
+في الـ exe والمثبّت والاختصارات (`win.icon`) وفي نوافذها وشريط المهام
+(`mobile.iconPath`). `test/icons.test.js` (141/141 مع الباقي)؛ على Windows:
+`tools/check-icons.js` يقارن ما يُظهره Windows من كل exe بشعاره (يُنتظر).
+
 ## Resume point
 
 **نقطة الاستئناف:** قراءة تقارير مهمة "Windows checks" على الفرع
