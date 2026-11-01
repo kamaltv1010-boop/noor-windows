@@ -658,6 +658,16 @@
       const infoProto = window.GPUAdapterInfo && window.GPUAdapterInfo.prototype;
       if (!infoProto) return false;
       for (const name of Object.keys(told)) defineGetter(infoProto, name, () => told[name]);
+      // The canvas format Safari prefers is BGRA, on every Apple GPU
+      // (WebKit's GPU::getPreferredCanvasFormat); Chromium's depends on
+      // the system it runs on.
+      const gpuProto = window.GPU && window.GPU.prototype;
+      if (gpuProto) {
+        redefine(gpuProto, "getPreferredCanvasFormat", (original) => function () {
+          original.apply(this, arguments);
+          return "bgra8unorm";
+        });
+      }
       return true;
     };
     // A worker gets WebGPU (as what a secure context alone has) only after

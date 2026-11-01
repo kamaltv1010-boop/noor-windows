@@ -65,15 +65,31 @@ jobs:
       - name: Build the .exe
         run: npm run dist
 
+      # The fuses electron-builder flips in each built app (package.json,
+      # build.electronFuses): cookies encrypted on the disk, as Chrome keeps
+      # them, and no way into the app's main process for another program
+      # (tools/check-fuses.js reads them from the .exe itself).
+      - name: Check Noor's fuses
+        shell: bash
+        run: node tools/check-fuses.js "dist/win-unpacked/Noor.exe"
+
       # Noor iPhone: the same app as an app of its own, in which every
       # profile is an iPhone to sites (see main/iphone.js).
       - name: Build Noor iPhone
         run: npm run dist:iphone
 
+      - name: Check Noor iPhone's fuses
+        shell: bash
+        run: node tools/check-fuses.js "dist/win-unpacked/Noor iPhone.exe"
+
       # Noor Android: the same app as an app of its own, in which every
       # profile is an Android phone or tablet to sites (see main/android.js).
       - name: Build Noor Android
         run: npm run dist:android
+
+      - name: Check Noor Android's fuses
+        shell: bash
+        run: node tools/check-fuses.js "dist/win-unpacked/Noor Android.exe"
 
       - name: Keep the .exe
         uses: actions/upload-artifact@v4

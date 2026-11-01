@@ -9,7 +9,9 @@
 // user starts it, with no test tool attached to its browser: a second
 // debugger (Playwright's) keeps the shared worker from being protected.
 // Prints the hashes; exits 1 if a worker leaks or disagrees.
-// Needs a display: `xvfb-run -a node tools/probe-workers.js [windows|iphone|android]`.
+// Needs a display: `xvfb-run -a node tools/probe-workers.js [windows|iphone|android]`;
+// NOOR_ELECTRON=dist/linux-unpacked/noor-browser runs a built Noor instead
+// (with the fuses package.json flips) of node_modules' Electron.
 "use strict";
 const fs = require("fs");
 const os = require("os");
@@ -76,7 +78,9 @@ const PAGE = `<!doctype html><title>workers</title><script>${DRAW}
 </script><p>workers</p>`;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const electronPath = require(path.join(root, "node_modules", "electron"));
+const electronPath = process.env.NOOR_ELECTRON ? path.resolve(process.env.NOOR_ELECTRON) : require(path.join(root, "node_modules", "electron"));
+/// A built app has its code beside it; Electron alone is given the source.
+const appArgs = fs.existsSync(path.join(path.dirname(electronPath), "resources", "app.asar")) ? [] : [root];
 
 /// Starts Noor with `settings` in a profile folder of its own, as a user
 /// does, opens the probe page in it (as a second launch hands it an
@@ -102,7 +106,7 @@ const run = async (settings) => {
   fs.writeFileSync(path.join(userData, "settings.json"), JSON.stringify(settings));
   const env = { ...process.env, NOOR_USER_DATA: userData, NOOR_DEVICE: BUILD, NOOR_TEST_OPEN_WINDOWS: "1" };
   delete env.NOOR_TEST;
-  const args = [root, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--enable-unsafe-webgpu"];
+  const args = [...appArgs, "--no-sandbox", "--enable-unsafe-swiftshader", "--use-angle=swiftshader", "--enable-unsafe-webgpu"];
   const first = spawn(electronPath, args, { env, stdio: "ignore" });
   await sleep(7000);
   const second = spawn(electronPath, [...args, `http://127.0.0.1:${web.address().port}/probe`], { env, stdio: "ignore" });

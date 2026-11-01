@@ -2,7 +2,9 @@
 // dedicated worker, in a build of Noor: Noor's profile card ("nvidia",
 // "ampere"…, main/gpus.js), Noor Android's device card ("qualcomm",
 // "adreno-7xx"…, main/android.js), Noor iPhone's Safari on iOS 26 ("apple"
-// for all four names, subgroups 32 wide). A worker gets WebGPU after the
+// for all four names, subgroups 32 wide); and the canvas format each
+// prefers (Chrome on Android "rgba8unorm", Safari "bgra8unorm"; Noor keeps
+// Chromium's own, checked on Windows only). A worker gets WebGPU after the
 // protection ran in it (Chromium adds what a secure context alone has
 // late), so it must be named there too. Exits 1 if the page or the worker
 // tells this computer's card.
@@ -18,7 +20,7 @@ const root = path.join(__dirname, "..");
 const BUILD = ["iphone", "android"].includes(process.argv[2]) ? process.argv[2] : "windows";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const READ = "navigator.gpu ? Promise.race([navigator.gpu.requestAdapter().then((a) => a ? { vendor: a.info.vendor, architecture: a.info.architecture, device: a.info.device, description: a.info.description, sub: [a.info.subgroupMinSize, a.info.subgroupMaxSize] } : 'no adapter', (e) => 'ERR ' + e.message), new Promise((r) => setTimeout(() => r('timeout'), 6000))]) : Promise.resolve('none')";
+const READ = "navigator.gpu ? Promise.race([navigator.gpu.requestAdapter().then((a) => a ? { vendor: a.info.vendor, architecture: a.info.architecture, device: a.info.device, description: a.info.description, sub: [a.info.subgroupMinSize, a.info.subgroupMaxSize], format: navigator.gpu.getPreferredCanvasFormat() } : 'no adapter', (e) => 'ERR ' + e.message), new Promise((r) => setTimeout(() => r('timeout'), 6000))]) : Promise.resolve('none')";
 const PROBE = `(async () => ({
   page: await (${READ}),
   worker: await new Promise((resolve) => {
@@ -59,13 +61,17 @@ const PROBE = `(async () => ({
   }, BUILD);
   let expected;
   if (BUILD === "iphone") {
-    expected = { vendor: "apple", architecture: "apple", device: "apple", description: "apple", sub: [32, 32] };
+    expected = { vendor: "apple", architecture: "apple", device: "apple", description: "apple", sub: [32, 32], format: "bgra8unorm" };
   } else if (BUILD === "android") {
     const graphics = require(path.join(root, "main", "android")).graphicsOf(own).webgpu;
-    expected = { vendor: graphics.vendor, architecture: graphics.architecture, device: "", description: "", sub: [graphics.subgroupMinSize, graphics.subgroupMaxSize] };
+    // (Chrome on Android prefers RGBA for a canvas.)
+    expected = { vendor: graphics.vendor, architecture: graphics.architecture, device: "", description: "", sub: [graphics.subgroupMinSize, graphics.subgroupMaxSize], format: "rgba8unorm" };
   } else {
     const graphics = require(path.join(root, "main", "gpus")).graphicsOf(own).webgpu;
     expected = { vendor: graphics.vendor, architecture: graphics.architecture, device: "", description: "" };
+    // (Noor leaves the canvas format Chromium's own: BGRA on Windows, as
+    // Chrome there, but RGBA where this check may run, on Linux.)
+    if (process.platform === "win32") expected.format = "bgra8unorm";
   }
   await main((electron, url) => { global.noorTest.browser.newTab({ url }); }, base);
   await sleep(2500);

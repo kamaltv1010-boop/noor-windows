@@ -137,8 +137,6 @@ from the real ones; fonts hidden the same way in each.
 cookies or tokens; history skips private and background tabs; exporting
 cookies writes a file only where the user picks one. Nothing to fix.
 
-**Memory and CPU** — `tools/probe-memory.js` written, not run yet.
-
 **Memory and CPU** — `tools/probe-memory.js [build]`: 40 tabs (frames, a
 worker, drawing) opened and closed one after another. All three builds: no
 closed tab's page left (webContents back to 2), the same 5 processes,
@@ -193,10 +191,67 @@ probe-workers (now with WebGPU in dedicated, shared and service workers,
 started as a user starts Noor) and probe-webgpu in the three builds,
 probe-device, probe-lies ×3, probe-isolation, probe-screen, probe-webrtc.
 
+**WebGPU's preferred canvas format** — `navigator.gpu.getPreferredCanvasFormat()`
+is one line a site can read. Chromium answers by the system it runs on
+(`gpu.cc`, read from Chromium's source: "rgba8unorm" on Android and Linux,
+"bgra8unorm" elsewhere), Safari "bgra8unorm" on every Apple GPU (WebKit's
+`GPU::getPreferredCanvasFormat`, read from WebKit's source). So on Windows
+Noor Android answered a PC's "bgra8unorm" where Chrome on an Android phone
+answers "rgba8unorm", and Noor iPhone answered whatever the PC's system
+gives. **Fixed:** Noor Android answers "rgba8unorm", Noor iPhone
+"bgra8unorm" (page and worker, the native method still checks its
+`this`); Noor keeps Chromium's own (BGRA on Windows, as Chrome there).
+Before/after shown here for Noor iPhone (this Linux machine's Chromium
+answers "rgba8unorm": after, page and worker "bgra8unorm"); Noor Android's
+answer was already RGBA here, so its before can only be read in Chromium's
+source, not shown on this machine. `tools/probe-webgpu.js` checks the
+format in the three builds (Noor's only on Windows). Regressions after the
+change: unit tests 139/139; smoke-electron, -gpu, -iphone (iPhone, iPad),
+-android (phone, tablet), probe-workers ×3, probe-lies ×3 pass.
+
+**Cookies on the disk** (P1-8) — `tools/probe-cookie-store.js`: Noor is
+started as a user starts it, a page sets a cookie with a secret value for
+an hour, Noor is asked to quit, and every file in its data folder is
+searched for the secret. **Before** (Electron 45.2.1 as `npm start` runs
+it, the same fuses as every build until now): the secret is in
+`Partitions/noor-default/Cookies` as it is (value column 33 bytes,
+encrypted column empty): every profile's logins were readable by any
+program, backup or copy of the disk. Electron keeps cookies so unless the
+app is built with its EnableCookieEncryption fuse. **Fixed:** the build
+flips it (package.json `build.electronFuses`, which Noor iPhone's and Noor
+Android's builds take too). **After** (Noor built here with the same
+config, `npx electron-builder --linux dir`): the cookie is stored
+encrypted ("v10", 83 bytes; Chromium's own format, on Windows with a key
+DPAPI keeps for the user), and the secret is in no file. **Update over old
+data** (`--after`): a cookie set by today's Noor still reaches its site
+after the new one starts on the same data, and the new one is encrypted;
+the old one stays in plain text until its site sets it again (Electron
+encrypts as it writes; rewriting all cookies through Electron's API would
+drop what ties a third party's cookie to one site, CHIPS, so it isn't
+done). Not tested on Windows itself (DPAPI): CI checks the fuse in each
+built .exe.
+
+**Getting into Noor's main process** — the same build turns off three
+ways for another program to run code inside Noor: before (Electron as it
+comes), `ELECTRON_RUN_AS_NODE=1` ran a script as Node, `NODE_OPTIONS
+--require` loaded a file into the app, and `--inspect=9339` opened a Node
+debugger on that port; after (the built app), none (`tools/probe-fuses.js
+[electron]`, exits 1 before, 0 after; here on Linux). The app forks no Node process, so nothing in it
+used these. The built app still protects every kind of worker
+(`NOOR_ELECTRON=… tools/probe-workers.js windows`: page, dedicated, shared
+and service worker give the profile's canvas, WebGL and card, different in
+two profiles, this computer's with the protections off). CI now reads the
+four fuses from Noor.exe, Noor iPhone.exe and Noor Android.exe after each
+build (`tools/check-fuses.js`, exits 1 if one isn't as asked). Left as
+Electron has them: ASAR integrity and app-from-ASAR only (need checking on
+Windows itself), file:// privileges.
+
 ## Resume point
 
-Next: WebGPU's adapter features and limits are still this PC's in Noor
-Android and Noor iPhone (a phone lists no ASTC, a PC's BC formats show);
-adding formats the PC can't use would break pages that ask for them, so at
-most BC can be taken away — decide and test. Then the time zone watcher's
+Next: check that pages can't reach Chromium's debugging port (P1-8:
+`/json`, the browser's WebSocket; the port is random, on 127.0.0.1).
+Then WebGPU's adapter features and limits, still this PC's in Noor Android
+and Noor iPhone (a phone lists no ASTC, a PC's BC formats show): adding
+formats the PC can't use would break pages that ask for them, so at most
+BC can be taken away — decide and test. Then the time zone watcher's
 30-second poll (CPU, network, battery).

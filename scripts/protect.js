@@ -2999,6 +2999,16 @@ if (config.iphone) { try {
       const infoProto = window.GPUAdapterInfo && window.GPUAdapterInfo.prototype;
       if (!infoProto) return false;
       for (const name of Object.keys(told)) defineGetter(infoProto, name, () => told[name]);
+      // The canvas format Safari prefers is BGRA, on every Apple GPU
+      // (WebKit's GPU::getPreferredCanvasFormat); Chromium's depends on
+      // the system it runs on.
+      const gpuProto = window.GPU && window.GPU.prototype;
+      if (gpuProto) {
+        redefine(gpuProto, "getPreferredCanvasFormat", (original) => function () {
+          original.apply(this, arguments);
+          return "bgra8unorm";
+        });
+      }
       return true;
     };
     // A worker gets WebGPU (as what a secure context alone has) only after
@@ -3609,6 +3619,16 @@ if (config.android) { try {
       // (The browser's getter still runs first, and refuses what isn't
       // an adapter's info.)
       for (const name of Object.keys(told)) regetter(infoProto, name, () => told[name]);
+      // The canvas format Chrome on Android prefers is RGBA (Chromium on
+      // Windows answers BGRA); a page that takes it still draws, as both
+      // are formats a canvas takes.
+      const gpuProto = window.GPU && window.GPU.prototype;
+      if (gpuProto) {
+        redefine(gpuProto, "getPreferredCanvasFormat", (original) => function () {
+          original.apply(this, arguments);
+          return "rgba8unorm";
+        });
+      }
       return true;
     };
     // A worker gets WebGPU (as what a secure context alone has) only after

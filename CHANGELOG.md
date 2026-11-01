@@ -5,6 +5,28 @@ Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
 ## Unreleased
 
+- Security (all three builds): cookies are kept encrypted on the disk, as
+  Chrome keeps them (on Windows with the user's own key, DPAPI). Before,
+  every profile's cookies, logins included, were in plain text in Noor's
+  data folder (Electron's default), for any program or copy of the disk
+  to read. Cookies already there keep working and are encrypted as their
+  site sets them again (Electron can't rewrite them without losing what
+  ties a third party's cookie to one site).
+- Security (all three builds): no program can get into Noor's main
+  process through Noor itself: Noor.exe no longer runs as Node
+  (`ELECTRON_RUN_AS_NODE`), and ignores `NODE_OPTIONS` and the `--inspect`
+  debugger flags. CI reads these fuses from each built .exe
+  (`tools/check-fuses.js`).
+- Noor Android: WebGPU's preferred canvas format is Chrome on Android's,
+  "rgba8unorm" (on Windows, Chromium answered a PC's "bgra8unorm").
+  Noor iPhone: Safari's "bgra8unorm", whatever system Noor runs on.
+- `tools/probe-cookie-store.js` (cookies on the disk, and an update over
+  old data), `tools/probe-fuses.js` (the three ways into the main
+  process); `tools/probe-workers.js` can run a built Noor
+  (`NOOR_ELECTRON`).
+
+## 1.0.42
+
 - Workers (all three builds): what Chromium gives a worker only after the
   protection ran in it (WebGPU, Web HID, what a secure context alone has)
   is handled as the worker's own script is about to run: WebGPU's adapter

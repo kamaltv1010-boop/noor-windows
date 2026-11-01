@@ -13,7 +13,7 @@ sites a different platform, so each is checked on its own.
 ## How the work is checked
 
 - Local test pages served by a local HTTP server, opened by the real app
-  (Electron 45.1.0, Chromium 156) under Xvfb on **Linux**, by the tools in
+  (Electron 45.2.1, Chromium 156) under Xvfb on **Linux**, by the tools in
   `tools/smoke-*.js`, and unit tests (`npm test`) for the main process.
 - **Not tested here:** a real Windows PC, a real Android phone, a real
   iPhone. Windows only builds the `.exe` files in CI (`npm test` runs
@@ -62,8 +62,11 @@ PROGRESS.md.
    noise that differs between a page and its worker): a caught lie makes a
    profile stand out more than the value it hides. Measure, then decide
    per build.
-8. Secrets: no cookies, tokens or passwords in logs or plain files; the
-   debugging port only on 127.0.0.1, random, and refused to web pages.
+8. Secrets: no cookies, tokens or passwords in logs or plain files
+   (cookies: encrypted on the disk since the Electron fuses, see
+   PROGRESS.md); no way into the app's main process for another program;
+   the debugging port only on 127.0.0.1, random, and refused to web
+   pages.
 9. Dependencies: Electron/Chromium security releases, `npm audit`.
 10. Memory and speed: the page script in every frame, background cookie
     collection, closed tabs and windows.

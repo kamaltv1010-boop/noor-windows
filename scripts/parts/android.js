@@ -283,6 +283,16 @@
       // (The browser's getter still runs first, and refuses what isn't
       // an adapter's info.)
       for (const name of Object.keys(told)) regetter(infoProto, name, () => told[name]);
+      // The canvas format Chrome on Android prefers is RGBA (Chromium on
+      // Windows answers BGRA); a page that takes it still draws, as both
+      // are formats a canvas takes.
+      const gpuProto = window.GPU && window.GPU.prototype;
+      if (gpuProto) {
+        redefine(gpuProto, "getPreferredCanvasFormat", (original) => function () {
+          original.apply(this, arguments);
+          return "rgba8unorm";
+        });
+      }
       return true;
     };
     // A worker gets WebGPU (as what a secure context alone has) only after
