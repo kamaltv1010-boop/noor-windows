@@ -108,6 +108,28 @@ const windowOf = (pid) => {
   return { handle: Number(handle) || 0, title: title || "" };
 };
 
+/// The windows of the process `pid` that are on the screen (Windows): title
+/// and class of each, to see which a request to close left.
+const shownWindows = (pid) => {
+  const ps = `Add-Type -TypeDefinition @"
+using System; using System.Text; using System.Collections.Generic; using System.Runtime.InteropServices;
+public static class NoorShown {
+  delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+  [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  public static string List(uint want) {
+    var found = new List<string>();
+    EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p == want && IsWindowVisible(h)) { var t = new StringBuilder(256); GetWindowText(h, t, 256); found.Add(t.ToString()); } return true; }, IntPtr.Zero);
+    return string.Join(" | ", found);
+  }
+}
+"@
+[NoorShown]::List(${pid})`;
+  return (spawnSync("powershell", ["-NoProfile", "-Command", ps], { encoding: "utf8" }).stdout || "").trim();
+};
+
 /// Starts Noor and waits until its toolbar page answers.
 const start = async (label, extra = []) => {
   const portFile = path.join(data, "DevToolsActivePort");
@@ -165,9 +187,10 @@ const close = async (app, label) => {
     // What each said is kept (a close Windows didn't deliver isn't Noor's).
     report.closing = report.closing || {};
     const asked = spawnSync("powershell", ["-NoProfile", "-Command", `$p = Get-Process -Id ${app.child.pid} -ErrorAction SilentlyContinue; if ($p) { "$($p.MainWindowHandle) $($p.CloseMainWindow())" }`], { encoding: "utf8" });
-    report.closing[label] = { closeMainWindow: (asked.stdout || "").trim() };
+    report.closing[label] = { before: shownWindows(app.child.pid), closeMainWindow: (asked.stdout || "").trim() };
     how = await Promise.race([app.exited, sleep(15000).then(() => "still running after 15 s")]);
     if (how === "still running after 15 s") {
+      report.closing[label].afterCloseMainWindow = shownWindows(app.child.pid);
       const told = spawnSync("taskkill", ["/PID", String(app.child.pid)], { encoding: "utf8" });
       report.closing[label].taskkill = ((told.stdout || "") + (told.stderr || "")).trim();
       how = await Promise.race([app.exited, sleep(15000).then(() => "still running after 30 s")]);
@@ -294,16 +317,10 @@ const visit = async (id, tag, mode) => {
   const files = fs.readdirSync(data);
   report.dataFiles = files;
   if (WINDOWS) {
-    try {
-      const key = JSON.parse(fs.readFileSync(path.join(data, "Local State"), "utf8")).os_crypt.encrypted_key;
-      const mark = Buffer.from(key, "base64").subarray(0, 5).toString("latin1");
-      step("cookies' key kept by Windows (DPAPI)", mark === "DPAPI", `Local State os_crypt.encrypted_key starts with "${mark}"`);
-    } catch (error) {
-      step("cookies' key kept by Windows (DPAPI)", false, String(error.message));
-    }
     const acl = spawnSync("icacls", [data], { encoding: "utf8" }).stdout || "";
     report.dataFolderAccess = acl.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-    const everyone = /Everyone|\bUsers\b|Authenticated Users/i.test(acl.split(/\r?\n/).slice(0, -2).join("\n"));
+    // (Only the access entries: the folder's own path holds "Users".)
+    const everyone = /(Everyone|BUILTIN\\Users|Authenticated Users):/i.test(acl.split(/\r?\n/).slice(0, -2).map((line) => line.replace(data, "")).join("\n"));
     step("the data folder is the user's alone (icacls)", !everyone, report.dataFolderAccess.slice(0, 6).join(" ; "));
     const listening = (spawnSync("netstat", ["-ano", "-p", "TCP"], { encoding: "utf8" }).stdout || "").split(/\r?\n/).filter((line) => line.includes(`:${app.port} `) && /LISTENING/.test(line)).map((line) => line.trim().split(/\s+/)[1]);
     step("Chromium's debugging port listens on 127.0.0.1 only (netstat)", listening.length > 0 && listening.every((address) => address.startsWith("127.0.0.1:")), listening);
@@ -350,6 +367,16 @@ const visit = async (id, tag, mode) => {
 
   // 5. Closed, as Windows closes an app, then opened again.
   await close(app, "close");
+  if (WINDOWS) {
+    // (Chromium writes Local State, with the cookies' key, as it quits.)
+    try {
+      const key = JSON.parse(fs.readFileSync(path.join(data, "Local State"), "utf8")).os_crypt.encrypted_key;
+      const mark = Buffer.from(key, "base64").subarray(0, 5).toString("latin1");
+      step("cookies' key kept by Windows (DPAPI)", mark === "DPAPI", `Local State os_crypt.encrypted_key starts with "${mark}"`);
+    } catch (error) {
+      step("cookies' key kept by Windows (DPAPI)", false, String(error.message));
+    }
+  }
   app = await start("opened again");
   if (!app || !app.toolbar) return finish();
   snapshot = await app.invoke("settings:get");
