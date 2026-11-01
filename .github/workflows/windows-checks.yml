@@ -131,6 +131,27 @@ jobs:
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
         run: npm install --no-save playwright@1.63.0
 
+      # tools/smoke-fonts.js looks for two fonts of the test computer's that
+      # no profile picks (Inter and JetBrains Mono, both SIL OFL): installed
+      # here for this user, from their own releases, as on the Linux machine.
+      - name: Fonts the font check needs
+        run: |
+          $fonts = Join-Path $env:LOCALAPPDATA "Microsoft\Windows\Fonts"
+          New-Item -ItemType Directory -Force -Path $fonts | Out-Null
+          $work = Join-Path $env:RUNNER_TEMP "fonts"
+          New-Item -ItemType Directory -Force -Path $work | Out-Null
+          Invoke-WebRequest "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip" -OutFile "$work\inter.zip"
+          Invoke-WebRequest "https://github.com/JetBrains/JetBrainsMono/releases/download/v2.304/JetBrainsMono-2.304.zip" -OutFile "$work\jb.zip"
+          Expand-Archive "$work\inter.zip" "$work\inter" -Force
+          Expand-Archive "$work\jb.zip" "$work\jb" -Force
+          $files = @(Get-ChildItem "$work\inter" -Recurse -Filter "Inter-*.ttf" | Where-Object { $_.Name -match '^Inter-(Regular|Bold|Light)\.ttf$' }) + @(Get-ChildItem "$work\jb" -Recurse -Filter "JetBrainsMono-Regular.ttf" | Select-Object -First 1)
+          foreach ($f in $files) {
+            Copy-Item $f.FullName -Destination $fonts -Force
+            $face = [System.IO.Path]::GetFileNameWithoutExtension($f.Name) -replace '-', ' '
+            New-ItemProperty -Path "HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts" -Name "$face (TrueType)" -Value (Join-Path $fonts $f.Name) -PropertyType String -Force | Out-Null
+            "installed $($f.Name)"
+          }
+
       - name: Checks
         run: node tools/run-checks.js tools/checks/${{ matrix.suite }}.json --out checks/${{ matrix.suite }}
 
