@@ -1,13 +1,15 @@
 "use strict";
 const crypto = require("crypto");
 const { IPHONES } = require("./iphone");
+const { pickFonts } = require("./fonts");
 
 /// The protections, each with a seed per profile that decides the values
 /// pages see. The noise ones give canvas, WebGL and audio values and
 /// ClientRects that differ from this PC's but stay the same on a site;
 /// "screen" and "hardware" show another common PC's screen size, core
-/// count and memory.
-const KINDS = ["canvas", "webGL", "audio", "clientRects", "screen", "hardware"];
+/// count and memory; "fonts", Windows' own fonts and others of the
+/// profile's own (see main/fonts.js).
+const KINDS = ["canvas", "webGL", "audio", "clientRects", "screen", "hardware", "fonts"];
 const NOISE_KINDS = ["canvas", "webGL", "audio", "clientRects"];
 /// Noor iPhone's: the noise ones, and "device", the iPhone a profile is
 /// (its screen, Safari's user agent and the rest, see main/iphone.js),
@@ -180,6 +182,10 @@ class Fingerprint {
     if (kind === "hardware") {
       return String(this.pick(seed, HARDWARE).cores);
     }
+    if (kind === "fonts") {
+      const picked = pickFonts(seed);
+      return picked.groups.concat(picked.singles).join(", ");
+    }
     return String(seed);
   }
 
@@ -211,12 +217,15 @@ class Fingerprint {
       seeds[kind] = protections && this.isEnabled(kind) ? this.seed(kind) : null;
     }
     if (this.iphoneMode) {
-      return { seeds, screen: null, hardware: null };
+      return { seeds, screen: null, hardware: null, fontsSeed: null };
     }
     return {
       seeds,
       screen: protections && !realDevice && this.isEnabled("screen") ? this.screen() : null,
       hardware: protections && !realDevice && this.isEnabled("hardware") ? this.hardware() : null,
+      // The profile's fonts, on sign-in sites too: they are the
+      // computer's, which such a site doesn't hold against the device.
+      fontsSeed: protections && this.isEnabled("fonts") ? this.seed("fonts") : null,
     };
   }
 

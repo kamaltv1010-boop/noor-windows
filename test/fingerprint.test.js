@@ -85,12 +85,17 @@ test("config: everything with shields up (audio and ClientRects off at first), n
     assert.ok(Number.isInteger(full.seeds[kind]));
   }
   assert.ok(full.screen.width > 0 && full.hardware.cores > 0);
+  assert.ok(Number.isInteger(full.fontsSeed));
   const down = fingerprint.config({ protections: false });
-  assert.deepEqual(down, { seeds: { canvas: null, webGL: null, audio: null, clientRects: null }, screen: null, hardware: null });
+  assert.deepEqual(down, { seeds: { canvas: null, webGL: null, audio: null, clientRects: null }, screen: null, hardware: null, fontsSeed: null });
   const signIn = fingerprint.config({ realDevice: true });
   assert.equal(signIn.screen, null);
   assert.equal(signIn.hardware, null);
   assert.equal(signIn.seeds.canvas, full.seeds.canvas);
+  // The profile's fonts are the computer's: on sign-in sites too.
+  assert.equal(signIn.fontsSeed, full.fontsSeed);
+  fingerprint.setEnabled("fonts", false);
+  assert.equal(fingerprint.config().fontsSeed, null);
   fingerprint.setEnabled("canvas", false);
   assert.equal(fingerprint.config().seeds.canvas, null);
 });
@@ -104,5 +109,16 @@ test("the signature changes with a switch or a seed", () => {
   assert.notEqual(second, first);
   fingerprint.setEnabled("webGL", false);
   assert.notEqual(fingerprint.signature(), second);
-  assert.equal(KINDS.length, 6);
+  assert.equal(KINDS.length, 7);
+});
+
+test("a new font seed shows other fonts", () => {
+  const { fingerprint } = make();
+  assert.ok(fingerprint.kinds.includes("fonts"));
+  assert.equal(fingerprint.isEnabled("fonts"), true);
+  for (let i = 0; i < 20; i++) {
+    const before = fingerprint.visibleValue(fingerprint.seed("fonts"), "fonts");
+    fingerprint.newSeed("fonts");
+    assert.notEqual(fingerprint.visibleValue(fingerprint.seed("fonts"), "fonts"), before);
+  }
 });

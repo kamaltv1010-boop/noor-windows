@@ -1903,17 +1903,23 @@ if (config.languages) { try {
 }
 } catch (e) {} }
 if (config.fonts) { try {
-// Fonts: pages find only the fonts Windows comes with. A font some other
-// program put on this computer (Office's, Adobe's, a game's…: config.fonts,
-// see main/fonts.js) is one a site measures to tell the computer, and every
-// profile on it, from others. Each page gets, for each such font, a face
-// of its own that covers no character: text asked in that font falls
-// through to the next font, as where it isn't installed. Never loaded,
-// these faces start no download and fire no event, and the page's own font
-// list (document.fonts) doesn't show them. A font asked for by name
-// (FontFace's local()) is looked for the same way, and so is one given to
-// a worker's canvas (a worker's font list isn't there before its first
-// line). Noor iPhone has its own fonts (scripts/parts/iphone.js).
+// Fonts: each profile's own (config.fonts, see main/fonts.js). A site
+// measures which fonts a computer has, and the list tells computers, and
+// the profiles on one, apart: a profile shows the fonts every Windows has
+// and others of its own, and no other font of this computer.
+// - A font of this computer's the profile doesn't have (`shadow`) gets, in
+//   each page, a face of its own that covers no character: text asked in
+//   it falls through to the next font, as where it isn't installed. Never
+//   loaded, these faces start no download and fire no event.
+// - A font the profile has that this computer lacks (`added`) gets a face
+//   named for it, drawn with a font of Windows' own of its kind at a size
+//   of its own, loaded before the page's first script; the loading shows
+//   in neither the font list's status, nor its ready, nor its events.
+// The page's own font list (document.fonts) shows none of these faces. A
+// font asked for by name (FontFace's local()) is looked for the same way,
+// and so is one given to a worker's canvas (a worker's font list isn't
+// there before its first line). Noor iPhone has its own fonts
+// (scripts/parts/iphone.js).
 {
   const fonts = config.fonts;
   const isWindow = Boolean(document) && typeof window.Window === "function";
@@ -1922,17 +1928,39 @@ if (config.fonts) { try {
   const shadow = Array.isArray(fonts.shadow) ? fonts.shadow : [];
   const hidden = new Set(shadow.map(lower));
   const local = new Set((Array.isArray(fonts.local) ? fonts.local : []).map(lower));
+  const added = new Map((Array.isArray(fonts.added) ? fonts.added : []).filter((font) => font && font.name && font.standIn).map((font) => [lower(font.name), font]));
   const missing = "Noor No Such Font " + String(config.mark || "").slice(0, 6);
-  const quoted = (name) => '"' + name.replace(/["\\]/g, "\\$&") + '"';
+  const quoted = (name) => '"' + String(name).replace(/["\\]/g, "\\$&") + '"';
+  // Behind a font drawn with one of Windows' own, fonts of other systems
+  // like it, for a computer that isn't Windows (tests).
+  const ELSEWHERE = { serif: ["Liberation Serif", "DejaVu Serif"], mono: ["Liberation Mono", "DejaVu Sans Mono"] };
+  const localsFor = (font) => [font.standIn].concat(ELSEWHERE[font.kind] || ["Liberation Sans", "DejaVu Sans"]).map((name) => `local(${quoted(name)})`).join(", ");
+  // The font a name is one of the added ones' (a face's full name, "Garamond
+  // Bold", is its family's), or undefined.
+  const addedFor = (name) => {
+    const text = lower(name);
+    if (added.has(text)) return added.get(text);
+    for (const [family, font] of added) if (text.indexOf(family + " ") === 0) return font;
+    return undefined;
+  };
   const RealFontFace = window.FontFace;
   const FontSet = window.FontFaceSet;
+  const fontFaceSetLoadEvent = window.FontFaceSetLoadEvent;
+  // A promise of the page's, settled, made as the browser makes its own
+  // (with the functions as they were before the page's first script).
+  const PagePromise = window.Promise;
+  const promiseResolve = PagePromise && PagePromise.resolve;
+  const resolved = (value) => Reflect.apply(promiseResolve, PagePromise, [value]);
   // The faces made here, in this page's and in its empty frames'.
   const ours = new WeakSet();
 
   if (typeof RealFontFace === "function") {
-    // local(): a hidden font's names find nothing.
+    // local(): a hidden font's names find nothing, an added font's find
+    // the font it is drawn with.
     const rewrite = (source) => source.replace(/local\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\s*\)/gi, (whole, a, b, c) => {
       const name = (a !== undefined ? a : b !== undefined ? b : c).trim();
+      const font = addedFor(name);
+      if (font) return localsFor(font);
       return local.has(lower(name)) ? `local(${quoted(missing)})` : whole;
     });
     const FontFace = {
@@ -1952,36 +1980,96 @@ if (config.fonts) { try {
     defineProperty(window, "FontFace", { value: FontFace, writable: true, enumerable: false, configurable: true });
   }
 
-  // The page's faces: one for each hidden font, covering no character
-  // anyone writes (U+10FFFF), from an address never fetched.
-  if (isWindow && typeof RealFontFace === "function" && FontSet && shadow.length) {
-    const realAdd = FontSet.prototype.add;
-    const fontSet = document.fonts;
-    if (fontSet) {
-      for (const name of shadow) {
-        try {
-          const made = new RealFontFace(name, "url(data:,)", { unicodeRange: "U+10FFFF" });
-          ours.add(made);
-          realAdd.call(fontSet, made);
-        } catch (e) {}
-      }
-    }
-
-    // The page's own font list, without them.
+  if (isWindow && typeof RealFontFace === "function" && FontSet && (shadow.length || added.size)) {
     const proto = FontSet.prototype;
+    const realAdd = proto.add;
     const realDelete = proto.delete;
     const valuesOf = proto.values;
+    const faceStatusOf = (getOwnPropertyDescriptor(RealFontFace.prototype, "status") || {}).get;
+    const setStatusOf = (getOwnPropertyDescriptor(proto, "status") || {}).get;
+    const fontSet = document.fonts;
     const theirs = (set) => {
       const list = [];
       const iterator = valuesOf.call(set);
       for (let step = iterator.next(); !step.done; step = iterator.next()) if (!ours.has(step.value)) list.push(step.value);
       return list;
     };
+    // Whether a face of the page's own is loading in `set`.
+    const pageLoading = (set) => {
+      try {
+        return Boolean(faceStatusOf) && theirs(set).some((face) => faceStatusOf.call(face) === "loading");
+      } catch (e) {
+        return true;
+      }
+    };
+
+    // The loading of ours, unseen: its events stop before the page's
+    // listeners (this one is the first), and the list reads as loaded and
+    // ready while only ours load (`ready` then the same promise each time,
+    // already settled, as where nothing loads).
+    const stopImmediate = window.Event && window.Event.prototype.stopImmediatePropagation;
+    const facesOf = fontFaceSetLoadEvent && (getOwnPropertyDescriptor(fontFaceSetLoadEvent.prototype, "fontfaces") || {}).get;
+    const addListener = window.EventTarget && window.EventTarget.prototype.addEventListener;
+    if (fontSet && stopImmediate && facesOf && addListener) {
+      const unseen = (event) => {
+        try {
+          const faces = facesOf.call(event);
+          const onlyOurs = Array.prototype.every.call(faces, (face) => ours.has(face));
+          if (onlyOurs && !pageLoading(fontSet)) stopImmediate.call(event);
+        } catch (e) {}
+      };
+      for (const type of ["loading", "loadingdone", "loadingerror"]) {
+        try {
+          if (outside) outside.apply(addListener, fontSet, [type, outside.callback(unseen, null), true]);
+          else addListener.call(fontSet, type, unseen, true);
+        } catch (e) {}
+      }
+    }
+
+    for (const name of shadow) {
+      try {
+        const made = new RealFontFace(name, "url(data:,)", { unicodeRange: "U+10FFFF" });
+        ours.add(made);
+        if (fontSet) realAdd.call(fontSet, made);
+      } catch (e) {}
+    }
+    for (const font of added.values()) {
+      try {
+        const made = new RealFontFace(font.name, localsFor(font), { sizeAdjust: `${Number(font.sizeAdjust) || 100}%`, weight: "1 1000" });
+        ours.add(made);
+        if (fontSet) realAdd.call(fontSet, made);
+        const loading = made.load();
+        if (loading && typeof loading.catch === "function") loading.catch(() => {});
+      } catch (e) {}
+    }
+
+    // The page's own font list, without them.
     const iterate = (list, kind) => {
       const array = setPrototypeOf(list.map((item) => (kind === "entries" ? setPrototypeOf([item, item], window.Array.prototype) : item)), window.Array.prototype);
       return window.Array.prototype.values.call(array);
     };
     defineGetter(proto, "size", function () { return theirs(this).length; });
+    if (setStatusOf) {
+      defineGetter(proto, "status", function (value) {
+        return value === "loading" && !pageLoading(this) ? "loaded" : value;
+      });
+    }
+    const readyOf = (getOwnPropertyDescriptor(proto, "ready") || {}).get;
+    if (readyOf) {
+      // Per list: the browser's promise while ours loaded, and the settled
+      // one handed out for it.
+      const readyFor = new WeakMap();
+      defineGetter(proto, "ready", function (value) {
+        const kept = readyFor.get(this);
+        if (kept && kept.browsers === value && !pageLoading(this)) return kept.handed;
+        if (setStatusOf && setStatusOf.call(this) === "loading" && !pageLoading(this)) {
+          const handed = resolved(this);
+          readyFor.set(this, { browsers: value, handed });
+          return handed;
+        }
+        return value;
+      });
+    }
     define(proto, "has", (original) => function (item) {
       return ours.has(item) ? false : original.apply(this, arguments);
     });
@@ -2006,12 +2094,21 @@ if (config.fonts) { try {
       const result = original.apply(this, arguments);
       return result && typeof result.then === "function" ? result.then((faces) => setPrototypeOf(Array.prototype.filter.call(faces, (item) => !ours.has(item)), window.Array.prototype)) : result;
     });
+    // An event of the page's own fonts' and ours together: the page's.
+    if (fontFaceSetLoadEvent && facesOf) {
+      defineGetter(fontFaceSetLoadEvent.prototype, "fontfaces", (value) => {
+        if (!value || typeof value.length !== "number") return value;
+        const list = Array.prototype.filter.call(value, (item) => !ours.has(item));
+        return list.length === value.length ? value : window.Object.freeze(setPrototypeOf(list, window.Array.prototype));
+      });
+    }
   }
 
-  // A worker's canvas: a hidden font given by name finds nothing, and reads
-  // back as the browser writes what was given ('Inter' as Inter), read
-  // from a canvas of this script's own.
-  if (!isWindow && window.OffscreenCanvasRenderingContext2D && window.OffscreenCanvas && hidden.size) {
+  // A worker's canvas: a hidden font given by name finds nothing, an added
+  // one is drawn with the font it is drawn with in the page, and either
+  // reads back as the browser writes what was given ('Inter' as Inter),
+  // read from a canvas of this script's own.
+  if (!isWindow && window.OffscreenCanvasRenderingContext2D && window.OffscreenCanvas && (hidden.size || added.size)) {
     const Context = window.OffscreenCanvasRenderingContext2D;
     const fontOf = getOwnPropertyDescriptor(Context.prototype, "font");
     const RealOffscreenCanvas = window.OffscreenCanvas;
@@ -2036,6 +2133,8 @@ if (config.fonts) { try {
       };
       const families = (text) => text.replace(/(["'])([^"']+)\1|([^,\s"'][^,"']*)/g, (whole, q, inQuotes, bare) => {
         const name = (inQuotes !== undefined ? inQuotes : bare).trim();
+        const font = added.get(lower(name));
+        if (font) return [font.standIn].concat(ELSEWHERE[font.kind] || ["Liberation Sans", "DejaVu Sans"]).map(quoted).join(", ");
         return hidden.has(lower(name)) ? quoted(missing) : whole;
       });
       defineProperty(Context.prototype, "font", {

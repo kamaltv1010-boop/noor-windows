@@ -7,6 +7,7 @@
     clientRects: ["ClientRects", "Measured sizes of elements shift slightly. Off at first: on a PC these sizes are the same for everyone with the same Windows and fonts, so a shift would stand out."],
     screen: ["Screen Size", "Sites see another common PC screen."],
     hardware: ["Processor & Memory", "Sites see another common core count."],
+    fonts: ["Fonts", "Sites find the fonts every Windows has and others of this profile's own (Office's, Adobe Acrobat's, a language's…), so each profile has a list of its own, as PCs with different programs do. The other fonts of this PC are hidden."],
     device: ["iPhone", "The iPhone this profile is to every site: its screen, touch, Safari and iOS version."],
   };
   // Noor iPhone: the noise is on at first, as in the iPhone app.
@@ -226,8 +227,6 @@
     $("newprofilename").placeholder = `Profile ${settings.profiles.length + 1}`;
 
     const isIPhone = settings.device === "iphone";
-    // Noor iPhone shows an iPhone's fonts (scripts/parts/iphone.js).
-    $("fontscard").hidden = isIPhone;
     const protections = $("protections");
     protections.textContent = "";
     for (const kind of settings.kinds || Object.keys(KIND_TITLES)) {
@@ -271,16 +270,23 @@
       $("fingerprintfooter").textContent = "Every profile is one real iPhone to the sites it opens, the same ones as in the iPhone app: Safari's user agent and requests, the iPhone's screen, pixel density and touch, its graphics card, voices and fonts, and what Safari on its iOS version has and lacks, sign-in sites included. Canvas, WebGL and audio values and ClientRects get noise of their own on each site.";
       $("appname").textContent = "Noor iPhone for Windows";
     } else {
-      const fonts = settings.fonts;
-      $("fontsfound").textContent = !fonts
-        ? "Looking at this PC's fonts…"
-        : fonts.hidden.length
-          ? `${fonts.hidden.length} font${fonts.hidden.length === 1 ? "" : "s"} of other programs on this PC: ${fonts.hidden.slice(0, 12).join(", ")}${fonts.hidden.length > 12 ? "…" : ""}`
-          : "This PC has Windows' own fonts only: nothing to hide.";
       values.append(row("Screen size", "", value(`${settings.values.screen.width} × ${settings.values.screen.height}`)));
       values.append(row("Processor & memory", "", value(`${settings.values.hardware.cores} cores · ${settings.values.hardware.memory} GB`)));
       values.append(row("User agent", "", value(settings.values.userAgent)));
       values.append(row("Brands", "", value(settings.values.brands.map((b) => `${b.brand} ${b.version}`).join(" · "))));
+      // The profile's fonts: Windows' own and its picks.
+      const fonts = settings.fonts;
+      if (!settings.protections.fonts) {
+        values.append(row("Fonts", "", value("This PC's own")));
+      } else if (!fonts) {
+        values.append(row("Fonts", "", value("Looking at this PC's fonts…")));
+      } else {
+        const picks = ["Windows"].concat(fonts.groups, fonts.singles).join(" + ");
+        const notes = [];
+        if (fonts.drawn) notes.push(`${fonts.drawn} of them this PC lacks, drawn by Noor`);
+        if (fonts.hidden.length) notes.push(`${fonts.hidden.length} other font${fonts.hidden.length === 1 ? "" : "s"} of this PC hidden`);
+        values.append(row("Fonts", notes.join(" · "), value(picks)));
+      }
     }
 
     const extensions = $("extensionlist");

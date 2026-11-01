@@ -554,6 +554,8 @@ const configFor = (top, fingerprint = context.fingerprint) => {
   const protections = context.shields.areUp(top);
   const realDevice = Shields.isSignInSite(top);
   const config = fingerprint.config({ protections, realDevice });
+  const fontsSeed = config.fontsSeed;
+  delete config.fontsSeed;
   if (IPHONE) {
     // The profile's iPhone, on every site: Chromium shows its screen (see
     // Tab.emulate), frames of other sites get it here, with no taskbar;
@@ -573,10 +575,15 @@ const configFor = (top, fingerprint = context.fingerprint) => {
     fullVersion: process.versions.chrome,
   };
   config.languages = acceptLanguages(app.getLocale()).split(",");
-  // Fonts: Windows' own only, where the shields are up (see main/fonts.js).
-  const hidden = protections && context.store.get("windowsFontsOnly", true) && context.fonts ? context.fonts.hidden() : null;
-  if (hidden && hidden.shadow.length) {
-    config.fonts = { shadow: hidden.shadow, local: hidden.local };
+  // Fonts: Windows' own and the profile's own others, the rest of this
+  // computer's hidden (see main/fonts.js).
+  const fonts = fontsSeed !== null && fontsSeed !== undefined && context.fonts ? context.fonts.forSeed(fontsSeed) : null;
+  if (fonts && (fonts.shadow.length || fonts.added.length)) {
+    config.fonts = {
+      shadow: fonts.shadow,
+      local: fonts.local,
+      added: fonts.added.map(({ name, kind, standIn, sizeAdjust }) => ({ name, kind, standIn, sizeAdjust })),
+    };
   }
   config.mark = LOOKALIKE_MARK;
   config.realmKey = REALM_KEY;
@@ -751,10 +758,14 @@ const settingsSnapshot = (browser = windows.current) => ({
   timezoneFromIP: context.timezone.enabled(),
   timezone: context.timezone.current,
   timezoneInfo: context.timezone.info,
-  windowsFontsOnly: context.store.get("windowsFontsOnly", true),
-  // The fonts of this computer's that aren't Windows' own, or null while
-  // they aren't known.
-  fonts: !IPHONE && context.fonts && context.fonts.known ? { hidden: context.fonts.hidden().families } : null,
+  // The fonts of the profile (see main/fonts.js): its picks beyond
+  // Windows' own, how many of them Noor draws (this computer lacks them),
+  // and this computer's fonts it hides; null in Noor iPhone, or while this
+  // computer's fonts aren't known.
+  fonts: !IPHONE && context.fonts && context.fonts.known ? (() => {
+    const fonts = context.fonts.forSeed(browser.fingerprint.seed("fonts"));
+    return { groups: fonts.picked.groups, singles: fonts.picked.singles, drawn: fonts.added.length, hidden: fonts.families };
+  })() : null,
   extensions: extensions ? extensions.list() : [],
   kinds: browser.fingerprint.kinds,
   protections: Object.fromEntries(browser.fingerprint.kinds.map((kind) => [kind, browser.fingerprint.isEnabled(kind)])),
@@ -851,7 +862,7 @@ const profileFor = (id, event = null) => context.profiles.find(String(id || ""))
 /// session, the one its tabs use.
 const cookies = cookieTools((profile) => session.fromPartition(windows.partitionFor(false, profile)));
 
-const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit", "freshOnClose", "windowsFontsOnly"]);
+const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit", "freshOnClose"]);
 
 const registerIPC = () => {
   ipcMain.on("noor:page-config", (event) => {
