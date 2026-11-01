@@ -446,3 +446,58 @@ const callLater = (callback, value) => {
     }));
   }
 }
+
+// Storage: a profile kept in memory only (Clear Everything on Quit) gets
+// from Chromium the quota of an incognito window, a part of the computer's
+// memory (a few gigabytes), where a window of Chrome's gets one from the
+// disk: as much as is free, up to 60% of it. A site that compares the
+// quota with the memory (as the detectIncognito library does) would call
+// the profile incognito. Its pages read the quota a window of Chrome's
+// reads on this computer (config.storageQuota, from the disk, see
+// main.js), whichever way they ask; a private tab's keep Chromium's, as
+// Chrome's incognito windows do.
+{
+  const disk = config.storageQuota;
+  if (disk && typeof disk.max === "number" && typeof disk.free === "number") {
+    const quotaFor = (usage) => Math.min(disk.max, (Number(usage) || 0) + disk.free);
+    // From navigator.storage itself: in a worker, held before its first
+    // line, the interfaces only a secure page has (StorageManager among
+    // them) aren't on its global yet, though their objects are.
+    let manager = null;
+    try {
+      const storage = window.navigator && window.navigator.storage;
+      manager = storage ? getPrototypeOf(storage) : null;
+    } catch (e) {}
+    if (manager) {
+      define(manager, "estimate", (original) => function () {
+        const answer = reflectApply(original, this, arguments);
+        return reflectApply(promiseThen, answer, [(estimate) => {
+          try {
+            if (estimate && typeof estimate === "object") estimate.quota = quotaFor(estimate.usage);
+          } catch (e) {}
+          return estimate;
+        }]);
+      });
+    }
+    // navigator.webkitTemporaryStorage and webkitPersistentStorage (one
+    // interface, with no name on the window), which answer with the same
+    // quota: (usage, quota) to the callback. Not in a worker.
+    let deprecated = null;
+    try {
+      const temporary = window.Navigator && window.navigator.webkitTemporaryStorage;
+      deprecated = temporary ? getPrototypeOf(temporary) : null;
+    } catch (e) {}
+    if (deprecated) {
+      // The browser keeps the callback for later, so with `outside` it is
+      // handed over, and the call made, from the page's realm (see
+      // decodeAudioData); the browser calls it with no `this`.
+      define(deprecated, "queryUsageAndQuota", (original) => function (usageCallback) {
+        if (typeof usageCallback !== "function") return reflectApply(original, this, arguments);
+        const counted = function (usage) { return reflectApply(usageCallback, this, [usage, quotaFor(usage)]); };
+        const args = [outside ? outside.callback(counted, undefined) : counted];
+        for (let i = 1; i < arguments.length; i++) args.push(arguments[i]);
+        return outside ? fromPage(original, this, args) : reflectApply(original, this, args);
+      });
+    }
+  }
+}

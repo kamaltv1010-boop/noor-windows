@@ -20,6 +20,7 @@ const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLangu
 const { BrowserDebugger } = require("./browser-debugger");
 const { Warmup, FAST } = require("./warmup");
 const { chromeOrder } = require("./headers");
+const { diskQuota: quotaOfDisk, shownQuota } = require("./quota");
 const { cookieTools } = require("./cookies");
 const iphone = require("./iphone");
 
@@ -58,8 +59,11 @@ app.setAppUserModelId(IPHONE ? "ma.noor.iphone" : "ma.noor.browser");
 // debugger. And they don't find what Chrome no longer has but Electron
 // keeps: XSLT (XSLTProcessor) and the ad auctions of the Privacy Sandbox
 // (navigator.joinAdInterestGroup, runAdAuction and the rest), which tell a
-// page that this isn't Chrome.
-app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled,XSLT,AdInterestGroupAPI,Fledge,FledgeBiddingAndAuctionServer");
+// page that this isn't Chrome; nor what Electron adds and Chrome never
+// had: the -electron-corner-smoothing CSS property, which one line
+// (CSS.supports("-electron-corner-smoothing", "50%")) reads as Electron,
+// as bot checks do.
+app.commandLine.appendSwitch("disable-blink-features", "AutomationControlled,XSLT,AdInterestGroupAPI,Fledge,FledgeBiddingAndAuctionServer,ElectronCSSCornerSmoothing");
 /// Chromium's own debugging port, for the workers no tab's debugger reaches
 /// (shared workers, and service workers; see main/browser-debugger.js): one
 /// of its own for each run, on this computer only. A port given, as a
@@ -450,6 +454,10 @@ const REALM_KEY = "_" + crypto.randomBytes(12).toString("hex");
 /// show its own fingerprints, not those of the profile in use.
 const sessionProfiles = new Map();
 const contextProfiles = new Map();
+/// The sessions of private tabs, and the session of each browser context,
+/// as their tabs tell too: for the storage quota (see storageQuotaFor).
+const privateSessions = new WeakSet();
+const contextSessions = new Map();
 
 /// The fingerprints of the profile `id` (the window in front's if none),
 /// whichever window is in front.
@@ -465,8 +473,13 @@ const fingerprintOfSession = (ses) => fingerprintFor(ses ? sessionProfiles.get(s
 
 /// A new tab tells which profile its session and browser context are.
 const registerTab = (tab) => {
+  let ses = null;
   try {
-    sessionProfiles.set(tab.webContents.session, tab.profile.id);
+    ses = tab.webContents.session;
+    sessionProfiles.set(ses, tab.profile.id);
+    if (tab.isPrivate) {
+      privateSessions.add(ses);
+    }
   } catch (error) {
     return;
   }
@@ -475,9 +488,59 @@ const registerTab = (tab) => {
       const id = answer && answer.targetInfo && answer.targetInfo.browserContextId;
       if (id) {
         contextProfiles.set(id, tab.profile.id);
+        contextSessions.set(id, ses);
       }
     }).catch(() => {});
   }
+};
+
+/// The storage quota a window of Chrome's shows a page on this computer
+/// (see main/quota.js), from the disk the app's data is on: read again
+/// after a minute, as Chromium does.
+const DISK_QUOTA_MS = 60 * 1000;
+let diskQuotaRead = null;
+const diskQuota = () => {
+  const now = Date.now();
+  if (diskQuotaRead && now - diskQuotaRead.at < DISK_QUOTA_MS) {
+    return diskQuotaRead.value;
+  }
+  let value = null;
+  try {
+    value = quotaOfDisk(fs.statfsSync(app.getPath("userData")));
+    // Tests give the free space of a nearly full disk.
+    if (value && process.env.NOOR_TEST && process.env.NOOR_TEST_DISK_FREE) {
+      value.free = Number(process.env.NOOR_TEST_DISK_FREE);
+    }
+  } catch (error) {
+    value = null;
+  }
+  diskQuotaRead = { at: now, value };
+  return value;
+};
+
+/// The quota the pages and workers of `ses` read in place of Chromium's
+/// (see scripts/parts/chrome.js and main/quota.js), or null for Chromium's
+/// own: a profile kept in memory only (Clear Everything on Quit) would
+/// read an incognito window's, a part of the memory, and pass for
+/// incognito, as would any profile on a nearly full disk; a profile on a
+/// disk with room reads Chrome's already, and a private tab keeps the
+/// incognito one, as Chrome's incognito windows do.
+const storageQuotaFor = (ses) => {
+  try {
+    return !IPHONE && ses && !privateSessions.has(ses) ? shownQuota(diskQuota(), !ses.isPersistent()) : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+/// `config` (a page's or a worker's, or null) with the quota of `ses`'s
+/// pages, if they read one in place of Chromium's.
+const withStorageQuota = (config, ses) => {
+  const quota = config ? storageQuotaFor(ses) : null;
+  if (quota) {
+    config.storageQuota = quota;
+  }
+  return config;
 };
 
 /// What a page's script gets for the page at `top`: the fingerprint for
@@ -545,7 +608,7 @@ const pageConfig = (event) => {
       config.host = new URL(top).hostname;
     }
   } catch (error) {}
-  return config;
+  return tab && tab.isPrivate ? config : withStorageQuota(config, event.sender.session);
 };
 
 /// The name the protection's script goes by in a worker, where a stack can
@@ -597,7 +660,7 @@ const workerScript = (tab, hidden) => {
   if (config && hidden) {
     config.framesHidden = true;
   }
-  return workerSource(config);
+  return workerSource(tab.isPrivate ? config : withStorageQuota(config, tab.webContents.isDestroyed() ? null : tab.webContents.session));
 };
 
 /// Shared and service workers, reached through Chromium's own debugging
@@ -609,7 +672,7 @@ const debuggedWorkerScript = (url, browserContextId) => {
   if (config) {
     config.framesHidden = true;
   }
-  return workerSource(config);
+  return workerSource(withStorageQuota(config, contextSessions.get(browserContextId)));
 };
 
 /// A session's service workers get the protection through Chromium's own
@@ -639,7 +702,7 @@ const guardServiceWorkers = (ses) => {
     }
     guardedWorkers.add(worker);
     worker.ipc.on("noor:sw-config", (event, url) => {
-      event.returnValue = browserDebugger && browserDebugger.active ? null : workerConfig(typeof url === "string" ? url : "", fingerprintOfSession(ses));
+      event.returnValue = browserDebugger && browserDebugger.active ? null : withStorageQuota(workerConfig(typeof url === "string" ? url : "", fingerprintOfSession(ses)), ses);
     });
   });
 };

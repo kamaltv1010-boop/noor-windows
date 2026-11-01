@@ -91,6 +91,7 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ zone:
     screen: screen.width + "x" + screen.height + " avail " + screen.availWidth + "x" + screen.availHeight,
     cores: navigator.hardwareConcurrency, memory: navigator.deviceMemory,
     noor: typeof window.noor, process: typeof process, require: typeof require, Buffer: typeof Buffer,
+    electronCss: CSS.supports("-electron-corner-smoothing", "50%") || "-electron-corner-smoothing" in document.body.style || [...getComputedStyle(document.body)].some((name) => /electron/.test(name)),
     chrome: typeof chrome !== "undefined" ? Object.keys(chrome).join(",") || "(no keys)" : "missing",
     plugins: navigator.plugins.length, pdf: navigator.pdfViewerEnabled, webdriver: navigator.webdriver, platform: navigator.platform,
     chromeKeys: typeof chrome !== "undefined" ? Object.keys(chrome).join(",") : "-",
@@ -147,6 +148,31 @@ self.addEventListener("message", (event) => { event.ports[0].postMessage({ zone:
   results.settingsPage = await inTab(`noor.invoke("settings:get").then((s) => ({ version: s.version, profiles: s.profiles.map((p) => p.name).join(","), screen: s.values.screen.width + "x" + s.values.screen.height, rows: document.querySelectorAll(".row").length }))`);
   await open("noor://app/start.html");
   results.startPage = await inTab(`new Promise((r) => setTimeout(() => r({ title: document.getElementById("title").textContent, profile: document.getElementById("profilename").textContent, trackers: document.getElementById("trackers").textContent }), 500))`);
+
+  if (results.page.electronCss) {
+    console.error("THE PAGE SEES ELECTRON'S CSS PROPERTY");
+    process.exitCode = 1;
+  }
+
+  // A link typed in the address bar: on Enter the page has the keys, as in
+  // Chrome; one loaded without them (document.hasFocus() false in a window
+  // in front) is what a browser a program drives shows.
+  await open(base + "quiet-before-typing");
+  await main(() => global.noorTest.browser.focusAddressBar());
+  await sleep(300);
+  await main((electron, url) => global.noorTest.browser.chrome.webContents.executeJavaScript(`(() => {
+    const address = document.getElementById("address");
+    address.focus();
+    address.value = ${JSON.stringify(url)};
+    address.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+  })()`), base + "quiet-typed");
+  await sleep(500);
+  await waitLoaded();
+  results.typed = await inTab(`({ url: location.href, hasFocus: document.hasFocus() })`);
+  if (!(results.typed.url === base + "quiet-typed" && results.typed.hasFocus)) {
+    console.error("A TYPED LINK'S PAGE HAS NO FOCUS", JSON.stringify(results.typed));
+    process.exitCode = 1;
+  }
 
   // A page served through its service worker: its own files aren't blocked
   // although the worker's requests come from no tab.

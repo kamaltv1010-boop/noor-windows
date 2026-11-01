@@ -1353,12 +1353,19 @@ class Browser {
     return upgraded || cleaned;
   }
 
-  /// What the user typed in the address bar: opens it in `tab`.
+  /// What the user typed in the address bar: opens it in `tab`, and gives
+  /// the page the keys, as Chrome does on Enter. Left in the address bar,
+  /// the page would load in a window in front without them
+  /// (document.hasFocus() false), as only a browser a program drives shows
+  /// it, which bot checks look for.
   go(text, tab = this.selected) {
     const { resolve } = require("./address");
     const url = resolve(text, this.searchEngine);
     if (url && tab) {
       tab.load(url);
+      if (tab === this.selected && !tab.webContents.isDestroyed()) {
+        tab.webContents.focus();
+      }
     }
   }
 
