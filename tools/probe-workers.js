@@ -146,10 +146,20 @@ const run = async (settings) => {
       if (where !== "page" && a !== result.first.page[kind]) problems.push(`${kind} in ${where}: not what its page shows`);
     }
   }
+  // A font a kind of worker tells apart from its page with the protection
+  // off too is Chromium's own doing on this system (in a shared or service
+  // worker on Windows, every generic family is Arial: no page's settings
+  // there), not Noor's: said, not counted.
+  result.notes = [];
   for (const where of places.slice(1)) {
-    const page = JSON.stringify(result.first.page.fonts);
-    const there = JSON.stringify(result.first[where] && result.first[where].fonts);
-    if (page !== there) problems.push(`fonts in ${where}: ${there}, the page: ${page}`);
+    const page = result.first.page.fonts || {};
+    const there = (result.first[where] && result.first[where].fonts) || {};
+    const offPage = (result.off.page && result.off.page.fonts) || {};
+    const offThere = (result.off[where] && result.off[where].fonts) || {};
+    const chromiums = Object.keys(page).filter((font) => typeof offThere === "object" && offPage[font] !== offThere[font]);
+    if (chromiums.length) result.notes.push(`${where}: ${chromiums.join(", ")} differ from the page with the protection off too (Chromium on this system)`);
+    const differ = Object.keys(page).filter((font) => !chromiums.includes(font) && page[font] !== there[font]);
+    if (differ.length) problems.push(`fonts in ${where}: ${differ.map((font) => `${font} ${there[font]} (the page: ${page[font]})`).join(", ")}`);
   }
   result.problems = problems;
   console.log(JSON.stringify(result, null, 2));
