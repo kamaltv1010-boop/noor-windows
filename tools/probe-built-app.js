@@ -6,7 +6,8 @@
 // the one running. What sites keep (cookies, localStorage, IndexedDB) must
 // stay in its profile and survive the restart; what pages may do
 // (permissions) must be refused alike in every profile; the setting must
-// be kept; no process of Noor may be left once it is closed.
+// be kept; no process of Noor may be left once it is closed; a page of a
+// file (file://) must read no other file of the computer.
 //
 // A built Noor takes no test tool (its fuses refuse --inspect), so it is
 // driven as its own pages drive it: through Chromium's debugging port
@@ -24,6 +25,7 @@ const os = require("os");
 const path = require("path");
 const http = require("http");
 const { spawn, spawnSync } = require("child_process");
+const { pathToFileURL } = require("url");
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const args = process.argv.slice(2);
@@ -409,6 +411,45 @@ const visit = async (id, tag, mode) => {
     } catch (error) {
       step("the page is drawn (a screenshot of it)", false, String(error.message));
     }
+  }
+
+  // A page of a file of this computer's (file://) reads no other file, as
+  // in Chrome: the fuse grantFileProtocolExtraPrivileges is off (on, it
+  // lets such a page read every file the user can, and send it away). No
+  // way of Noor's opens one (the address bar searches for file:, a launch
+  // opens http(s) only, a drop doesn't navigate): the debugging protocol
+  // takes the second profile's tab there for the check, then back.
+  {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "noor-file-page-"));
+    const secret = `SECRET-OF-THIS-COMPUTER-${Date.now()}`;
+    fs.writeFileSync(path.join(dir, "secret.txt"), secret);
+    fs.writeFileSync(path.join(dir, "page.html"), "<!doctype html><title>a file's page</title><p>a file's page</p>");
+    let said = null;
+    try {
+      const { targetInfos } = await app.cdp.send("Target.getTargets");
+      const page = targetInfos.find((t) => t.type === "page" && /\/check\?tag=B/.test(t.url));
+      if (!page) throw new Error("no tab of the second profile's page");
+      const { sessionId } = await app.cdp.send("Target.attachToTarget", { targetId: page.targetId, flatten: true });
+      await app.cdp.send("Page.navigate", { url: pathToFileURL(path.join(dir, "page.html")).toString() }, sessionId);
+      for (let i = 0; i < 50; i++) {
+        await sleep(200);
+        const at = await evaluate(app.cdp, sessionId, "location.protocol + ' ' + document.readyState").catch(() => "");
+        if (at === "file: complete") break;
+      }
+      said = await evaluate(app.cdp, sessionId, `(async () => {
+        const url = location.href.replace(/page\\.html$/, "secret.txt");
+        const r = { at: location.protocol };
+        try { r.fetch = "READ " + (await (await fetch(url)).text()); } catch (e) { r.fetch = "refused"; }
+        try { const x = new XMLHttpRequest(); x.open("GET", url, false); x.send(); r.xhr = x.responseText ? "READ " + x.responseText : "nothing"; } catch (e) { r.xhr = "refused"; }
+        r.frame = await new Promise((resolve) => { const f = document.createElement("iframe"); f.src = url; f.onload = () => { try { resolve("READ " + f.contentDocument.body.textContent); } catch (e) { resolve("refused"); } }; f.onerror = () => resolve("refused"); document.body.appendChild(f); setTimeout(() => resolve("no answer"), 3000); });
+        return r;
+      })()`);
+      await app.cdp.send("Page.navigate", { url: page.url }, sessionId).catch(() => {});
+    } catch (error) {
+      said = { error: String(error.message) };
+    }
+    const read = said && Object.values(said).some((value) => String(value).includes(secret));
+    step("a page of a file (file://) reads no other file of this computer (fuse grantFileProtocolExtraPrivileges off)", Boolean(said) && said.at === "file:" && !read, said);
   }
 
   // 4. A setting changed as the Settings page changes it.

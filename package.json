@@ -40,7 +40,8 @@
       "enableCookieEncryption": true,
       "runAsNode": false,
       "enableNodeOptionsEnvironmentVariable": false,
-      "enableNodeCliInspectArguments": false
+      "enableNodeCliInspectArguments": false,
+      "grantFileProtocolExtraPrivileges": false
     },
     "win": {
       "icon": "build/icon.ico",
