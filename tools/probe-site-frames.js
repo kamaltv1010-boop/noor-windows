@@ -124,17 +124,24 @@ f.contentWindow.__reached = true;
       await sleep(100);
     }
     await sleep(1000);
+    // The profile's fonts seed, as the app reads it (see FONTS_SEED).
+    const seed = await app.evaluate(() => global.noorTest.browser.fingerprint.seed("fonts")).catch(() => null);
     await app.evaluate((electron, url) => { global.noorTest.browser.newTab({ url }); }, `http://site.test:${port}/`);
     for (let i = 0; i < 150 && Object.keys(reports).length < 6; i++) await sleep(100);
     await sleep(300);
     await app.close().catch(() => {});
-    return JSON.parse(JSON.stringify(reports));
+    return Object.assign(JSON.parse(JSON.stringify(reports)), { fontsSeed: seed });
   };
   const off = {};
   for (const kind of ["canvas", "webGL", "gpu", "audio", "clientRects", "screen", "hardware", "fonts"]) off[`protection.${kind}`] = false;
   // What this computer has: the plain Windows build, nothing protected.
   const plain = await visit(off, "windows");
-  const protectedRun = await visit(null, BUILD);
+  // A Windows profile shows a few fonts of its own, picked from its seed
+  // among those PCs have (rules/font-pool.json): Inter and JetBrains Mono
+  // among them (each in about 1 profile in 18). Seed 1 picks neither, so
+  // both, installed here for the checks, must be hidden by the page.
+  const FONTS_SEED = 1;
+  const protectedRun = await visit({ "seed.fonts": FONTS_SEED }, BUILD);
   server.close();
 
   const list = (text) => (typeof text === "string" && !/^ERR/.test(text) ? text.split(", ").filter(Boolean) : []);
@@ -142,7 +149,7 @@ f.contentWindow.__reached = true;
   const page = protectedRun["the page"] || {};
   const shown = new Set(list(page.written).concat(list(page.added), list(page.canvas)));
   const hidden = [...here].filter((font) => !shown.has(font));
-  for (const [name, r] of Object.entries(plain)) console.log(`(every protection off) ${name}: written [${r.written}] added [${r.added}] canvas [${r.canvas}] toBlob ${r.toBlob}`);
+  for (const [name, r] of Object.entries(plain)) if (r && typeof r === "object") console.log(`(every protection off) ${name}: written [${r.written}] added [${r.added}] canvas [${r.canvas}] toBlob ${r.toBlob}`);
   console.log(`FONTS HERE (every protection off, the page): ${[...here].join(", ") || "none"}`);
   console.log(`FONTS THE PAGE HIDES (${BUILD}, protected): ${hidden.join(", ") || "none"}`);
 
@@ -157,6 +164,7 @@ f.contentWindow.__reached = true;
     if (here.has(font) && shown.has(font)) problems.push(`the page shows ${font}, a font of this computer's no ${BUILD} profile has`);
   }
   if (!NOBODY_HAS.some((font) => here.has(font))) console.log("NOTE: neither Inter nor JetBrains Mono is installed here: the page's own hiding of this computer's fonts is not checked");
+  if (protectedRun.fontsSeed !== FONTS_SEED) problems.push(`the profile's fonts seed is ${protectedRun.fontsSeed}, not ${FONTS_SEED}: the check's settings didn't take`);
   const NAMES = ["the page", "a frame of the site's", "a frame by srcdoc", "a frame added and reached at once", "a frame in a frame of the site's", "another site's frame"];
   for (const name of NAMES) {
     const r = protectedRun[name];

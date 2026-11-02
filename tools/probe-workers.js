@@ -78,15 +78,24 @@ const PAGE = `<!doctype html><title>workers</title><script>${DRAW}
   const out = { page: Object.assign(valuesHere((w, h) => Object.assign(document.createElement("canvas"), { width: w, height: h })), { gpu: await gpuHere() }) };
   out.dedicated = await new Promise((resolve) => { const w = new Worker("/dedicated.js"); w.onmessage = (e) => resolve(e.data); w.onerror = (e) => resolve("ERR " + e.message); setTimeout(() => resolve("timeout"), 8000); });
   out.shared = await new Promise((resolve) => { const s = new SharedWorker("/shared.js?" + Math.random()); s.port.onmessage = (e) => resolve(e.data); s.port.start(); s.port.postMessage(1); setTimeout(() => resolve("timeout"), 8000); });
+  // Each step of the service worker's, with when (ms): a worker held and
+  // never let go stops before "activated"; a slow one answers late.
+  const steps = [];
+  const t0 = performance.now();
+  const step = (name) => steps.push(name + "@" + Math.round(performance.now() - t0));
   out.service = await Promise.race([(async () => {
     const reg = await navigator.serviceWorker.register("/sw.js");
+    step("registered");
     const worker = reg.active || reg.installing || reg.waiting;
-    if (worker.state !== "activated") await new Promise((r) => worker.addEventListener("statechange", () => worker.state === "activated" && r()));
+    step(worker.state);
+    if (worker.state !== "activated") await new Promise((r) => worker.addEventListener("statechange", () => { step(worker.state); if (worker.state === "activated") r(); }));
     const channel = new MessageChannel();
-    const answer = new Promise((r) => { channel.port1.onmessage = (e) => r(e.data); });
+    const answer = new Promise((r) => { channel.port1.onmessage = (e) => { step("answered"); r(e.data); }; });
     worker.postMessage(1, [channel.port2]);
+    step("asked");
     return answer;
-  })().catch((e) => "ERR " + e), new Promise((r) => setTimeout(() => r("timeout"), 10000))]);
+  })().catch((e) => "ERR " + e), new Promise((r) => setTimeout(() => r("timeout"), 20000))]);
+  out.serviceSteps = steps.join(" ");
   await fetch("/report", { method: "POST", body: JSON.stringify(out) });
 })();
 </script><p>workers</p>`;
@@ -166,7 +175,7 @@ const run = async (settings) => {
     const page = told(result[profile].page && result[profile].page.identity);
     for (const where of places) {
       const mine = told(result[profile][where] && result[profile][where].identity);
-      if (where !== "page" && mine !== page) problems.push(`identity in ${where} (${profile} profile): ${mine} (the page: ${page})`);
+      if (where !== "page" && mine !== page) problems.push(`identity in ${where} (${profile} profile): ${mine} (the page: ${page})${where === "service" ? `; its steps: ${result[profile].serviceSteps || "none"}` : ""}`);
     }
   }
   // The graphics card's name: this computer's own (the page with the
