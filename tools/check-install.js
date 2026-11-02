@@ -120,7 +120,14 @@ const entry = () => {
   const un = spawnSync(uninstaller, ["/S"], { timeout: 300000 });
   for (let i = 0; i < 240 && fs.existsSync(appExe); i++) await sleep(500);
   step("uninstalls (Uninstall /S)", un.status === 0 && !fs.existsSync(appExe), `exit ${un.status}, ${Date.now() - removed} ms`);
-  await sleep(2000);
+  // The uninstaller's copy goes on once its first process has left: the
+  // folder, the shortcuts and Windows' entry go one after another (in run
+  // 41519316199 the shortcuts and the entry were still there 2 s after the
+  // app's .exe had gone). What it takes away is waited for, a minute at most.
+  const left = () => [fs.existsSync(folder), ...shortcuts.map((shortcut) => fs.existsSync(shortcut)), entry() !== null].filter(Boolean).length;
+  const tail = Date.now();
+  for (let i = 0; i < 120 && left() > 0; i++) await sleep(500);
+  console.error(`note the uninstaller finished its work ${Date.now() - removed} ms after it was started (${Date.now() - tail} ms after its .exe had gone)`);
   step("its folder is gone", !fs.existsSync(folder), folder);
   for (const shortcut of shortcuts) step(`shortcut gone: ${path.basename(path.dirname(shortcut))}\\${path.basename(shortcut)}`, !fs.existsSync(shortcut));
   step("Windows no longer lists it", entry() === null);
