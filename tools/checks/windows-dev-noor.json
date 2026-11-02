@@ -177,6 +177,17 @@
     "minutes": 5
   },
   {
+    "name": "probe-canvas-reads",
+    "title": "كل طرق قراءة canvas (getImageData، toDataURL، toBlob، صورة نقطية، VideoFrame، WebGL، captureStream، worker): لا طريق يقرأ الرسم الحقيقي، وVideoFrame كواجهة المتصفح",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-canvas-reads.js",
+      "windows"
+    ],
+    "minutes": 3
+  },
+  {
     "name": "probe-navigation-source",
     "title": "المفضلة والروابط المثبّتة: ما يصل إلى الموقع مثل كتابة العنوان تماماً",
     "kind": "app",

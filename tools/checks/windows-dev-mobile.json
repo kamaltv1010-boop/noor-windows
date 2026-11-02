@@ -155,6 +155,17 @@
     "minutes": 3
   },
   {
+    "name": "probe-canvas-reads-iphone",
+    "title": "Noor iPhone: لا طريق لقراءة canvas يعطي الرسم الحقيقي (ومنها VideoFrame)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-canvas-reads.js",
+      "iphone"
+    ],
+    "minutes": 3
+  },
+  {
     "name": "probe-isolation-iphone",
     "title": "Noor iPhone: عزل البيانات بين البروفايلات",
     "kind": "app",
@@ -260,6 +271,17 @@
     "command": [
       "node",
       "tools/probe-request-headers.js",
+      "android"
+    ],
+    "minutes": 3
+  },
+  {
+    "name": "probe-canvas-reads-android",
+    "title": "Noor Android: لا طريق لقراءة canvas يعطي الرسم الحقيقي (ومنها VideoFrame)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-canvas-reads.js",
       "android"
     ],
     "minutes": 3
