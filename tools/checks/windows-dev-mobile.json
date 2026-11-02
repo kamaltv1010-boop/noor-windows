@@ -33,12 +33,23 @@
   },
   {
     "name": "smoke-windows-iphone",
-    "title": "Noor iPhone: نافذة لكل بروفايل",
+    "title": "Noor iPhone: نافذة لكل بروفايل، على الشاشة كلها",
     "kind": "app",
     "command": [
       "node",
       "tools/smoke-windows.js",
       "iphone"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "smoke-windows-android",
+    "title": "Noor Android: نافذة لكل بروفايل، على الشاشة كلها",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-windows.js",
+      "android"
     ],
     "minutes": 10
   },

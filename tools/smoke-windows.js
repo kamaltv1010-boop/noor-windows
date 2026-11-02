@@ -8,9 +8,11 @@
 // cookies, at the next launch if the app was quitting; deleting a profile
 // closes its window; the windows open as the app quit open again, Noor
 // started with --profile=<id> opens that one, and so does Noor started
-// again while it runs (a pinned profile's button). With "iphone", in Noor
-// iPhone. Needs Playwright and a display: on Linux,
-// `xvfb-run -a node tools/smoke-windows.js [iphone]`.
+// again while it runs (a pinned profile's button). Every build's window
+// opens as big as the screen; in Noor iPhone and Noor Android ("iphone",
+// "android") the device's page stays its own size in it, in the middle.
+// Needs Playwright and a display: on Linux,
+// `xvfb-run -a node tools/smoke-windows.js [iphone|android]`.
 "use strict";
 const fs = require("fs");
 const os = require("os");
@@ -20,9 +22,10 @@ const { spawn } = require("child_process");
 const { _electron: electron } = require("playwright");
 
 const root = path.join(__dirname, "..");
-const iphone = process.argv[2] === "iphone";
-const product = iphone ? "Noor iPhone" : "Noor";
-const appId = iphone ? "ma.noor.iphone" : "ma.noor.browser";
+const BUILD = ["iphone", "android"].includes(process.argv[2]) ? process.argv[2] : "windows";
+const iphone = BUILD !== "windows";
+const product = { iphone: "Noor iPhone", android: "Noor Android", windows: "Noor" }[BUILD];
+const appId = { iphone: "ma.noor.iphone", android: "ma.noor.android", windows: "ma.noor.browser" }[BUILD];
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 (async () => {
@@ -42,7 +45,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     ...process.env,
     NOOR_TEST: "1",
     NOOR_USER_DATA: userData,
-    NOOR_DEVICE: iphone ? "iphone" : "windows",
+    NOOR_DEVICE: BUILD,
     NOOR_TEST_TIMEZONE: "Africa/Casablanca",
     NOOR_TEST_WARMUP_SITES: JSON.stringify([`${base}/warm-a`, `${base}/warm-b`]),
     NOOR_TEST_WARMUP_FAST: "1",
@@ -114,7 +117,21 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
       id: shop.profile.id,
       inFront: w.current === shop,
       visible: shop.win.isVisible() && home.win.isVisible(),
-      maximized: global.maximized.includes(shop.win.id),
+      // (On Windows the window manager makes it so; Linux's test display has
+      // none, so the request is what is seen there.)
+      maximized: global.maximized.includes(shop.win.id) && (process.platform !== "win32" || shop.win.isMaximized()),
+      // A device's page: its own size (or smaller, where the screen is too
+      // short for it), never bigger, in the middle of the window, and the
+      // page's own width the device's.
+      page: await (async () => {
+        if (!shop.isMobile || !shop.selected) return null;
+        const device = shop.selected.device || shop.fingerprint.iphone();
+        const view = shop.selected.view.getBounds();
+        const content = shop.win.getContentBounds();
+        const scale = shop.selected.pageScale || 1;
+        const inner = await shop.selected.webContents.executeJavaScript("innerWidth").catch(() => null);
+        return { device: device.pageWidth, scale, view, content: { width: content.width, height: content.height }, inner };
+      })(),
       onScreen: (() => {
         const area = electron.screen.getDisplayMatching(shop.win.getNormalBounds()).workArea;
         const b = shop.win.getNormalBounds();
@@ -130,7 +147,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const ico = made.icon ? fs.readFileSync(made.icon.ico) : null;
   made.ico = ico ? { reserved: ico.readUInt16LE(0), type: ico.readUInt16LE(2), count: ico.readUInt16LE(4) } : null;
   check("a new profile opens in a window of its own, in front, shown with the other", made.count === 2 && made.title === `Shop 7 - ${product}` && made.profile === "Shop 7" && made.inFront && made.visible && made.tabs === 1, made);
-  check(iphone ? "Noor iPhone's window: as big as its iPhone, on the screen" : "Noor's window: as big as the screen", (iphone ? !made.maximized : made.maximized) && made.onScreen, { maximized: made.maximized, onScreen: made.onScreen });
+  check(`${product}'s window: as big as the screen (made smaller, on the screen)`, made.maximized && made.onScreen, { maximized: made.maximized, onScreen: made.onScreen });
+  if (iphone) {
+    const p = made.page;
+    check(`${product}: the device's page its own size, never bigger, in the middle`, p && p.scale <= 1 && p.view.width === Math.round(p.device * p.scale)
+      && Math.abs(p.view.x - Math.round((p.content.width - p.view.width) / 2)) <= 1 && p.inner === p.device, p);
+  }
   check("its own icon (an .ico of 8 sizes, 256 the biggest) and its own taskbar button", made.ico && made.ico.reserved === 0 && made.ico.type === 1 && made.ico.count === 8 && made.png && made.png.width === 256 && made.taskbar.appId === `${appId}.profile.${made.id.replace(/-/g, "")}` && made.taskbar.appIconPath && made.taskbar.appIconPath.endsWith(".ico"), { ico: made.ico, png: made.png, taskbar: made.taskbar });
   check("the toolbar shows the profile in its color", made.state.name === "Shop 7" && /^#[0-9a-f]{6}$/.test(made.state.color || ""), made.state);
   if (made.icon) fs.copyFileSync(made.icon.png, path.join(userData, "shop-7-icon.png"));
@@ -309,7 +331,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   fs.writeFileSync(path.join(userData, "toolbar.png"), Buffer.from(shot, "base64"));
   await app.close();
   server.close();
-  console.log(JSON.stringify({ iphone, icon: path.join(userData, "shop-7-icon.png"), toolbar: path.join(userData, "toolbar.png"), failures }, null, 2));
+  console.log(JSON.stringify({ build: BUILD, icon: path.join(userData, "shop-7-icon.png"), toolbar: path.join(userData, "toolbar.png"), failures }, null, 2));
   process.exit(failures.length ? 1 : 0);
 })().catch((error) => {
   console.error(error);

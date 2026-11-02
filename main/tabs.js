@@ -823,8 +823,9 @@ class Browser {
 
   // MARK: - Window
 
-  /// A device's window (Noor iPhone's, Noor Android's) fits its page under
-  /// the toolbar (a phone's in a window as wide as the toolbar needs, a
+  /// A device's window (Noor iPhone's, Noor Android's), when not as big as
+  /// the screen (it opens so, see makeWindow), fits its page under the
+  /// toolbar (a phone's in a window as wide as the toolbar needs, a
   /// tablet's in one as wide as its page).
   windowSize() {
     if (!this.isMobile) {
@@ -883,24 +884,21 @@ class Browser {
     this.win.contentView.addChildView(this.chrome);
     this.chrome.webContents.loadURL(CHROME_URL);
     // Shown once the taskbar has it as its profile's (its icon, see
-    // Windows.dress), or after a moment anyway: Noor's as big as the screen
-    // (a device's as big as its page); a window that isn't the one in
-    // front by then (one of several opened together) doesn't take the front.
+    // Windows.dress), or after a moment anyway: as big as the screen, in
+    // every build. In Noor iPhone and Noor Android the device's page stays
+    // its own size, in the middle (see phoneBounds), and the window, made
+    // smaller again, is as big as that page (see windowSize). A window that
+    // isn't the one in front by then (one of several opened together)
+    // isn't given the focus.
     this.chrome.webContents.once("did-finish-load", () => {
       const dressed = Promise.resolve(this.dressing);
       Promise.race([dressed, new Promise((resolve) => setTimeout(resolve, 800))]).then(() => {
         if (!this.win.isDestroyed()) {
           const inFront = !(this.windows && this.windows.current && this.windows.current !== this);
-          if (!this.isMobile) {
-            // Shows it too, in front or not.
-            this.win.maximize();
-            if (inFront) {
-              this.win.focus();
-            }
-          } else if (inFront) {
-            this.win.show();
-          } else {
-            this.win.showInactive();
+          // Shows it too, in front or not.
+          this.win.maximize();
+          if (inFront) {
+            this.win.focus();
           }
           this.pushState();
         }

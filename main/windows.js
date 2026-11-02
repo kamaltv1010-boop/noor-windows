@@ -169,9 +169,9 @@ class Windows {
     return browser;
   }
 
-  /// Where a new window goes when it isn't as big as the screen (Noor's
-  /// opens maximized, see Browser.makeWindow): a little right of and below
-  /// the one in front, as big, and all of it on that screen.
+  /// Where a new window goes when it isn't as big as the screen (every
+  /// build's opens maximized, see Browser.makeWindow): a little right of and
+  /// below the one in front, as big, and all of it on that screen.
   nextBounds() {
     const near = this.current && !this.current.closing && !this.current.win.isDestroyed() ? this.current.win.getNormalBounds() : null;
     if (!near) {
