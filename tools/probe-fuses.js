@@ -85,7 +85,15 @@ const freePort = () => new Promise((resolve) => {
     result.nodeOptions !== "ignored" && "NODE_OPTIONS: " + result.nodeOptions,
     result.inspect !== "no debugger" && "--inspect: " + result.inspect,
   ].filter(Boolean);
-  fs.rmSync(work, { recursive: true, force: true });
+  // The temporary folder, away: the app's helper processes can hold a file
+  // in it a moment after the app itself has ended (EBUSY on Windows, run
+  // 41536905205), so asked again for a few seconds; left behind if still
+  // held, which tests nothing of the app.
+  try {
+    fs.rmSync(work, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
+  } catch (error) {
+    result.leftBehind = `${work} (${error.code || error.message})`;
+  }
   console.log(JSON.stringify(result, null, 2));
   process.exit(result.problems.length ? 1 : 0);
 })().catch((error) => {

@@ -118,7 +118,7 @@ const CLICKED = new Set(["link"]);
     if (siteRead) read.push(name);
     console.log(`TRY ${name}: tab at ${r.tabURL}; frames ${JSON.stringify(r.frames.map((f) => f.url))}${said ? "; the site got: " + said.slice(0, 300) : ""}${ownTab && !siteRead ? "; (the file shown in a tab of its own, out of the site's reach)" : ""}`);
   }
-  fs.rmSync(folder, { recursive: true, force: true });
+  try { fs.rmSync(folder, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); } catch (error) {}
   console.log(read.length ? `LOCAL FILES: A SITE READ A FILE OF THIS COMPUTER (${read.join(", ")})` : "LOCAL FILES: no site read a file of this computer");
   process.exit(read.length ? 1 : 0);
 })().catch((error) => {

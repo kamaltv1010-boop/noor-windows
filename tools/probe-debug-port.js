@@ -99,7 +99,9 @@ const run = async (asPublic) => {
   app.kill("SIGTERM");
   await Promise.race([exited, sleep(15000).then(() => app.kill("SIGKILL"))]);
   web.close();
-  fs.rmSync(userData, { recursive: true, force: true });
+  // (Asked again a few seconds: the app's helper processes can hold a file a
+  // moment after it ends, on Windows. Left behind if still held.)
+  try { fs.rmSync(userData, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); } catch (error) {}
   return { page: reported || "no report", openedTab: opened, otherAddresses: others, port: debug.port };
 };
 

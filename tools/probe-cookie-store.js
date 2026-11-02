@@ -94,16 +94,23 @@ const rowsOf = (dir, name) => {
 /// whether the cookie came back from the browser before it quit.
 const visit = async (exe, userData, name, secret) => {
   const seen = { visit: null, back: null };
+  // When each request came, in ms from the second start (the one given the
+  // page), for the log: a page that never asks back is told apart from one
+  // that asks late.
+  let givenAt = Date.now();
+  const times = {};
   const web = http.createServer((req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
     res.setHeader("cache-control", "no-store");
     if (url.pathname === "/set") {
       seen.visit = req.headers.cookie || "";
+      times.visit = Date.now() - givenAt;
       res.setHeader("set-cookie", `${name}=${secret}; Max-Age=3600; Path=/; HttpOnly; SameSite=Lax`);
       res.setHeader("content-type", "text/html");
       res.end("<!doctype html><title>cookie</title><p>cookie</p><script>fetch('/back')</script>");
     } else if (url.pathname === "/back") {
       seen.back = req.headers.cookie || "";
+      times.back = Date.now() - givenAt;
       res.end("ok");
     } else {
       res.end("");
@@ -119,6 +126,7 @@ const visit = async (exe, userData, name, secret) => {
   const app = spawn(exe, launchArgs(exe), { env, stdio: "ignore" });
   const exited = new Promise((resolve) => app.on("exit", (code, signal) => resolve(signal || code)));
   await sleep(7000);
+  givenAt = Date.now();
   const second = spawn(exe, [...launchArgs(exe), `http://127.0.0.1:${web.address().port}/set`], { env, stdio: "ignore" });
   await new Promise((resolve) => second.on("exit", resolve));
   const until = Date.now() + 60000;
@@ -128,7 +136,7 @@ const visit = async (exe, userData, name, secret) => {
   if (how === "still running") app.kill("SIGKILL");
   await sleep(1000);
   web.close();
-  return { ...seen, quit: how };
+  return { ...seen, quit: how, times };
 };
 
 (async () => {
