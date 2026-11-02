@@ -112,9 +112,17 @@ onmessage = async (e) => postMessage({ idb: await idb(e.data === "write") });`, 
       await sleep(100);
     }
   };
+  // A tab with the page, once its calls are there (its page loaded): not
+  // after a fixed wait (in run 41521783891 two seconds weren't enough on
+  // Windows, and window.write wasn't there yet), 20 s at most.
   const open = async (app, isPrivate = false) => {
     await app.evaluate((electron, [url, priv]) => { global.noorTest.browser.newTab({ url, isPrivate: priv }); }, [base, isPrivate]);
-    await sleep(2000);
+    for (let i = 0; i < 80; i++) {
+      const loaded = await app.evaluate(() => global.noorTest.browser.selected.webContents.executeJavaScript("typeof window.write === 'function' && typeof window.read === 'function' && document.readyState === 'complete'")).catch(() => false);
+      if (loaded) break;
+      await sleep(250);
+    }
+    await sleep(300);
   };
   const run = (app, code) => app.evaluate((electron, source) => global.noorTest.browser.selected.webContents.executeJavaScript(source, true), code);
   const profileName = (app) => app.evaluate(() => global.noorTest.browser.profile.name);
