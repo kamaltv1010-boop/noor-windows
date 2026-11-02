@@ -15,7 +15,7 @@ const { Windows, profileArgument } = require("./windows");
 const { Extensions, STORE_URL } = require("./extensions");
 const { storeExtensionID, storeTitle } = require("./crx");
 const { Menus } = require("./menus");
-const { ENGINES, APP_ORIGIN, ERROR_URL, COOKIES_URL, isAppPage, isWebPage } = require("./address");
+const { ENGINES, APP_ORIGIN, ERROR_URL, COOKIES_URL, isAppPage, isWebPage, isLocalAddress, isLocalIP, hostIsName } = require("./address");
 const { userAgent, chromeVersion, brands, parseBrands, formatBrands, acceptLanguages, userAgentMetadata } = require("./useragent");
 const { BrowserDebugger } = require("./browser-debugger");
 const { Warmup, FAST } = require("./warmup");
@@ -182,33 +182,116 @@ const serveAppPage = (request) => {
   });
 };
 
-/// The page a request comes from: the top frame's address, or the tab's,
-/// or for a request a service worker makes (no frame, no tab) the
-/// referrer. Empty when it can't be told.
-/// Whether `url` is of this computer or its own network: localhost, a
-/// loopback, private or link-local address.
-const isLocalAddress = (url) => {
+/// Whether the name in `url` leads, for `ses`, to this computer or its own
+/// network: resolved as the session's own requests are (Chromium's
+/// resolver, its cache first), so a name a site points at 127.0.0.1 or a
+/// router's 192.168.… (127.0.0.1.nip.io, a rebound name of its own) is
+/// found out before the request goes. Each answer is kept a second. A
+/// name that doesn't resolve leads nowhere.
+const nameAnswers = new WeakMap();
+const leadsHome = async (ses, url) => {
   let host;
   try {
     host = new URL(url).hostname.toLowerCase();
   } catch (error) {
     return false;
   }
-  if (host === "localhost" || host.endsWith(".localhost") || host === "0.0.0.0") {
-    return true;
+  let answers = nameAnswers.get(ses);
+  if (!answers) {
+    answers = new Map();
+    nameAnswers.set(ses, answers);
   }
-  const v4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
-  if (v4) {
-    const [a, b] = [Number(v4[1]), Number(v4[2])];
-    return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254) || a === 0;
+  const known = answers.get(host);
+  if (known && Date.now() - known.at < 1000) {
+    return known.local;
   }
-  if (host.startsWith("[") && host.endsWith("]")) {
-    const v6 = host.slice(1, -1);
-    return v6 === "::1" || v6 === "::" || /^f[cd][0-9a-f]{0,2}:/.test(v6) || /^fe[89ab][0-9a-f]?:/.test(v6) || /^::ffff:(127|10|192\.168)\./.test(v6);
+  let local = false;
+  try {
+    const resolved = await ses.resolveHost(host, { cacheUsage: "allowed" });
+    local = Boolean(resolved && Array.isArray(resolved.endpoints) && resolved.endpoints.some((endpoint) => isLocalIP(endpoint.address)));
+  } catch (error) {
+    local = false;
   }
-  return false;
+  if (answers.size > 2000) {
+    answers.clear();
+  }
+  answers.set(host, { at: Date.now(), local });
+  return local;
 };
 
+/// Where each origin's pages come from, as their documents' responses tell
+/// (the address of the server that sent the last one): "local" for this
+/// computer or its own network, "public" for a site's, or for a document
+/// that asks to be taken as a site's (Content-Security-Policy:
+/// treat-as-public-address, as Chrome takes it). A page keeps what it was
+/// loaded as: a site that points its own name at 127.0.0.1 once its page
+/// is loaded ("DNS rebinding") stays a site's, and a page a device of this
+/// network serves under a name of its own (nas.local) is that network's.
+const originPlaces = new Map();
+const rememberPlace = (details) => {
+  if (details.resourceType !== "mainFrame" && details.resourceType !== "subFrame") {
+    return;
+  }
+  let origin = null;
+  try {
+    origin = new URL(details.url).origin;
+  } catch (error) {
+    return;
+  }
+  if (!origin || origin === "null") {
+    return;
+  }
+  let asksPublic = false;
+  for (const [name, values] of Object.entries(details.responseHeaders || {})) {
+    if (name.toLowerCase() === "content-security-policy") {
+      asksPublic = asksPublic || [].concat(values).some((value) => /(^|;)\s*treat-as-public-address\s*(;|$)/i.test(String(value)));
+    }
+  }
+  const place = asksPublic ? "public" : details.ip ? (isLocalIP(details.ip) ? "local" : "public") : null;
+  if (!place) {
+    return;
+  }
+  if (originPlaces.size > 5000) {
+    originPlaces.clear();
+  }
+  originPlaces.set(origin, place);
+};
+/// Where the page at `url` comes from: "local" by its address alone
+/// (localhost, 192.168.…), else as its document's response told, or null
+/// if that isn't known (a service worker's answer, say).
+const placeOf = (url) => {
+  if (isLocalAddress(url)) {
+    return "local";
+  }
+  try {
+    return originPlaces.get(new URL(url).origin) || null;
+  } catch (error) {
+    return null;
+  }
+};
+
+/// The rest of what a request goes through once its address is allowed:
+/// a request that can't be put to a page (a service worker's, say) and the
+/// app's own pages (a tab's favicon in the toolbar) aren't blocked; a
+/// tracker, a third party on a page, is.
+const afterAddress = (details, page, callback) => {
+  if (!isWebPage(page) || !context) {
+    return callback({});
+  }
+  if (context.shields.trackersEnabled() && context.shields.areUp(page) && context.shields.isTracker(details.url, page)) {
+    if (windows) {
+      windows.trackerBlocked(details.webContents);
+    } else {
+      context.stats.trackerBlocked();
+    }
+    return callback({ cancel: true });
+  }
+  return callback({});
+};
+
+/// The page a request comes from: the top frame's address, or the tab's,
+/// or for a request a service worker makes (no frame, no tab) the
+/// referrer. Empty when it can't be told.
 const pageURLOf = (details) => {
   const candidates = [];
   try {
@@ -325,27 +408,23 @@ const setUpSession = (ses) => {
     // access"), Electron doesn't, and a site could look for what runs here
     // (Noor's debugging port among the rest). Refused, as by a user who
     // says no; a page of this computer or network may still.
-    if (isLocalAddress(details.url) && isWebPage(page) && !isLocalAddress(page)) {
+    const place = isWebPage(page) ? placeOf(page) : null;
+    if (isLocalAddress(details.url) && isWebPage(page) && place !== "local") {
       return callback({ cancel: true });
     }
-    // A request that can't be put to a page (a service worker's, say) and
-    // the app's own pages (a tab's favicon in the toolbar) aren't blocked:
-    // a tracker is a third party on a page.
-    if (!isWebPage(page)) {
-      return callback({});
+    // The same through a name that leads there (127.0.0.1.nip.io, a name
+    // of the site's own pointed at a router's 192.168.1.1, or at 127.0.0.1
+    // once its page is loaded): for a page known to be a site's, where the
+    // name leads decides, as in Chrome, not how it is written.
+    if (place === "public" && hostIsName(details.url)) {
+      leadsHome(ses, details.url).then((home) => (home ? callback({ cancel: true }) : afterAddress(details, page, callback)), () => afterAddress(details, page, callback));
+      return undefined;
     }
-    if (context.shields.trackersEnabled() && context.shields.areUp(page) && context.shields.isTracker(details.url, page)) {
-      if (windows) {
-        windows.trackerBlocked(details.webContents);
-      } else {
-        context.stats.trackerBlocked();
-      }
-      return callback({ cancel: true });
-    }
-    callback({});
+    return afterAddress(details, page, callback);
   });
   ses.webRequest.onHeadersReceived({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {
     rememberAcceptCH(details);
+    rememberPlace(details);
     callback({});
   });
   ses.webRequest.onBeforeSendHeaders({ urls: ["http://*/*", "https://*/*"] }, (details, callback) => {

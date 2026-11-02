@@ -292,6 +292,16 @@
     "minutes": 4
   },
   {
+    "name": "probe-local-network",
+    "title": "هل يصل موقع إلى خدمات هذا الحاسوب أو شبكته (الموجّه، الطابعة، أدوات localhost) باسم يُحلّ إليها أو بإعادة ربط اسمه: تسع طرق، وصفحة من الحاسوب للضبط",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-local-network.js"
+    ],
+    "minutes": 4
+  },
+  {
     "name": "debug-port-dev",
     "title": "منفذ التصحيح (الكود أثناء التطوير)",
     "kind": "app",
