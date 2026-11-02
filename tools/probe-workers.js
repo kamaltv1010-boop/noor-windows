@@ -63,6 +63,10 @@ const valuesHere = (makeCanvas) => {
   try { out.fonts = fonts(makeCanvas(10, 10).getContext("2d")); } catch (e) { out.fonts = "ERR " + e.message; }
   // The graphics card WebGL names, once asked (WEBGL_debug_renderer_info).
   try { const g = makeCanvas(1, 1).getContext("webgl"); const e = g && g.getExtension("WEBGL_debug_renderer_info"); out.renderer = e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : "no webgl"; } catch (e) { out.renderer = "ERR " + e.message; }
+  // What the page and its workers each say they run on: the same everywhere
+  // (a worker with this computer's own would tell it; one unlike its page,
+  // that something changed them).
+  try { const n = self.navigator; out.identity = [n.userAgent, n.platform, n.language, (n.languages || []).join(","), n.hardwareConcurrency, n.deviceMemory, Intl.DateTimeFormat().resolvedOptions().timeZone, new Date(1793620800000).getTimezoneOffset(), Intl.DateTimeFormat().resolvedOptions().locale].join(" | "); } catch (e) { out.identity = "ERR " + e.message; }
   return out;
 };
 `;
@@ -150,6 +154,19 @@ const run = async (settings) => {
       // (Two profiles may show one card; Noor iPhone shows Safari's "apple" in all.)
       if (a === b && kind !== "gpu") problems.push(`${kind} in ${where}: the same in two profiles`);
       if (where !== "page" && a !== result.first.page[kind]) problems.push(`${kind} in ${where}: not what its page shows`);
+    }
+  }
+  // What each says it runs on: what its page says, in both profiles. (Noor
+  // tells its tabs they run on Win32, which a worker of theirs reads from
+  // the system: on Windows the same, elsewhere (tests) not; so the platform
+  // is left out there.)
+  const sameSystem = BUILD !== "windows" || process.platform === "win32";
+  const told = (identity) => (sameSystem || typeof identity !== "string" ? identity : identity.split(" | ").filter((part, i) => i !== 1).join(" | "));
+  for (const profile of ["first", "second"]) {
+    const page = told(result[profile].page && result[profile].page.identity);
+    for (const where of places) {
+      const mine = told(result[profile][where] && result[profile][where].identity);
+      if (where !== "page" && mine !== page) problems.push(`identity in ${where} (${profile} profile): ${mine} (the page: ${page})`);
     }
   }
   // The graphics card's name: this computer's own (the page with the
