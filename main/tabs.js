@@ -11,6 +11,11 @@ const PRELOAD = path.join(__dirname, "..", "scripts", "preload.js");
 const CHROME_PRELOAD = path.join(__dirname, "..", "scripts", "chrome-preload.js");
 const CHROME_PARTITION = "persist:noor-chrome";
 
+/// Whether a page at `from` may take a tab to `target`, or open it: the
+/// app's own pages (noor://app/…, which hold the app's calls) only from
+/// the app's own pages; any other address from anywhere.
+const mayOpenAppPage = (target, from) => !isAppPage(target) || isAppPage(from);
+
 /// A view's page while it is there. Once it is gone (its window closed),
 /// Electron gives the view no webContents at all, so asking it whether it
 /// is destroyed throws: work left for later (a state pushed on the next
@@ -414,10 +419,24 @@ class Tab {
     });
     wc.on("will-navigate", (event, url) => {
       const target = (event && event.url) || url;
+      // A site may not take its tab to the app's own pages (noor://app/…),
+      // as Chrome lets no site open its chrome:// pages: those pages hold
+      // the app's calls (settings, profiles, cookies, extensions). They link
+      // to each other, and the user may type them (Browser.go loads them).
+      if (!mayOpenAppPage(target, wc.getURL())) {
+        event.preventDefault();
+        return;
+      }
       const replacement = this.browser.rewrite(target, this);
       if (replacement && replacement !== target) {
         event.preventDefault();
         wc.loadURL(replacement);
+      }
+    });
+    // Nor may a site's server send the tab on to them (a redirect).
+    wc.on("will-redirect", (event, url) => {
+      if (isAppPage((event && event.url) || url)) {
+        event.preventDefault();
       }
     });
     wc.on("did-fail-load", (event, code, description, url, isMainFrame) => this.failed(code, description, url, isMainFrame));
@@ -1274,6 +1293,11 @@ class Browser {
   openWindow(opener, details) {
     const { url, disposition } = details;
     if (disposition !== "new-window" && disposition !== "foreground-tab" && disposition !== "background-tab") {
+      return { action: "deny" };
+    }
+    // The app's own pages only from the app's own pages (see the tab's
+    // "will-navigate"): not from a site, even with the user's click.
+    if (!mayOpenAppPage(url, opener.webContents.isDestroyed() ? "" : opener.webContents.getURL())) {
       return { action: "deny" };
     }
     // A window the page opens by itself is blocked, as in Chrome: the

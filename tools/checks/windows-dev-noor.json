@@ -220,6 +220,16 @@
   "expect": "problem"
  },
  {
+  "name": "probe-app-pages",
+  "title": "هل يصل موقع إلى صفحات Noor نفسها (الإعدادات، الكوكيز): إطار، انتقال، رابط، نافذة بنقرة، Ctrl+نقر، الزر الأوسط، تحويل من الخادم، fetch",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-app-pages.js"
+  ],
+  "minutes": 6
+ },
+ {
   "name": "debug-port-dev",
   "title": "منفذ التصحيح (الكود أثناء التطوير)",
   "kind": "app",
