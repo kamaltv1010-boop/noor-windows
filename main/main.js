@@ -142,7 +142,14 @@ const serveAppPage = (request) => {
   if (!full.startsWith(RENDERER + path.sep) || !fs.existsSync(full) || !fs.statSync(full).isFile()) {
     return new Response("Not found", { status: 404 });
   }
-  return net.fetch(pathToFileURL(full).toString());
+  // In no frame: no page shows the app's pages inside it (a site would
+  // hold them under its own buttons), as Chrome's own pages.
+  return net.fetch(pathToFileURL(full).toString()).then((response) => {
+    const headers = new Headers(response.headers);
+    headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+    headers.set("X-Frame-Options", "DENY");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  });
 };
 
 /// The page a request comes from: the top frame's address, or the tab's,
@@ -811,9 +818,13 @@ const guardServiceWorkers = (ses) => {
   });
 };
 
+/// Whether a call comes from one of the app's pages, itself on top: not
+/// one a site holds in a frame of its own (where it could be hidden under
+/// the site's buttons, its own clicked unseen).
 const trusted = (event) => {
   try {
-    return Boolean(event.senderFrame && isAppPage(event.senderFrame.url));
+    const frame = event.senderFrame;
+    return Boolean(frame && isAppPage(frame.url) && (!frame.top || isAppPage(frame.top.url)));
   } catch (error) {
     return false;
   }

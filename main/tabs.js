@@ -439,6 +439,22 @@ class Tab {
         event.preventDefault();
       }
     });
+    // Nor may a site hold one in a frame of its own (under its own buttons,
+    // clicked unseen): a frame goes to an app's page only in an app's page.
+    wc.on("will-frame-navigate", (details) => {
+      if (!details || details.isMainFrame) {
+        return;
+      }
+      let top = "";
+      try {
+        top = details.frame && details.frame.top ? details.frame.top.url : wc.getURL();
+      } catch (error) {
+        top = "";
+      }
+      if (!mayOpenAppPage(details.url, top)) {
+        details.preventDefault();
+      }
+    });
     wc.on("did-fail-load", (event, code, description, url, isMainFrame) => this.failed(code, description, url, isMainFrame));
     wc.on("dom-ready", () => {
       if (this.background) {

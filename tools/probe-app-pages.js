@@ -66,7 +66,8 @@ const CLICKS = {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const base = `http://evil.test:${server.address().port}`;
   const userData = fs.mkdtempSync(path.join(os.tmpdir(), "noor-apppages-"));
-  const env = { ...process.env, NOOR_TEST: "1", NOOR_USER_DATA: userData, NOOR_DEVICE: process.env.NOOR_DEVICE || "windows" };
+  // (A time zone of its own: Noor asks no service where this computer is.)
+  const env = { ...process.env, NOOR_TEST: "1", NOOR_TEST_TIMEZONE: "Africa/Casablanca", NOOR_USER_DATA: userData, NOOR_DEVICE: process.env.NOOR_DEVICE || "windows" };
   const electronPath = require(path.join(root, "node_modules", "electron"));
   const app = await electron.launch({ executablePath: electronPath, args: [root, "--no-sandbox", "--host-resolver-rules=MAP *.test 127.0.0.1"], env });
   const main = (fn, arg) => app.evaluate(fn, arg);
@@ -84,6 +85,8 @@ const CLICKS = {
       const before = new Set(browser.tabs.map((t) => t.id));
       const tab = browser.newTab({ url });
       await wait(click ? 1500 : 3000);
+      // A frame of the site's: until it has gone somewhere (8 s at most).
+      for (let i = 0; i < 25 && !click && /\/frame$/.test(url) && !tab.webContents.mainFrame.framesInSubtree.some((f) => f !== tab.webContents.mainFrame && f.url); i++) await wait(200);
       if (click) {
         // The user's click, as Chromium gets it from the mouse.
         const rect = await tab.webContents.executeJavaScript("(() => { const r = document.getElementById('b').getBoundingClientRect(); return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2) }; })()");
