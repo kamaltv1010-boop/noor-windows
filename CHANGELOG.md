@@ -3,7 +3,7 @@
 Numbered builds are on GitHub Releases (`1.0.<build>`); each holds Noor,
 Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
-## Unreleased
+## 1.0.47
 
 - **أمان: موقع لا يصل إلى خدمات حاسوبك أو شبكتك المنزلية باسم يشير إليها**: كان
   Noor يمنع صفحة الموقع من طلب عنوان مثل `127.0.0.1` أو `192.168.1.1` (برنامج على
