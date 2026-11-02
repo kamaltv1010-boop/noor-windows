@@ -250,6 +250,16 @@
   "minutes": 5
  },
  {
+  "name": "probe-app-xss",
+  "title": "هل يعمل كود موقع في صفحات Noor (شريط الأدوات، المكتبة، الكوكيز، البداية) من عنوانه وكوكيزه",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-app-xss.js"
+  ],
+  "minutes": 4
+ },
+ {
   "name": "debug-port-dev",
   "title": "منفذ التصحيح (الكود أثناء التطوير)",
   "kind": "app",
