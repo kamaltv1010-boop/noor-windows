@@ -61,6 +61,8 @@ const valuesHere = (makeCanvas) => {
   try { out.canvas = canvasHash(makeCanvas(220, 60)); } catch (e) { out.canvas = "ERR " + e.message; }
   try { out.webgl = webglHash(makeCanvas(64, 64)); } catch (e) { out.webgl = "ERR " + e.message; }
   try { out.fonts = fonts(makeCanvas(10, 10).getContext("2d")); } catch (e) { out.fonts = "ERR " + e.message; }
+  // The graphics card WebGL names, once asked (WEBGL_debug_renderer_info).
+  try { const g = makeCanvas(1, 1).getContext("webgl"); const e = g && g.getExtension("WEBGL_debug_renderer_info"); out.renderer = e ? g.getParameter(e.UNMASKED_RENDERER_WEBGL) : "no webgl"; } catch (e) { out.renderer = "ERR " + e.message; }
   return out;
 };
 `;
@@ -149,6 +151,14 @@ const run = async (settings) => {
       if (a === b && kind !== "gpu") problems.push(`${kind} in ${where}: the same in two profiles`);
       if (where !== "page" && a !== result.first.page[kind]) problems.push(`${kind} in ${where}: not what its page shows`);
     }
+  }
+  // The graphics card's name: this computer's own (the page with the
+  // protection off) must show in no kind of worker while WebGL Vendor &
+  // Renderer is on (it would tell this computer's card).
+  const realCard = result.off.page && result.off.page.renderer;
+  for (const where of places) {
+    const card = result.first[where] && result.first[where].renderer;
+    if (typeof card === "string" && !/^(ERR|no webgl)/.test(card) && typeof realCard === "string" && card === realCard && BUILD !== "iphone") problems.push(`renderer in ${where}: this computer's own graphics card (${card})`);
   }
   // A font a kind of worker tells apart from its page with the protection
   // off too is Chromium's own doing on this system (in a shared or service
