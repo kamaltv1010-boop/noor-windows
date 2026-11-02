@@ -19,7 +19,7 @@ const BUILD = ["iphone", "android"].includes(process.argv[2]) ? process.argv[2] 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const PROBE = `(async () => {
-  const out = {};
+  const out = { page: location.href, secure: isSecureContext };
   if (navigator.getBattery) {
     const b = await navigator.getBattery();
     const f = () => {};
@@ -62,18 +62,33 @@ const PROBE = `(async () => {
   }
   const probe = async () => {
     await main((electron, url) => { global.noorTest.browser.newTab({ url }); }, base);
-    await sleep(2000);
+    // The page itself, loaded (20 s at most): not the new tab's empty
+    // document before it, which is no secure context, so has no battery,
+    // media devices or keyboard of its own.
+    for (let i = 0; i < 80; i++) {
+      const state = await main((electron, url) => {
+        const contents = global.noorTest.browser.selected.webContents;
+        return contents.getURL() === url ? contents.executeJavaScript("document.readyState") : null;
+      }, base).catch(() => null);
+      if (state === "complete") break;
+      await sleep(250);
+    }
+    await sleep(300);
     return main((electron, code) => global.noorTest.browser.selected.webContents.executeJavaScript(code, true), PROBE);
   };
   const result = { build: BUILD, first: await probe() };
   await main(() => global.noorTest.browser.createProfile("Second"));
-  await sleep(1500);
+  for (let i = 0; i < 80; i++) {
+    if (await main(() => global.noorTest.browser.profile.name === "Second").catch(() => false)) break;
+    await sleep(250);
+  }
   result.second = await probe();
   await app.close().catch(() => {});
   web.close();
   const problems = [];
   for (const which of ["first", "second"]) {
     const r = result[which];
+    if (r.page !== base) { problems.push(`${which}: read before its page loaded (${r.page})`); continue; }
     if (!r.listenersWork) problems.push(`${which}: a page's listener didn't fire`);
     const b = r.battery;
     if (BUILD === "iphone") {
