@@ -2,16 +2,17 @@
 // Zone.Identifier stream beside it, ZoneId=3: from the internet), as
 // Chrome's downloads do. Without it a program runs with no SmartScreen
 // check and an Office document opens with its macros, not in Protected
-// View, as if it were one of this computer's own.
+// View, as if it were one of this computer's own. Chromium in Electron
+// writes it itself (seen on Windows, CI run 41512893358: ZoneId=3 with the
+// page's and the file's addresses, and about:internet from a private
+// tab); this check keeps it so.
 // A site's page has a link to a document (Content-Disposition:
 // attachment); the user's click (a real one) downloads it to where the
-// Save dialog would put it (set here, as the user's choice). Twice: as
-// Chromium in Electron alone does it (NOOR_TEST_NO_MOTW), to show what it
-// does, and as Noor does it; then from a private tab (Chrome writes no
-// addresses there).
-// Prints what each file carries; on Windows, exits 1 if Noor's download
-// has no mark, or a wrong one. Elsewhere there is no such stream: it says
-// so and checks nothing.
+// Save dialog would put it (set here, as the user's choice). From a tab,
+// then from a private tab (Chrome writes no addresses there).
+// Prints what each file carries; on Windows, exits 1 if a download has no
+// mark, or a wrong one. Elsewhere there is no such stream: it says so and
+// checks nothing.
 // Needs Playwright and a display: `xvfb-run -a node tools/probe-downloads.js`.
 "use strict";
 const fs = require("fs");
@@ -87,7 +88,6 @@ const BIG = "display:block;width:320px;height:120px;font-size:30px";
   };
 
   const runs = [
-    await download("Chromium in Electron alone", { NOOR_TEST_NO_MOTW: "1" }),
     await download("Noor", {}),
     await download("Noor, a private tab", {}, true),
   ];
@@ -100,7 +100,7 @@ const BIG = "display:block;width:320px;height:120px;font-size:30px";
     if (run.state !== "completed") problems.push(`${run.label}: the download didn't complete (${run.state})`);
   }
   if (WINDOWS) {
-    const [, noor, privateTab] = runs;
+    const [noor, privateTab] = runs;
     if (!noor.mark || !/^ZoneId=3\r?$/m.test(noor.mark)) problems.push("Noor's download has no Mark of the Web (ZoneId=3)");
     else if (!/^HostUrl=http:\/\/files\.test:\d+\/report\.docm\r?$/m.test(noor.mark) || !/^ReferrerUrl=http:\/\/files\.test:\d+\/page\r?$/m.test(noor.mark)) problems.push(`Noor's mark names the wrong places: ${JSON.stringify(noor.mark)}`);
     if (!privateTab.mark || !/^ZoneId=3\r?$/m.test(privateTab.mark)) problems.push("a private tab's download has no Mark of the Web");

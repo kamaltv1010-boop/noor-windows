@@ -590,11 +590,12 @@ Electron حتى مع تفعيل خصائصها (جُرّب). الإصلاح: `le
 موقع (CSP `treat-as-public-address`) تجرّب تسع طرق، وصفحة من هذا الحاسوب ضابطة (يجب
 أن تصل 4 مرات على الأقل). **Windows:** التشغيل 41508431811 (`9a0c809`) نجح.
 
-**أمان (Windows): علامة الإنترنت (`9a0c809`).** `main/downloads.js`: بعد اكتمال
-التنزيل يُكتب `file:Zone.Identifier` (ZoneId=3 مع ReferrerUrl وHostUrl؛ في التبويب
-الخاص `HostUrl=about:internet` بلا عناوين)، إن لم يكتبه Chromium. الاختبار
-`tools/probe-downloads.js` (ثلاثة تنزيلات). **Windows:** التشغيل 41508431811 نجح؛ سطور
-`note` تُظهر العلامة في تقرير التشغيل التالي.
+**علامة الإنترنت (تصحيح لما ظُنّ ثغرة).** `9a0c809` أضاف `main/downloads.js` ليكتب
+`Zone.Identifier` إن غاب، على ظنّ (من Linux، حيث لا تدفق) أن Electron لا يكتبه. سطور
+`note` في التشغيل 41512893358 على Windows أظهرت أن Chromium في Electron **يكتبه بنفسه**:
+ZoneId=3 مع ReferrerUrl وHostUrl، و`HostUrl=about:internet` من التبويب الخاص. فأُزيل
+الكود (لا فائدة منه، وكان سيتجاوز سياسة Windows «لا تحفظ معلومات المنطقة» إن فعّلها
+المسؤول)، وبقي `tools/probe-downloads.js` حارساً (تنزيلان: عادي وخاص).
 
 **خصوصية: VideoFrame (`8f87b70`، المصدر في Amir `2e909d6`).** `new VideoFrame(canvas)`
 ثم `copyTo` قرأ الرسم الحقيقي متجاوزاً الحماية (من canvas وOffscreenCanvas وصورة
