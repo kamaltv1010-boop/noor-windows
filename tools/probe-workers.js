@@ -51,7 +51,10 @@ const fontWidth = (x, family) => { x.font = "40px " + family; return x.measureTe
 // may be that very font (in a shared or service worker on Windows,
 // Chromium's monospace is Arial: no page's settings there).
 const GENERIC = ["monospace", "serif", "sans-serif"];
-const fonts = (x) => { const base = GENERIC.map((g) => fontWidth(x, g)); return Object.fromEntries(["DejaVu Sans", "Liberation Mono", "Arial", "Calibri"].map((f) => [f, GENERIC.some((g, i) => fontWidth(x, "'" + f + "', " + g) !== base[i])])); };
+// Fonts Windows has (Arial, Calibri), Linux has (DejaVu, Liberation), and
+// two the CI's Windows machine is given (Inter, JetBrains Mono): a profile
+// keeps some of this computer's and hides the rest.
+const fonts = (x) => { const base = GENERIC.map((g) => fontWidth(x, g)); return Object.fromEntries(["DejaVu Sans", "Liberation Mono", "Arial", "Calibri", "Inter", "JetBrains Mono"].map((f) => [f, GENERIC.some((g, i) => fontWidth(x, "'" + f + "', " + g) !== base[i])])); };
 const gpuHere = () => (self.navigator && navigator.gpu ? Promise.race([navigator.gpu.requestAdapter().then((a) => (a ? a.info.vendor + "/" + a.info.architecture : "no adapter"), (e) => "ERR " + e.message), new Promise((r) => setTimeout(() => r("timeout"), 5000))]) : Promise.resolve("none"));
 const valuesHere = (makeCanvas) => {
   const out = {};
@@ -129,7 +132,8 @@ const run = async (settings) => {
   const result = { build: BUILD };
   result.first = await run({});
   result.second = await run({});
-  result.off = await run({ "protection.canvas": false, "protection.webGL": false, "protection.gpu": false });
+  // (Off: this computer's own values, its own fonts among them.)
+  result.off = await run({ "protection.canvas": false, "protection.webGL": false, "protection.gpu": false, "protection.fonts": false });
   const problems = [];
   const places = ["page", "dedicated", "shared", "service"];
   for (const kind of ["canvas", "webgl", "gpu"]) {
@@ -151,14 +155,29 @@ const run = async (settings) => {
   // worker on Windows, every generic family is Arial: no page's settings
   // there), not Noor's: said, not counted.
   result.notes = [];
+  // Each font, by what the profile does with it, against this computer's
+  // own (the page with the protection off): one of this computer's it
+  // hides must be hidden in every kind of worker too (shown there, the
+  // computer's own font list leaks: counted); one it adds, drawn with
+  // another (a font this computer lacks), shows where the protection
+  // can draw it: where it can't, said, not counted (no font of this
+  // computer's shows there: the worker tells the truth).
+  const offPage = (result.off.page && result.off.page.fonts) || {};
+  const page = result.first.page.fonts || {};
+  result.fonts = {};
+  for (const font of Object.keys(page)) {
+    result.fonts[font] = offPage[font] === true && page[font] === false ? "hidden" : offPage[font] === false && page[font] === true ? "added" : offPage[font] ? "kept" : "absent";
+  }
   for (const where of places.slice(1)) {
-    const page = result.first.page.fonts || {};
     const there = (result.first[where] && result.first[where].fonts) || {};
-    const offPage = (result.off.page && result.off.page.fonts) || {};
     const offThere = (result.off[where] && result.off[where].fonts) || {};
     const chromiums = Object.keys(page).filter((font) => typeof offThere === "object" && offPage[font] !== offThere[font]);
     if (chromiums.length) result.notes.push(`${where}: ${chromiums.join(", ")} differ from the page with the protection off too (Chromium on this system)`);
-    const differ = Object.keys(page).filter((font) => !chromiums.includes(font) && page[font] !== there[font]);
+    const leaked = Object.keys(page).filter((font) => result.fonts[font] === "hidden" && there[font] === true);
+    if (leaked.length) problems.push(`fonts in ${where}: ${leaked.join(", ")} of this computer's, hidden by the profile, shown here`);
+    const added = Object.keys(page).filter((font) => result.fonts[font] === "added" && there[font] !== true);
+    if (added.length) result.notes.push(`${where}: ${added.join(", ")}, added by the profile (this computer lacks it), not shown here`);
+    const differ = Object.keys(page).filter((font) => !chromiums.includes(font) && !leaked.includes(font) && !added.includes(font) && page[font] !== there[font]);
     if (differ.length) problems.push(`fonts in ${where}: ${differ.map((font) => `${font} ${there[font]} (the page: ${page[font]})`).join(", ")}`);
   }
   result.problems = problems;
