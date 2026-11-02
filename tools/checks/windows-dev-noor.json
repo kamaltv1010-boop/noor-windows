@@ -312,6 +312,17 @@
     "minutes": 4
   },
   {
+    "name": "probe-request-headers",
+    "title": "ما تقوله الطلبات للخادم (User-Agent وClient Hints) في الصفحة والموارد وfetch والإطار والـ workers الثلاثة، كما تقول الصفحة",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-request-headers.js",
+      "windows"
+    ],
+    "minutes": 3
+  },
+  {
     "name": "debug-port-dev",
     "title": "منفذ التصحيح (الكود أثناء التطوير)",
     "kind": "app",

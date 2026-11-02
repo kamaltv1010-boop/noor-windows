@@ -144,6 +144,17 @@
     "minutes": 5
   },
   {
+    "name": "probe-request-headers-iphone",
+    "title": "Noor iPhone: لا طلب يذكر Windows، ولا Client Hints أبداً (كـ Safari)، في الصفحة والموارد والإطار والـ workers",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-request-headers.js",
+      "iphone"
+    ],
+    "minutes": 3
+  },
+  {
     "name": "probe-isolation-iphone",
     "title": "Noor iPhone: عزل البيانات بين البروفايلات",
     "kind": "app",
@@ -241,6 +252,17 @@
       "android"
     ],
     "minutes": 5
+  },
+  {
+    "name": "probe-request-headers-android",
+    "title": "Noor Android: لا طلب يذكر Windows، والمنصة Android في كل طلب (الصفحة والموارد والإطار والـ workers)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-request-headers.js",
+      "android"
+    ],
+    "minutes": 3
   },
   {
     "name": "probe-isolation-android",
