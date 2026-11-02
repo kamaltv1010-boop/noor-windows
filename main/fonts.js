@@ -289,6 +289,28 @@ class FontList {
     }
     return this.memo.get(key);
   }
+
+  /// For Noor iPhone and Noor Android: this computer's fonts a device
+  /// doesn't show, all but those `kept` (see hiddenFonts), worked out once
+  /// for each `key` (the device's font list), or null while they aren't
+  /// known.
+  hiddenFor(key, kept) {
+    if (!this.known) {
+      return null;
+    }
+    const name = "device " + key;
+    if (!this.memo.has(name)) {
+      this.memo.set(name, hiddenFonts(this.faces, kept));
+    }
+    return this.memo.get(name);
+  }
 }
 
-module.exports = { isWindowsFont, hiddenFonts, pickFonts, drawnAs, fontsFor, FontList, QUERY, SUFFIXES };
+/// Whether `name` (a family, or a face's full name) is one of `families`,
+/// alone or with style words (see isOf): what a device keeps.
+const keptBy = (families) => {
+  const set = new Set(families.map(lower));
+  return (name) => isOf(set, name);
+};
+
+module.exports = { isWindowsFont, hiddenFonts, keptBy, pickFonts, drawnAs, fontsFor, FontList, QUERY, SUFFIXES };

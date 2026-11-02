@@ -3230,13 +3230,20 @@ if (config.iphone) { try {
   // it isn't installed; an iPhone font's draws the text with a font of this
   // PC's much like it. A font asked for by name (FontFace's local()) is
   // looked for the same way, and these faces are left out of what the
-  // page's own font list shows.
+  // page's own font list shows. This PC's other fonts an iPhone lacks
+  // (iphone.hiddenFonts, from this computer's own list: see main/main.js)
+  // are blocked the same way.
   {
     const blocked = new Set(IPHONE_FONTS.block.map((name) => name.toLowerCase()));
+    const hiddenHere = iphone.hiddenFonts && typeof iphone.hiddenFonts === "object" ? iphone.hiddenFonts : {};
+    const blockedNames = IPHONE_FONTS.block.concat((Array.isArray(hiddenHere.shadow) ? hiddenHere.shadow : []).filter((name) => !blocked.has(String(name).toLowerCase())));
+    for (const name of blockedNames) blocked.add(String(name).toLowerCase());
+    // Every name local() finds one of them by (full and PostScript names).
+    const hiddenNames = new Set((Array.isArray(hiddenHere.local) ? hiddenHere.local : []).map((name) => String(name).toLowerCase()));
     const added = new Map(Object.entries(IPHONE_FONTS.add).map(([name, local]) => [name.toLowerCase(), local]));
     const familyOf = (name) => {
       const lower = name.toLowerCase();
-      if (blocked.has(lower) || added.has(lower)) return lower;
+      if (blocked.has(lower) || added.has(lower) || hiddenNames.has(lower)) return lower;
       // A face's full name ("Futura Bold"): its family's.
       for (const family of added.keys()) if (lower.indexOf(family + " ") === 0) return family;
       for (const family of blocked) if (lower.indexOf(family + " ") === 0) return family;
@@ -3280,7 +3287,7 @@ if (config.iphone) { try {
         eachDocument((each) => {
           const fontSet = fontsOf ? fontsOf.call(each) : each.fonts;
           if (!fontSet) return;
-          for (const name of IPHONE_FONTS.block) face(fontSet, name, "Arial", "U+10FFFF");
+          for (const name of blockedNames) face(fontSet, name, "Arial", "U+10FFFF");
           for (const name of Object.keys(IPHONE_FONTS.add)) face(fontSet, name, IPHONE_FONTS.add[name], "U+0-10FFFE");
         });
       }
@@ -3862,18 +3869,25 @@ if (config.android) { try {
   // font, as where it isn't installed; an Android font's draws the text
   // with a font of this PC's much like it. A font asked for by name
   // (FontFace's local()) is looked for the same way, and these faces are
-  // left out of what the page's own font list shows.
+  // left out of what the page's own font list shows. This PC's other fonts
+  // an Android lacks (device.hiddenFonts, from this computer's own list:
+  // see main/main.js) are blocked the same way.
   {
     const profileFonts = device.fonts || { add: [], block: [] };
-    const blockedNames = ANDROID_FONTS.block.concat(profileFonts.block);
+    const listed = ANDROID_FONTS.block.concat(profileFonts.block);
+    const blocked = new Set(listed.map((name) => name.toLowerCase()));
+    const hiddenHere = device.hiddenFonts && typeof device.hiddenFonts === "object" ? device.hiddenFonts : {};
+    const blockedNames = listed.concat((Array.isArray(hiddenHere.shadow) ? hiddenHere.shadow : []).filter((name) => !blocked.has(String(name).toLowerCase())));
+    for (const name of blockedNames) blocked.add(String(name).toLowerCase());
+    // Every name local() finds one of them by (full and PostScript names).
+    const hiddenNames = new Set((Array.isArray(hiddenHere.local) ? hiddenHere.local : []).map((name) => String(name).toLowerCase()));
     const addedFonts = Object.entries(ANDROID_FONTS.add).concat(profileFonts.add);
-    const blocked = new Set(blockedNames.map((name) => name.toLowerCase()));
     const added = new Map(addedFonts.map(([name, local]) => [name.toLowerCase(), local]));
     // A font's family: its name, or the longest family it is a face of
     // ("Noto Sans Thai Bold" is Noto Sans Thai's, not Noto Sans's).
     const familyOf = (name) => {
       const lower = name.toLowerCase();
-      if (blocked.has(lower) || added.has(lower)) return lower;
+      if (blocked.has(lower) || added.has(lower) || hiddenNames.has(lower)) return lower;
       let found = null;
       for (const family of added.keys()) if (lower.indexOf(family + " ") === 0 && (!found || family.length > found.length)) found = family;
       for (const family of blocked) if (lower.indexOf(family + " ") === 0 && (!found || family.length > found.length)) found = family;

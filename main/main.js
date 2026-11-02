@@ -21,7 +21,7 @@ const { BrowserDebugger } = require("./browser-debugger");
 const { Warmup, FAST } = require("./warmup");
 const { chromeOrder } = require("./headers");
 const { diskQuota: quotaOfDisk, shownQuota } = require("./quota");
-const { FontList } = require("./fonts");
+const { FontList, keptBy } = require("./fonts");
 const { cookieTools } = require("./cookies");
 const iphone = require("./iphone");
 const android = require("./android");
@@ -37,6 +37,36 @@ const IPHONE = BUILD === "iphone";
 const ANDROID = BUILD === "android";
 const MOBILE = IPHONE || ANDROID;
 const PRODUCT = mobile.product(BUILD);
+
+/// The fonts a device shows (scripts/parts/iphone-fonts.js and
+/// android-fonts.js): its own (`add`), and those it has by the same name
+/// as Windows. Every other font of this computer is hidden from pages, as
+/// the lists' Windows and program fonts are: the lists name the common
+/// ones, this computer's own list (see main/fonts.js) the rest (a font a
+/// user installed, Inter, a code editor's, Windows 11's Cascadia…), which
+/// otherwise a site found, the same in every profile.
+const deviceFonts = (file, name) => {
+  try {
+    const text = fs.readFileSync(path.join(__dirname, "..", "scripts", "parts", file), "utf8");
+    return require("vm").runInNewContext(`${text}\n${name}`, {}, { timeout: 1000 });
+  } catch (error) {
+    return null;
+  }
+};
+const DEVICE_FONTS = IPHONE ? deviceFonts("iphone-fonts.js", "IPHONE_FONTS") : ANDROID ? deviceFonts("android-fonts.js", "ANDROID_FONTS") : null;
+const SHARED_FONTS = IPHONE
+  ? ["Arial", "Courier New", "Georgia", "Times New Roman", "Trebuchet MS", "Verdana"]
+  : ["Arial", "Courier New", "Georgia", "Times New Roman", "Verdana"];
+/// This computer's fonts the profile's device doesn't have (shadow: the
+/// names CSS asks by; local: every name local() looks for), or null while
+/// they aren't known. `own`: the device's other fonts (an Android's Noto).
+const deviceHidden = (key, own = []) => {
+  if (!DEVICE_FONTS || !context || !context.fonts) {
+    return null;
+  }
+  const hidden = context.fonts.hiddenFor(key, keptBy(Object.keys(DEVICE_FONTS.add || {}).concat(SHARED_FONTS, own)));
+  return hidden ? { shadow: hidden.shadow, local: hidden.local } : null;
+};
 
 const RENDERER = path.join(__dirname, "..", "renderer");
 const SCRIPTS = path.join(__dirname, "..", "scripts");
@@ -633,7 +663,8 @@ const configFor = (top, fingerprint = context.fingerprint) => {
     const current = fingerprint.iphone();
     config.screen = { width: current.width, height: current.height, availHeight: current.height };
     config.languages = [iphoneLanguage()];
-    config.iphone = iphone.pageConfig(current);
+    // With this computer's fonts an iPhone lacks, hidden (see DEVICE_FONTS).
+    config.iphone = Object.assign(iphone.pageConfig(current), { hiddenFonts: deviceHidden("iphone") });
     config.mark = LOOKALIKE_MARK;
     config.realmKey = REALM_KEY;
     return config;
@@ -650,10 +681,14 @@ const configFor = (top, fingerprint = context.fingerprint) => {
     config.hardware = { cores: current.cores, memory: current.memory };
     config.chrome = { brands: brandList, fullVersionList: fullVersionList(), fullVersion: process.versions.chrome };
     config.languages = acceptLanguages(app.getLocale()).split(",");
+    // Android's Noto fonts this profile's Android has (all of them with
+    // Fonts off); and this computer's fonts it lacks, hidden (see
+    // DEVICE_FONTS).
+    const fontsSeedHere = fingerprint.isEnabled("fonts") ? fingerprint.seed("fonts") : null;
+    const notoFonts = android.fontsOf(fontsSeedHere);
     config.android = Object.assign(android.pageConfig(current, { graphics: fingerprint.isEnabled("gpu") }), {
-      // Android's Noto fonts this profile's Android has (all of them with
-      // Fonts off).
-      fonts: android.fontsOf(fingerprint.isEnabled("fonts") ? fingerprint.seed("fonts") : null),
+      fonts: notoFonts,
+      hiddenFonts: deviceHidden(`android ${fontsSeedHere === null ? "all" : fontsSeedHere >>> 0}`, notoFonts.add.map((font) => font[0])),
       userAgent: android.userAgent(current),
       metadata: androidMetadata(current),
       battery: android.batteryOf(fingerprint.seed("device")),
@@ -1321,8 +1356,9 @@ app.whenReady().then(async () => {
   Browser.prototype.workerScript = workerScript;
   // A window shown asks for this computer's fonts from its toolbar (a page
   // has to show to be told them; see main/fonts.js); the first run's first
-  // pages wait for them.
-  Browser.prototype.fontsKnown = (browser) => (!MOBILE && context && context.fonts && pageOf(browser.chrome)
+  // pages wait for them (in Noor iPhone and Noor Android too: those a
+  // device lacks are hidden, see DEVICE_FONTS).
+  Browser.prototype.fontsKnown = (browser) => (context && context.fonts && pageOf(browser.chrome)
     ? context.fonts.whenKnown(pageOf(browser.chrome)) : null);
   Browser.prototype.tabMade = registerTab;
   Browser.prototype.screenFor = screenFor;

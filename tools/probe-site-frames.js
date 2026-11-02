@@ -18,8 +18,11 @@
 // in the build checked, with its protection, those its page doesn't show
 // (this computer's, or Windows' own an iPhone or Android lacks) must show
 // in no frame either.
+// Also, the page itself must hide Inter and JetBrains Mono (this
+// computer's, picked by no profile, on no iPhone or Android).
 // Prints what each frame found; exits 1 if a frame shows a font the page
-// hides, or toBlob gives nothing back. Needs Playwright and a display:
+// hides, the page shows Inter or JetBrains Mono, or toBlob gives nothing
+// back. Needs Playwright and a display:
 // `xvfb-run -a node tools/probe-site-frames.js [windows|iphone|android]`.
 "use strict";
 const fs = require("fs");
@@ -145,6 +148,15 @@ f.contentWindow.__reached = true;
 
   const problems = [];
   if (!hidden.length) problems.push("no font of this computer's is hidden by the page, so the frames prove nothing (are Inter and JetBrains Mono installed?)");
+  // Fonts of this computer's no profile picks and no iPhone or Android has
+  // (installed for the checks): the page itself hides them, in every build
+  // (Noor iPhone and Noor Android once showed every font of this computer's
+  // their own lists didn't name, the same in every profile).
+  const NOBODY_HAS = ["Inter", "JetBrains Mono"];
+  for (const font of NOBODY_HAS) {
+    if (here.has(font) && shown.has(font)) problems.push(`the page shows ${font}, a font of this computer's no ${BUILD} profile has`);
+  }
+  if (!NOBODY_HAS.some((font) => here.has(font))) console.log("NOTE: neither Inter nor JetBrains Mono is installed here: the page's own hiding of this computer's fonts is not checked");
   const NAMES = ["the page", "a frame of the site's", "a frame by srcdoc", "a frame added and reached at once", "a frame in a frame of the site's", "another site's frame"];
   for (const name of NAMES) {
     const r = protectedRun[name];
