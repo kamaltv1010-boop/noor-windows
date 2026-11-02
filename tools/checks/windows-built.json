@@ -52,6 +52,19 @@
   "minutes": 10
  },
  {
+  "name": "second-launch",
+  "title": "Noor المبني يُشغَّل مرة ثانية وهو يعمل: العنوان يُفتح، حتى أثناء البدء",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-second-launch.js"
+  ],
+  "env": {
+   "NOOR_ELECTRON": "{exe}"
+  },
+  "minutes": 3
+ },
+ {
   "name": "cookie-store",
   "title": "الكوكيز على القرص (Noor المبني)",
   "kind": "app",

@@ -40,6 +40,16 @@
   "minutes": 10
  },
  {
+  "name": "smoke-second-launch",
+  "title": "تشغيل Noor مرة ثانية وهو يعمل (زر بروفايل مثبّت، رابط من برنامج آخر): العنوان يُفتح، حتى أثناء البدء",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/smoke-second-launch.js"
+  ],
+  "minutes": 3
+ },
+ {
   "name": "smoke-close",
   "title": "إغلاق Noor بنافذتين: واحدة بعد الأخرى، والاثنتان معاً، وtaskkill",
   "kind": "app",

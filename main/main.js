@@ -103,6 +103,21 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
+/// Noor started again while it runs hands over its arguments (see the end
+/// of the start, launchedAgain): taken from the first moment, as the lock
+/// is, and kept until the windows are up, so a launch while this one is
+/// still starting (a second click on its icon, a pinned profile's button,
+/// a link from another program) isn't lost.
+const launchesWhileStarting = [];
+let launchedAgain = null;
+app.on("second-instance", (event, argv) => {
+  if (launchedAgain) {
+    launchedAgain(argv);
+  } else {
+    launchesWhileStarting.push(argv);
+  }
+});
+
 /// The app's windows, one for each profile open (see main/windows.js).
 let windows = null;
 let context = null;
@@ -1341,8 +1356,8 @@ app.whenReady().then(async () => {
 
   // Noor started again: a profile's window (a pinned profile's button
   // gives --profile=<id>), with the address given in a new tab, or the
-  // window in front.
-  app.on("second-instance", (event, argv) => {
+  // window in front. (Those that came while this one was starting first.)
+  launchedAgain = (argv) => {
     const wanted = profileArgument(argv);
     const profile = wanted ? context.profiles.findBySlot(wanted) : null;
     const target = profile ? windows.open(profile) : windows.current;
@@ -1354,7 +1369,10 @@ app.whenReady().then(async () => {
     if (url) {
       target.newTab({ url });
     }
-  });
+  };
+  for (const argv of launchesWhileStarting.splice(0)) {
+    launchedAgain(argv);
+  }
 });
 
 app.on("web-contents-created", (event, webContents) => {
