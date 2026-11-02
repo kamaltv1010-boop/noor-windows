@@ -110,7 +110,7 @@ const worker = new Worker("/worker.js"); worker.onmessage = (e) => note("worker'
   // The check itself: a page of this computer's own reaches the service.
   if (result.thisComputer.reached.length < 4) problems.push(`a page of this computer reached the service ${result.thisComputer.reached.length} times only: the tries didn't run (${JSON.stringify(result.thisComputer.said)})`);
   for (const [who, r] of Object.entries(result)) {
-    console.log(`${who === "site" ? "A SITE" : "THIS COMPUTER'S PAGE"}: the service got ${r.reached.length ? r.reached.join(", ") : "nothing"}${r.rebound.length ? "; through its own name " + r.rebound.join(", ") : ""}`);
+    console.log(`note ${who === "site" ? "a site" : "this computer's page"}: the service got ${r.reached.length ? r.reached.join(", ") : "nothing"}${r.rebound.length ? "; through its own name " + r.rebound.join(", ") : ""}`);
     for (const [name, value] of Object.entries(r.said)) console.log(`   ${name}: ${value}`);
   }
   console.log(problems.length ? `LOCAL NETWORK: A SITE REACHED THIS COMPUTER (${problems.join(" | ")})` : "LOCAL NETWORK: no site reached a service of this computer");

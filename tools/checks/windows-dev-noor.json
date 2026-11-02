@@ -334,6 +334,17 @@
     "minutes": 3
   },
   {
+    "name": "probe-page-globals",
+    "title": "لا شيء من Node أو Electron أو أوامر التطبيق في متناول كود موقع: الصفحة والإطارات (بعنوان، srcdoc، فارغ، موقع آخر) والنوافذ المفتوحة والـ workers الثلاثة، ولا التقاط لـ ipcRenderer بدوال أساسية مستبدلة",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-page-globals.js",
+      "windows"
+    ],
+    "minutes": 3
+  },
+  {
     "name": "debug-port-dev",
     "title": "منفذ التصحيح (الكود أثناء التطوير)",
     "kind": "app",

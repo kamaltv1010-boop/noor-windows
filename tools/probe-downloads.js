@@ -95,7 +95,8 @@ const BIG = "display:block;width:320px;height:120px;font-size:30px";
 
   const problems = [];
   for (const run of runs) {
-    console.log(`${run.label}: ${run.state}${run.file ? " (" + run.file + ")" : ""}; mark: ${run.mark === null ? (WINDOWS ? "NONE" : "(no such stream here)") : JSON.stringify(run.mark)}`);
+    // ("note …": shown in the checks' report too.)
+    console.log(`note ${run.label}: ${run.state}${run.file ? " (" + run.file + ")" : ""}; mark: ${run.mark === null ? (WINDOWS ? "NONE" : "(no such stream here)") : JSON.stringify(run.mark)}`);
     if (run.state !== "completed") problems.push(`${run.label}: the download didn't complete (${run.state})`);
   }
   if (WINDOWS) {

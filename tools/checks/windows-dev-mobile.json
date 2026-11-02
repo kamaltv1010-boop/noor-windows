@@ -166,6 +166,17 @@
     "minutes": 3
   },
   {
+    "name": "probe-page-globals-iphone",
+    "title": "Noor iPhone: لا شيء من Node أو Electron أو أوامر التطبيق في متناول كود موقع (عشرة سياقات، ودوال أساسية مستبدلة)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-page-globals.js",
+      "iphone"
+    ],
+    "minutes": 3
+  },
+  {
     "name": "probe-isolation-iphone",
     "title": "Noor iPhone: عزل البيانات بين البروفايلات",
     "kind": "app",
@@ -282,6 +293,17 @@
     "command": [
       "node",
       "tools/probe-canvas-reads.js",
+      "android"
+    ],
+    "minutes": 3
+  },
+  {
+    "name": "probe-page-globals-android",
+    "title": "Noor Android: لا شيء من Node أو Electron أو أوامر التطبيق في متناول كود موقع (عشرة سياقات، ودوال أساسية مستبدلة)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-page-globals.js",
       "android"
     ],
     "minutes": 3
