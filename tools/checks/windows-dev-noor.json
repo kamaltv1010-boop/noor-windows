@@ -260,6 +260,16 @@
   "minutes": 4
  },
  {
+  "name": "probe-local-files",
+  "title": "هل يقرأ موقع ملفاً من الحاسوب: fetch وXHR وإطار وصورة وانتقال ورابط بنقرة لعنوان file://، والخروج من مجلد صفحات Noor",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-local-files.js"
+  ],
+  "minutes": 4
+ },
+ {
   "name": "debug-port-dev",
   "title": "منفذ التصحيح (الكود أثناء التطوير)",
   "kind": "app",
