@@ -186,10 +186,18 @@ process.on("uncaughtException", (error) => { if (!playwrights(error)) { console.
   const viewer = await main(async () => {
     const browser = global.noorTest.browser;
     const tab = browser.newTab({ url: "noor://app/cookies.html" });
-    await new Promise((r) => setTimeout(r, 2000));
+    // Until the page lists the profile's sites (15 s at most: a slow
+    // machine takes more than the 2 s this once waited).
+    const until = (test) => (async () => {
+      for (let i = 0; i < 75; i++) {
+        await new Promise((r) => setTimeout(r, 200));
+        if (await tab.webContents.executeJavaScript(test).catch(() => false)) return;
+      }
+    })();
+    await until("Boolean(document.getElementById('summary') && document.getElementById('profile') && document.querySelector('.site .head'))");
     const shown = await tab.webContents.executeJavaScript("({ summary: document.getElementById('summary').textContent, sites: [...document.querySelectorAll('.site .name')].map((e) => e.textContent), profile: document.getElementById('profile').selectedOptions[0].textContent })");
     await tab.webContents.executeJavaScript("document.querySelector('.site .head').click()");
-    await new Promise((r) => setTimeout(r, 400));
+    await until("document.querySelectorAll('.site table tr').length > 0");
     const rows = await tab.webContents.executeJavaScript("document.querySelectorAll('.site table tr').length");
     const shot = (await tab.webContents.capturePage()).toPNG().toString("base64");
     const profile = browser.profile;
