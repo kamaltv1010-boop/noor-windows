@@ -188,6 +188,17 @@
     "minutes": 3
   },
   {
+    "name": "probe-webgl-reads",
+    "title": "ما يرسمه WebGL نفسه (WebGL وWebGL2): لا قراءة محمية تعطي الرسم الحقيقي (readPixels كله وجزء منه وإطاره، toDataURL، toBlob، 2D، صورة نقطية، VideoFrame، WebGL آخر، worker)، مع ذكر الطريقين غير المحميين",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-webgl-reads.js",
+      "windows"
+    ],
+    "minutes": 3
+  },
+  {
     "name": "probe-navigation-source",
     "title": "المفضلة والروابط المثبّتة: ما يصل إلى الموقع مثل كتابة العنوان تماماً",
     "kind": "app",

@@ -166,6 +166,17 @@
     "minutes": 3
   },
   {
+    "name": "probe-webgl-reads-iphone",
+    "title": "Noor iPhone: لا قراءة محمية لرسم WebGL تعطي الرسم الحقيقي (في الصفحة والـ worker)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-webgl-reads.js",
+      "iphone"
+    ],
+    "minutes": 3
+  },
+  {
     "name": "probe-page-globals-iphone",
     "title": "Noor iPhone: لا شيء من Node أو Electron أو أوامر التطبيق في متناول كود موقع (عشرة سياقات، ودوال أساسية مستبدلة)",
     "kind": "app",
@@ -293,6 +304,17 @@
     "command": [
       "node",
       "tools/probe-canvas-reads.js",
+      "android"
+    ],
+    "minutes": 3
+  },
+  {
+    "name": "probe-webgl-reads-android",
+    "title": "Noor Android: لا قراءة محمية لرسم WebGL تعطي الرسم الحقيقي (في الصفحة والـ worker)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-webgl-reads.js",
       "android"
     ],
     "minutes": 3
