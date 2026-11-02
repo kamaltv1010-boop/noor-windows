@@ -92,6 +92,9 @@ parts = [
     ("config.languages", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "languages.js").read_text(encoding="utf-8")),
     # Noor's fonts: Windows' own only (see main/fonts.js).
     ("config.fonts", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "fonts.js").read_text(encoding="utf-8")),
+    # A window protected while empty that then loads a page of its site,
+    # keeping the window: found out early (see the part, and eachDocument).
+    ("mayChangeDocument", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "documents.js").read_text(encoding="utf-8")),
     # Noor iPhone's (see main/iphone.js), last: it takes away, at its end,
     # what an iPhone lacks.
     ("config.iphone", (Path(__file__).resolve().parent.parent / "scripts" / "parts" / "iphone.js").read_text(encoding="utf-8")),

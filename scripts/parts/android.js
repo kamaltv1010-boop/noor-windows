@@ -428,15 +428,15 @@
       return added.has(family) ? localsFor(added.get(family)) : `local(${quoted(missing)})`;
     });
     const RealFontFace = window.FontFace;
-    const fontSet = isWindow ? document.fonts : null;
+    // A document's own font list, read with the browser's getter.
+    const fontsOf = isWindow && window.Document && (getOwnPropertyDescriptor(window.Document.prototype, "fonts") || {}).get;
     const FontSet = window.FontFaceSet;
     const fontFaceSetLoadEvent = window.FontFaceSetLoadEvent;
     const ours = new WeakSet();
     if (typeof RealFontFace === "function" && FontSet) {
       const realAdd = FontSet.prototype.add;
       const realDelete = FontSet.prototype.delete;
-      const face = (family, local, range) => {
-        if (!fontSet) return;
+      const face = (fontSet, family, local, range) => {
         try {
           const made = new RealFontFace(family, localsFor(local), { unicodeRange: range, weight: "1 1000" });
           ours.add(made);
@@ -445,8 +445,16 @@
           if (loading && typeof loading.catch === "function") loading.catch(() => {});
         } catch (e) {}
       };
-      for (const name of blockedNames) face(name, "Arial", "U+10FFFF");
-      for (const [name, local] of addedFonts) face(name, local, "U+0-10FFFE");
+      // In each document's font list (the page's, and the one of each page
+      // a window kept from its empty start loads later: see eachDocument).
+      if (isWindow) {
+        eachDocument((each) => {
+          const fontSet = fontsOf ? fontsOf.call(each) : each.fonts;
+          if (!fontSet) return;
+          for (const name of blockedNames) face(fontSet, name, "Arial", "U+10FFFF");
+          for (const [name, local] of addedFonts) face(fontSet, name, local, "U+0-10FFFE");
+        });
+      }
 
       const FontFace = {
         FontFace: function (family, source) {

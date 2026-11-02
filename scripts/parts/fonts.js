@@ -82,7 +82,8 @@
     const valuesOf = proto.values;
     const faceStatusOf = (getOwnPropertyDescriptor(RealFontFace.prototype, "status") || {}).get;
     const setStatusOf = (getOwnPropertyDescriptor(proto, "status") || {}).get;
-    const fontSet = document.fonts;
+    // A document's own font list, read with the browser's getter.
+    const fontsOf = window.Document && (getOwnPropertyDescriptor(window.Document.prototype, "fonts") || {}).get;
     const theirs = (set) => {
       const list = [];
       const iterator = valuesOf.call(set);
@@ -105,38 +106,46 @@
     const stopImmediate = window.Event && window.Event.prototype.stopImmediatePropagation;
     const facesOf = fontFaceSetLoadEvent && (getOwnPropertyDescriptor(fontFaceSetLoadEvent.prototype, "fontfaces") || {}).get;
     const addListener = window.EventTarget && window.EventTarget.prototype.addEventListener;
-    if (fontSet && stopImmediate && facesOf && addListener) {
-      const unseen = (event) => {
+    // In each document's font list (the page's, and the one of each page a
+    // window kept from its empty start loads later: see eachDocument; in
+    // the first's alone, a frame of the site's own would show this
+    // computer's fonts).
+    eachDocument((each) => {
+      const fontSet = fontsOf ? fontsOf.call(each) : each.fonts;
+      if (!fontSet) return;
+      if (stopImmediate && facesOf && addListener) {
+        const unseen = (event) => {
+          try {
+            const faces = facesOf.call(event);
+            const onlyOurs = Array.prototype.every.call(faces, (face) => ours.has(face));
+            if (onlyOurs && !pageLoading(fontSet)) stopImmediate.call(event);
+          } catch (e) {}
+        };
+        for (const type of ["loading", "loadingdone", "loadingerror"]) {
+          try {
+            if (outside) outside.apply(addListener, fontSet, [type, outside.callback(unseen, null), true]);
+            else addListener.call(fontSet, type, unseen, true);
+          } catch (e) {}
+        }
+      }
+
+      for (const name of shadow) {
         try {
-          const faces = facesOf.call(event);
-          const onlyOurs = Array.prototype.every.call(faces, (face) => ours.has(face));
-          if (onlyOurs && !pageLoading(fontSet)) stopImmediate.call(event);
-        } catch (e) {}
-      };
-      for (const type of ["loading", "loadingdone", "loadingerror"]) {
-        try {
-          if (outside) outside.apply(addListener, fontSet, [type, outside.callback(unseen, null), true]);
-          else addListener.call(fontSet, type, unseen, true);
+          const made = new RealFontFace(name, "url(data:,)", { unicodeRange: "U+10FFFF" });
+          ours.add(made);
+          realAdd.call(fontSet, made);
         } catch (e) {}
       }
-    }
-
-    for (const name of shadow) {
-      try {
-        const made = new RealFontFace(name, "url(data:,)", { unicodeRange: "U+10FFFF" });
-        ours.add(made);
-        if (fontSet) realAdd.call(fontSet, made);
-      } catch (e) {}
-    }
-    for (const font of added.values()) {
-      try {
-        const made = new RealFontFace(font.name, localsFor(font), { sizeAdjust: `${Number(font.sizeAdjust) || 100}%`, weight: "1 1000" });
-        ours.add(made);
-        if (fontSet) realAdd.call(fontSet, made);
-        const loading = made.load();
-        if (loading && typeof loading.catch === "function") loading.catch(() => {});
-      } catch (e) {}
-    }
+      for (const font of added.values()) {
+        try {
+          const made = new RealFontFace(font.name, localsFor(font), { sizeAdjust: `${Number(font.sizeAdjust) || 100}%`, weight: "1 1000" });
+          ours.add(made);
+          realAdd.call(fontSet, made);
+          const loading = made.load();
+          if (loading && typeof loading.catch === "function") loading.catch(() => {});
+        } catch (e) {}
+      }
+    });
 
     // The page's own font list, without them.
     const iterate = (list, kind) => {

@@ -374,6 +374,9 @@ const lateTasks = [];
     };
     // The windows protected from this script, each once.
     const protectedWindows = new WeakSet();
+    // For a window protected while empty, what brings it up to the document
+    // it has now (see eachDocument in protect).
+    const documentSyncs = new WeakMap();
     // The audio buffers the browser rendered or decoded, from any window, and
     // the channels of them already changed.
     const rendered = new WeakSet();
@@ -513,6 +516,44 @@ const protect = (window) => {
     // that fails is tried again.
     const document = window.document;
 
+    // A window protected while empty (about:blank) keeps its place, and all
+    // that was put in it, for a page of the same site it loads next: the
+    // browser keeps such a window for that page and gives it only a
+    // document of its own (Chromium then runs nothing there before the
+    // page's own scripts; a copy of this script run there again finds the
+    // window protected, and leaves it). What this script makes for a document (faces
+    // in its font list, a listener, an observer) is made through
+    // eachDocument: for the window's document now, and again for each one
+    // the window gets later, as soon as this script finds it there, which
+    // is when the page (or the page around the frame) reaches anything
+    // replaced here.
+    const documentTasks = [];
+    let documentNow = document;
+    // Only a window empty now gets another document. (A worker has none,
+    // and its location isn't read: see host.)
+    const mayChangeDocument = Boolean(document) && (() => {
+      try { return window.location.href === "about:blank"; } catch (e) { return false; }
+    })();
+    const documentOf = (() => {
+      try { return (getOwnPropertyDescriptor(window, "document") || {}).get || null; } catch (e) { return null; }
+    })();
+    const syncDocument = () => {
+      let found;
+      try { found = documentOf ? documentOf.call(window) : window.document; } catch (e) { return; }
+      if (!found || found === documentNow) return;
+      documentNow = found;
+      for (const task of documentTasks) {
+        try { task(found); } catch (e) {}
+      }
+    };
+    const eachDocument = (task) => {
+      documentTasks.push(task);
+      if (documentNow) {
+        try { task(documentNow); } catch (e) {}
+      }
+    };
+    if (mayChangeDocument) documentSyncs.set(window, syncDocument);
+
     // Keeps every built-in we replace indistinguishable from the original, so
     // a site that checks for a tampered browser sees nothing changed and works
     // as it would in Safari. A site reads a function's toString() to tell a
@@ -585,6 +626,7 @@ const protect = (window) => {
     const Err = window.Error;
     const OWN_FRAMES = 3;
     const run = (impl, self, args) => {
+      if (mayChangeDocument) syncDocument();
       if (hosted.framesHidden) {
         try {
           return impl.apply(self, args);
@@ -1050,7 +1092,7 @@ if (config.seeds.canvas != null || config.seeds.webGL != null) { try {
             if (!painted.has(canvas) && !(made && made.kind === "webgl")) return null;
             try {
               const [getContext, drawImage, getImageData, putImageData] = tools;
-              const copy = makeCanvas(width, height);
+              const copy = makeCanvas(width, height, canvas);
               // The copy keeps the canvas's color space, so colors don't shift.
               const context = getContext.call(copy, "2d", made && made.settings);
               drawImage.call(context, canvas, 0, 0);
@@ -1066,8 +1108,14 @@ if (config.seeds.canvas != null || config.seeds.webGL != null) { try {
 
           if (canvasProto && typeof document !== "undefined") {
             const createElement = document.createElement;
-            const makeCanvas = (width, height) => {
-              const canvas = createElement.call(document, "canvas");
+            // The copy is made in the canvas's own document: the window's
+            // first may be gone (see eachDocument), and a canvas of a
+            // document that is gone never calls toBlob's callback.
+            const ownerOf = window.Node && (getOwnPropertyDescriptor(window.Node.prototype, "ownerDocument") || {}).get;
+            const makeCanvas = (width, height, source) => {
+              let home = null;
+              try { home = ownerOf ? ownerOf.call(source) : null; } catch (e) {}
+              const canvas = createElement.call(home || documentNow || document, "canvas");
               canvas.width = width;
               canvas.height = height;
               return canvas;
@@ -2164,7 +2212,8 @@ if (config.fonts) { try {
     const valuesOf = proto.values;
     const faceStatusOf = (getOwnPropertyDescriptor(RealFontFace.prototype, "status") || {}).get;
     const setStatusOf = (getOwnPropertyDescriptor(proto, "status") || {}).get;
-    const fontSet = document.fonts;
+    // A document's own font list, read with the browser's getter.
+    const fontsOf = window.Document && (getOwnPropertyDescriptor(window.Document.prototype, "fonts") || {}).get;
     const theirs = (set) => {
       const list = [];
       const iterator = valuesOf.call(set);
@@ -2187,38 +2236,46 @@ if (config.fonts) { try {
     const stopImmediate = window.Event && window.Event.prototype.stopImmediatePropagation;
     const facesOf = fontFaceSetLoadEvent && (getOwnPropertyDescriptor(fontFaceSetLoadEvent.prototype, "fontfaces") || {}).get;
     const addListener = window.EventTarget && window.EventTarget.prototype.addEventListener;
-    if (fontSet && stopImmediate && facesOf && addListener) {
-      const unseen = (event) => {
+    // In each document's font list (the page's, and the one of each page a
+    // window kept from its empty start loads later: see eachDocument; in
+    // the first's alone, a frame of the site's own would show this
+    // computer's fonts).
+    eachDocument((each) => {
+      const fontSet = fontsOf ? fontsOf.call(each) : each.fonts;
+      if (!fontSet) return;
+      if (stopImmediate && facesOf && addListener) {
+        const unseen = (event) => {
+          try {
+            const faces = facesOf.call(event);
+            const onlyOurs = Array.prototype.every.call(faces, (face) => ours.has(face));
+            if (onlyOurs && !pageLoading(fontSet)) stopImmediate.call(event);
+          } catch (e) {}
+        };
+        for (const type of ["loading", "loadingdone", "loadingerror"]) {
+          try {
+            if (outside) outside.apply(addListener, fontSet, [type, outside.callback(unseen, null), true]);
+            else addListener.call(fontSet, type, unseen, true);
+          } catch (e) {}
+        }
+      }
+
+      for (const name of shadow) {
         try {
-          const faces = facesOf.call(event);
-          const onlyOurs = Array.prototype.every.call(faces, (face) => ours.has(face));
-          if (onlyOurs && !pageLoading(fontSet)) stopImmediate.call(event);
-        } catch (e) {}
-      };
-      for (const type of ["loading", "loadingdone", "loadingerror"]) {
-        try {
-          if (outside) outside.apply(addListener, fontSet, [type, outside.callback(unseen, null), true]);
-          else addListener.call(fontSet, type, unseen, true);
+          const made = new RealFontFace(name, "url(data:,)", { unicodeRange: "U+10FFFF" });
+          ours.add(made);
+          realAdd.call(fontSet, made);
         } catch (e) {}
       }
-    }
-
-    for (const name of shadow) {
-      try {
-        const made = new RealFontFace(name, "url(data:,)", { unicodeRange: "U+10FFFF" });
-        ours.add(made);
-        if (fontSet) realAdd.call(fontSet, made);
-      } catch (e) {}
-    }
-    for (const font of added.values()) {
-      try {
-        const made = new RealFontFace(font.name, localsFor(font), { sizeAdjust: `${Number(font.sizeAdjust) || 100}%`, weight: "1 1000" });
-        ours.add(made);
-        if (fontSet) realAdd.call(fontSet, made);
-        const loading = made.load();
-        if (loading && typeof loading.catch === "function") loading.catch(() => {});
-      } catch (e) {}
-    }
+      for (const font of added.values()) {
+        try {
+          const made = new RealFontFace(font.name, localsFor(font), { sizeAdjust: `${Number(font.sizeAdjust) || 100}%`, weight: "1 1000" });
+          ours.add(made);
+          realAdd.call(fontSet, made);
+          const loading = made.load();
+          if (loading && typeof loading.catch === "function") loading.catch(() => {});
+        } catch (e) {}
+      }
+    });
 
     // The page's own font list, without them.
     const iterate = (list, kind) => {
@@ -2334,6 +2391,60 @@ if (config.fonts) { try {
         configurable: true,
         enumerable: fontOf.enumerable,
       });
+    }
+  }
+}
+} catch (e) {} }
+if (mayChangeDocument) { try {
+// A window protected while empty (about:blank), from the page around it,
+// that then loads a page of the same site keeps that place: Chromium keeps
+// such a window for the page and gives it only a document of its own, and
+// runs no preload there, so the protection in it is the one put in while it
+// was empty. What that protection makes for a document (the fonts' faces,
+// above all: without them a frame of the site's own shows this computer's
+// fonts) is made again for the new one (see eachDocument) as soon as it is
+// found there: when the page reaches anything replaced (see run), when the
+// page around the frame reaches it (see protectWindow), and here, before
+// the page reads what fonts decide (the box of an element or of text, its
+// style, a canvas's text, a font check) through what nothing else
+// replaces, and at the latest when the page is first shown, or loaded.
+// Only in such a window (a window empty when protected).
+{
+  const pass = (original) => function () {
+    return original.apply(this, arguments);
+  };
+  const measured = (proto, names) => {
+    if (!proto) return;
+    for (const name of names) defineGetter(proto, name, (value) => value);
+  };
+  measured(window.HTMLElement && window.HTMLElement.prototype, ["offsetWidth", "offsetHeight"]);
+  measured(window.Element && window.Element.prototype, ["clientWidth", "clientHeight", "scrollWidth", "scrollHeight"]);
+  define(window, "getComputedStyle", pass);
+  if (window.CanvasRenderingContext2D) define(window.CanvasRenderingContext2D.prototype, "measureText", pass);
+  if (window.FontFaceSet) define(window.FontFaceSet.prototype, "check", pass);
+  // (With the ClientRects protection, these are its own already.)
+  if (config.seeds.clientRects == null) {
+    for (const proto of [window.Element && window.Element.prototype, window.Range && window.Range.prototype]) {
+      if (!proto) continue;
+      define(proto, "getBoundingClientRect", pass);
+      define(proto, "getClientRects", pass);
+    }
+  }
+  if (window.SVGGraphicsElement) define(window.SVGGraphicsElement.prototype, "getBBox", pass);
+  if (window.SVGTextContentElement) {
+    for (const name of ["getComputedTextLength", "getSubStringLength"]) define(window.SVGTextContentElement.prototype, name, pass);
+  }
+  for (const type of ["ResizeObserver", "IntersectionObserver"]) {
+    if (window[type]) define(window[type].prototype, "observe", pass);
+  }
+  // At the latest: the window keeps its listeners for the page it loads.
+  const addListener = window.EventTarget && window.EventTarget.prototype.addEventListener;
+  if (addListener) {
+    for (const type of ["pagereveal", "DOMContentLoaded", "pageshow", "load"]) {
+      try {
+        if (outside) outside.apply(addListener, window, [type, outside.callback(syncDocument, null), true]);
+        else addListener.call(window, type, syncDocument, true);
+      } catch (e) {}
     }
   }
 }
@@ -2657,6 +2768,12 @@ if (config.iphone) { try {
     const videoProto = window.HTMLVideoElement.prototype;
     const mediaProto = window.HTMLMediaElement.prototype;
     let shown = null;
+    // The document a video is in (a window kept from its empty start for a
+    // page of its site has had another before: see eachDocument).
+    const ownerOf = window.Node && (getOwnPropertyDescriptor(window.Node.prototype, "ownerDocument") || {}).get;
+    const homeOf = (element) => {
+      try { return (ownerOf && ownerOf.call(element)) || documentNow; } catch (e) { return documentNow; }
+    };
     const enter = function () {
       if (!userActive()) {
         throw new PageException("The object is in an invalid state.", "InvalidStateError");
@@ -2668,8 +2785,9 @@ if (config.iphone) { try {
     };
     const leave = function () {
       try {
-        if (fullscreenElementOf && fullscreenElementOf.call(document) === this) {
-          const done = exitFullscreen.call(document);
+        const home = homeOf(this);
+        if (fullscreenElementOf && fullscreenElementOf.call(home) === this) {
+          const done = exitFullscreen.call(home);
           if (done && typeof done.catch === "function") done.catch(() => {});
         }
       } catch (e) {}
@@ -2680,19 +2798,19 @@ if (config.iphone) { try {
     addMethod(videoProto, "webkitExitFullScreen", 0, leave);
     addGetter(videoProto, "webkitSupportsFullscreen", () => true);
     addGetter(videoProto, "webkitDisplayingFullscreen", function () {
-      try { return Boolean(fullscreenElementOf) && fullscreenElementOf.call(document) === this; } catch (e) { return false; }
+      try { return Boolean(fullscreenElementOf) && fullscreenElementOf.call(homeOf(this)) === this; } catch (e) { return false; }
     });
     addMethod(videoProto, "webkitSupportsPresentationMode", 1, (mode) => ["inline", "fullscreen", "picture-in-picture"].indexOf(`${mode}`) !== -1);
     addGetter(videoProto, "webkitPresentationMode", function () {
-      try { return fullscreenElementOf && fullscreenElementOf.call(document) === this ? "fullscreen" : "inline"; } catch (e) { return "inline"; }
+      try { return fullscreenElementOf && fullscreenElementOf.call(homeOf(this)) === this ? "fullscreen" : "inline"; } catch (e) { return "inline"; }
     });
     addMethod(mediaProto, "webkitShowPlaybackTargetPicker", 0, function () {});
     addGetter(mediaProto, "webkitCurrentPlaybackTargetIsWireless", () => false);
     // webkitbeginfullscreen / webkitendfullscreen, as a video gets them.
     if (addListener && dispatch && outside) {
-      const changed = () => {
+      const changed = (home) => {
         try {
-          const now = fullscreenElementOf.call(document);
+          const now = fullscreenElementOf.call(home);
           if (shown && shown !== now) {
             const left = shown;
             shown = null;
@@ -2704,7 +2822,7 @@ if (config.iphone) { try {
           }
         } catch (e) {}
       };
-      try { listen(document, "fullscreenchange", changed, true); } catch (e) {}
+      eachDocument((each) => listen(each, "fullscreenchange", () => changed(each), true));
     }
   }
 
@@ -3138,15 +3256,15 @@ if (config.iphone) { try {
     });
     const RealFontFace = window.FontFace;
     // A page's own font list (a worker's isn't there before its first
-    // line, and asking for it then ends the renderer; see below).
-    const fontSet = isWindow ? document.fonts : null;
+    // line, and asking for it then ends the renderer; see below), read with
+    // the browser's getter.
+    const fontsOf = isWindow && window.Document && (getOwnPropertyDescriptor(window.Document.prototype, "fonts") || {}).get;
     const FontSet = window.FontFaceSet;
     const ours = protectedFaces;
     if (typeof RealFontFace === "function" && FontSet) {
       const realAdd = FontSet.prototype.add;
       const realDelete = FontSet.prototype.delete;
-      const face = (family, local, range) => {
-        if (!fontSet) return;
+      const face = (fontSet, family, local, range) => {
         try {
           const made = new RealFontFace(family, localsFor(local), { unicodeRange: range, weight: "1 1000" });
           ours.add(made);
@@ -3155,9 +3273,17 @@ if (config.iphone) { try {
           if (loading && typeof loading.catch === "function") loading.catch(() => {});
         } catch (e) {}
       };
+      // In each document's font list (the page's, and the one of each page
+      // a window kept from its empty start loads later: see eachDocument).
       // An existing font of Windows behind the faces that draw nothing.
-      for (const name of IPHONE_FONTS.block) face(name, "Arial", "U+10FFFF");
-      for (const name of Object.keys(IPHONE_FONTS.add)) face(name, IPHONE_FONTS.add[name], "U+0-10FFFE");
+      if (isWindow) {
+        eachDocument((each) => {
+          const fontSet = fontsOf ? fontsOf.call(each) : each.fonts;
+          if (!fontSet) return;
+          for (const name of IPHONE_FONTS.block) face(fontSet, name, "Arial", "U+10FFFF");
+          for (const name of Object.keys(IPHONE_FONTS.add)) face(fontSet, name, IPHONE_FONTS.add[name], "U+0-10FFFE");
+        });
+      }
 
       const FontFace = {
         FontFace: function (family, source) {
@@ -3764,15 +3890,15 @@ if (config.android) { try {
       return added.has(family) ? localsFor(added.get(family)) : `local(${quoted(missing)})`;
     });
     const RealFontFace = window.FontFace;
-    const fontSet = isWindow ? document.fonts : null;
+    // A document's own font list, read with the browser's getter.
+    const fontsOf = isWindow && window.Document && (getOwnPropertyDescriptor(window.Document.prototype, "fonts") || {}).get;
     const FontSet = window.FontFaceSet;
     const fontFaceSetLoadEvent = window.FontFaceSetLoadEvent;
     const ours = new WeakSet();
     if (typeof RealFontFace === "function" && FontSet) {
       const realAdd = FontSet.prototype.add;
       const realDelete = FontSet.prototype.delete;
-      const face = (family, local, range) => {
-        if (!fontSet) return;
+      const face = (fontSet, family, local, range) => {
         try {
           const made = new RealFontFace(family, localsFor(local), { unicodeRange: range, weight: "1 1000" });
           ours.add(made);
@@ -3781,8 +3907,16 @@ if (config.android) { try {
           if (loading && typeof loading.catch === "function") loading.catch(() => {});
         } catch (e) {}
       };
-      for (const name of blockedNames) face(name, "Arial", "U+10FFFF");
-      for (const [name, local] of addedFonts) face(name, local, "U+0-10FFFE");
+      // In each document's font list (the page's, and the one of each page
+      // a window kept from its empty start loads later: see eachDocument).
+      if (isWindow) {
+        eachDocument((each) => {
+          const fontSet = fontsOf ? fontsOf.call(each) : each.fonts;
+          if (!fontSet) return;
+          for (const name of blockedNames) face(fontSet, name, "Arial", "U+10FFFF");
+          for (const [name, local] of addedFonts) face(fontSet, name, local, "U+0-10FFFE");
+        });
+      }
 
       const FontFace = {
         FontFace: function (family, source) {
@@ -3916,11 +4050,19 @@ try {
     // contentWindow or contentDocument, as a frame is added to the document
     // (and soon after, for the ways not caught), and when window.open
     // returns one. Windows that load a page get the script from WebKit, and
-    // one protected before is left as it is.
+    // one protected before is left as it is, but for the document it has
+    // now: one it was protected in while empty may have loaded a page of
+    // the same site since, keeping the window (see eachDocument).
     {
       const protectWindow = (other) => {
         try {
-          if (!other || protectedWindows.has(other) || other.location.href !== "about:blank") return;
+          if (!other) return;
+          if (protectedWindows.has(other)) {
+            const sync = documentSyncs.get(other);
+            if (sync) sync();
+            return;
+          }
+          if (other.location.href !== "about:blank") return;
           // Protected by another copy of this script already.
           if (isProtected(other)) return;
         } catch (e) {
@@ -4049,7 +4191,7 @@ try {
           const observer = outside
             ? outside.construct(window.MutationObserver, [outside.callback(added)])
             : new window.MutationObserver(added);
-          observer.observe(document, { childList: true, subtree: true });
+          eachDocument((each) => observer.observe(each, { childList: true, subtree: true }));
         } catch (e) {}
       }
     }

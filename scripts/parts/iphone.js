@@ -316,6 +316,12 @@
     const videoProto = window.HTMLVideoElement.prototype;
     const mediaProto = window.HTMLMediaElement.prototype;
     let shown = null;
+    // The document a video is in (a window kept from its empty start for a
+    // page of its site has had another before: see eachDocument).
+    const ownerOf = window.Node && (getOwnPropertyDescriptor(window.Node.prototype, "ownerDocument") || {}).get;
+    const homeOf = (element) => {
+      try { return (ownerOf && ownerOf.call(element)) || documentNow; } catch (e) { return documentNow; }
+    };
     const enter = function () {
       if (!userActive()) {
         throw new PageException("The object is in an invalid state.", "InvalidStateError");
@@ -327,8 +333,9 @@
     };
     const leave = function () {
       try {
-        if (fullscreenElementOf && fullscreenElementOf.call(document) === this) {
-          const done = exitFullscreen.call(document);
+        const home = homeOf(this);
+        if (fullscreenElementOf && fullscreenElementOf.call(home) === this) {
+          const done = exitFullscreen.call(home);
           if (done && typeof done.catch === "function") done.catch(() => {});
         }
       } catch (e) {}
@@ -339,19 +346,19 @@
     addMethod(videoProto, "webkitExitFullScreen", 0, leave);
     addGetter(videoProto, "webkitSupportsFullscreen", () => true);
     addGetter(videoProto, "webkitDisplayingFullscreen", function () {
-      try { return Boolean(fullscreenElementOf) && fullscreenElementOf.call(document) === this; } catch (e) { return false; }
+      try { return Boolean(fullscreenElementOf) && fullscreenElementOf.call(homeOf(this)) === this; } catch (e) { return false; }
     });
     addMethod(videoProto, "webkitSupportsPresentationMode", 1, (mode) => ["inline", "fullscreen", "picture-in-picture"].indexOf(`${mode}`) !== -1);
     addGetter(videoProto, "webkitPresentationMode", function () {
-      try { return fullscreenElementOf && fullscreenElementOf.call(document) === this ? "fullscreen" : "inline"; } catch (e) { return "inline"; }
+      try { return fullscreenElementOf && fullscreenElementOf.call(homeOf(this)) === this ? "fullscreen" : "inline"; } catch (e) { return "inline"; }
     });
     addMethod(mediaProto, "webkitShowPlaybackTargetPicker", 0, function () {});
     addGetter(mediaProto, "webkitCurrentPlaybackTargetIsWireless", () => false);
     // webkitbeginfullscreen / webkitendfullscreen, as a video gets them.
     if (addListener && dispatch && outside) {
-      const changed = () => {
+      const changed = (home) => {
         try {
-          const now = fullscreenElementOf.call(document);
+          const now = fullscreenElementOf.call(home);
           if (shown && shown !== now) {
             const left = shown;
             shown = null;
@@ -363,7 +370,7 @@
           }
         } catch (e) {}
       };
-      try { listen(document, "fullscreenchange", changed, true); } catch (e) {}
+      eachDocument((each) => listen(each, "fullscreenchange", () => changed(each), true));
     }
   }
 
@@ -797,15 +804,15 @@
     });
     const RealFontFace = window.FontFace;
     // A page's own font list (a worker's isn't there before its first
-    // line, and asking for it then ends the renderer; see below).
-    const fontSet = isWindow ? document.fonts : null;
+    // line, and asking for it then ends the renderer; see below), read with
+    // the browser's getter.
+    const fontsOf = isWindow && window.Document && (getOwnPropertyDescriptor(window.Document.prototype, "fonts") || {}).get;
     const FontSet = window.FontFaceSet;
     const ours = protectedFaces;
     if (typeof RealFontFace === "function" && FontSet) {
       const realAdd = FontSet.prototype.add;
       const realDelete = FontSet.prototype.delete;
-      const face = (family, local, range) => {
-        if (!fontSet) return;
+      const face = (fontSet, family, local, range) => {
         try {
           const made = new RealFontFace(family, localsFor(local), { unicodeRange: range, weight: "1 1000" });
           ours.add(made);
@@ -814,9 +821,17 @@
           if (loading && typeof loading.catch === "function") loading.catch(() => {});
         } catch (e) {}
       };
+      // In each document's font list (the page's, and the one of each page
+      // a window kept from its empty start loads later: see eachDocument).
       // An existing font of Windows behind the faces that draw nothing.
-      for (const name of IPHONE_FONTS.block) face(name, "Arial", "U+10FFFF");
-      for (const name of Object.keys(IPHONE_FONTS.add)) face(name, IPHONE_FONTS.add[name], "U+0-10FFFE");
+      if (isWindow) {
+        eachDocument((each) => {
+          const fontSet = fontsOf ? fontsOf.call(each) : each.fonts;
+          if (!fontSet) return;
+          for (const name of IPHONE_FONTS.block) face(fontSet, name, "Arial", "U+10FFFF");
+          for (const name of Object.keys(IPHONE_FONTS.add)) face(fontSet, name, IPHONE_FONTS.add[name], "U+0-10FFFE");
+        });
+      }
 
       const FontFace = {
         FontFace: function (family, source) {

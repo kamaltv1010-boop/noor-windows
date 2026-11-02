@@ -1,282 +1,304 @@
 [
- {
-  "name": "smoke-electron",
-  "title": "الأساسيات: ما تراه الصفحة، حجب المتتبعين، البروفايلات، صفحات التطبيق",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-electron.js"
-  ],
-  "minutes": 10
- },
- {
-  "name": "smoke-extensions",
-  "title": "الإضافات (Chrome Web Store وملفات crx)",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-extensions.js"
-  ],
-  "minutes": 10
- },
- {
-  "name": "smoke-quota",
-  "title": "مساحة التخزين وservice worker",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-quota.js"
-  ],
-  "minutes": 10
- },
- {
-  "name": "smoke-windows",
-  "title": "نافذة لكل بروفايل",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-windows.js"
-  ],
-  "minutes": 10
- },
- {
-  "name": "smoke-second-launch",
-  "title": "تشغيل Noor مرة ثانية وهو يعمل (زر بروفايل مثبّت، رابط من برنامج آخر): العنوان يُفتح، حتى أثناء البدء",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-second-launch.js"
-  ],
-  "minutes": 3
- },
- {
-  "name": "smoke-close",
-  "title": "إغلاق Noor بنافذتين: واحدة بعد الأخرى، والاثنتان معاً، وtaskkill",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-close.js"
-  ],
-  "minutes": 6
- },
- {
-  "name": "smoke-session-end",
-  "title": "إيقاف Windows أو تسجيل الخروج: الصفحات المفتوحة تعود كما كانت، وملف الإعدادات سليم",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-session-end.js"
-  ],
-  "minutes": 6
- },
- {
-  "name": "smoke-gpu",
-  "title": "WebGL Vendor & Renderer لكل بروفايل",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-gpu.js"
-  ],
-  "minutes": 10
- },
- {
-  "name": "smoke-fonts",
-  "title": "الخطوط لكل بروفايل (خطوط Windows الحقيقية هنا)",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-fonts.js"
-  ],
-  "minutes": 10
- },
- {
-  "name": "smoke-menu",
-  "title": "القوائم",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-menu.js"
-  ],
-  "minutes": 10
- },
- {
-  "name": "smoke-warmup",
-  "title": "جمع الكوكيز",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/smoke-warmup.js",
-   "windows"
-  ],
-  "minutes": 10
- },
- {
-  "name": "probe-workers",
-  "title": "الحماية داخل الـ workers (الكود أثناء التطوير)",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-workers.js",
-   "windows"
-  ],
-  "minutes": 10
- },
- {
-  "name": "probe-webgpu",
-  "title": "WebGPU في الصفحة والـ worker",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-webgpu.js",
-   "windows"
-  ],
-  "minutes": 10
- },
- {
-  "name": "probe-device",
-  "title": "واجهات الجهاز (البطارية، الأجهزة، الشبكة…)",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-device.js",
-   "windows"
-  ],
-  "minutes": 10
- },
- {
-  "name": "probe-lies",
-  "title": "هل يكشف الموقع الضجيج؟",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-lies.js",
-   "windows"
-  ],
-  "minutes": 10
- },
- {
-  "name": "probe-navigation-source",
-  "title": "المفضلة والروابط المثبّتة: ما يصل إلى الموقع مثل كتابة العنوان تماماً",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-navigation-source.js"
-  ],
-  "minutes": 5
- },
- {
-  "name": "probe-isolation",
-  "title": "عزل البيانات بين البروفايلات والتبويب الخاص",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-isolation.js",
-   "windows"
-  ],
-  "minutes": 10
- },
- {
-  "name": "probe-screen",
-  "title": "اتساق حجم الشاشة مع media queries",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-screen.js"
-  ],
-  "minutes": 10
- },
- {
-  "name": "probe-webrtc",
-  "title": "WebRTC: هل يظهر عنوان IP؟",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-webrtc.js",
-   "windows"
-  ],
-  "minutes": 10
- },
- {
-  "name": "probe-persistence",
-  "title": "ثبات البروفايل بعد إعادة التشغيل وتشغيل/إيقاف كل حماية",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-persistence.js",
-   "windows"
-  ],
-  "minutes": 25
- },
- {
-  "name": "probe-memory",
-  "title": "الذاكرة والمعالج مع 40 تبويباً",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-memory.js",
-   "windows"
-  ],
-  "minutes": 20
- },
- {
-  "name": "cookie-store-dev",
-  "title": "الكوكيز على القرص بـ Electron بلا fuses (المرجع: قبل الإصلاح)",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-cookie-store.js"
-  ],
-  "minutes": 5,
-  "expect": "problem"
- },
- {
-  "name": "probe-app-pages",
-  "title": "هل يصل موقع إلى صفحات Noor نفسها (الإعدادات، الكوكيز): إطار، انتقال، رابط، نافذة بنقرة، Ctrl+نقر، الزر الأوسط، تحويل من الخادم، fetch",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-app-pages.js"
-  ],
-  "minutes": 6
- },
- {
-  "name": "probe-external-protocols",
-  "title": "هل يشغّل موقع برنامجاً على Windows عبر رابط ببروتوكول آخر (مثل ms-msdt:): بروتوكول للاختبار في HKCU، ومحاولة بلا نقر وبنقرة، وفحص ضبط",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-external-protocols.js"
-  ],
-  "minutes": 5
- },
- {
-  "name": "probe-app-xss",
-  "title": "هل يعمل كود موقع في صفحات Noor (شريط الأدوات، المكتبة، الكوكيز، البداية) من عنوانه وكوكيزه",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-app-xss.js"
-  ],
-  "minutes": 4
- },
- {
-  "name": "probe-local-files",
-  "title": "هل يقرأ موقع ملفاً من الحاسوب: fetch وXHR وإطار وصورة وانتقال ورابط بنقرة لعنوان file://، والخروج من مجلد صفحات Noor",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-local-files.js"
-  ],
-  "minutes": 4
- },
- {
-  "name": "debug-port-dev",
-  "title": "منفذ التصحيح (الكود أثناء التطوير)",
-  "kind": "app",
-  "command": [
-   "node",
-   "tools/probe-debug-port.js"
-  ],
-  "minutes": 6
- }
+  {
+    "name": "smoke-electron",
+    "title": "الأساسيات: ما تراه الصفحة، حجب المتتبعين، البروفايلات، صفحات التطبيق",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-electron.js"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "smoke-extensions",
+    "title": "الإضافات (Chrome Web Store وملفات crx)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-extensions.js"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "smoke-quota",
+    "title": "مساحة التخزين وservice worker",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-quota.js"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "smoke-windows",
+    "title": "نافذة لكل بروفايل",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-windows.js"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "smoke-second-launch",
+    "title": "تشغيل Noor مرة ثانية وهو يعمل (زر بروفايل مثبّت، رابط من برنامج آخر): العنوان يُفتح، حتى أثناء البدء",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-second-launch.js"
+    ],
+    "minutes": 3
+  },
+  {
+    "name": "smoke-close",
+    "title": "إغلاق Noor بنافذتين: واحدة بعد الأخرى، والاثنتان معاً، وtaskkill",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-close.js"
+    ],
+    "minutes": 6
+  },
+  {
+    "name": "smoke-session-end",
+    "title": "إيقاف Windows أو تسجيل الخروج: الصفحات المفتوحة تعود كما كانت، وملف الإعدادات سليم",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-session-end.js"
+    ],
+    "minutes": 6
+  },
+  {
+    "name": "smoke-gpu",
+    "title": "WebGL Vendor & Renderer لكل بروفايل",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-gpu.js"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "smoke-fonts",
+    "title": "الخطوط لكل بروفايل (خطوط Windows الحقيقية هنا)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-fonts.js"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "smoke-menu",
+    "title": "القوائم",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-menu.js"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "smoke-warmup",
+    "title": "جمع الكوكيز",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-warmup.js",
+      "windows"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "probe-workers",
+    "title": "الحماية داخل الـ workers (الكود أثناء التطوير)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-workers.js",
+      "windows"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "probe-webgpu",
+    "title": "WebGPU في الصفحة والـ worker",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-webgpu.js",
+      "windows"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "probe-device",
+    "title": "واجهات الجهاز (البطارية، الأجهزة، الشبكة…)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-device.js",
+      "windows"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "probe-lies",
+    "title": "هل يكشف الموقع الضجيج؟",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-lies.js",
+      "windows"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "probe-site-frames",
+    "title": "إطارات الموقع نفسه (بعنوان، srcdoc، مضاف بسكربت، داخل إطار): لا تُظهر خطوط هذا الحاسوب التي تخفيها الصفحة، وtoBlob يجيب",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-site-frames.js",
+      "windows"
+    ],
+    "minutes": 4
+  },
+  {
+    "name": "probe-page-errors",
+    "title": "هل تكسر الحماية ما تفعله الصفحات: نحو ستين واجهة في الصفحة وإطار وworker بالحماية وبدونها، وتشوّه الرسم",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-page-errors.js",
+      "windows"
+    ],
+    "minutes": 5
+  },
+  {
+    "name": "probe-navigation-source",
+    "title": "المفضلة والروابط المثبّتة: ما يصل إلى الموقع مثل كتابة العنوان تماماً",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-navigation-source.js"
+    ],
+    "minutes": 5
+  },
+  {
+    "name": "probe-isolation",
+    "title": "عزل البيانات بين البروفايلات والتبويب الخاص",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-isolation.js",
+      "windows"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "probe-screen",
+    "title": "اتساق حجم الشاشة مع media queries",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-screen.js"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "probe-webrtc",
+    "title": "WebRTC: هل يظهر عنوان IP؟",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-webrtc.js",
+      "windows"
+    ],
+    "minutes": 10
+  },
+  {
+    "name": "probe-persistence",
+    "title": "ثبات البروفايل بعد إعادة التشغيل وتشغيل/إيقاف كل حماية",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-persistence.js",
+      "windows"
+    ],
+    "minutes": 25
+  },
+  {
+    "name": "probe-memory",
+    "title": "الذاكرة والمعالج مع 40 تبويباً",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-memory.js",
+      "windows"
+    ],
+    "minutes": 20
+  },
+  {
+    "name": "cookie-store-dev",
+    "title": "الكوكيز على القرص بـ Electron بلا fuses (المرجع: قبل الإصلاح)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-cookie-store.js"
+    ],
+    "minutes": 5,
+    "expect": "problem"
+  },
+  {
+    "name": "probe-app-pages",
+    "title": "هل يصل موقع إلى صفحات Noor نفسها (الإعدادات، الكوكيز): إطار، انتقال، رابط، نافذة بنقرة، Ctrl+نقر، الزر الأوسط، تحويل من الخادم، fetch",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-app-pages.js"
+    ],
+    "minutes": 6
+  },
+  {
+    "name": "probe-external-protocols",
+    "title": "هل يشغّل موقع برنامجاً على Windows عبر رابط ببروتوكول آخر (مثل ms-msdt:): بروتوكول للاختبار في HKCU، ومحاولة بلا نقر وبنقرة، وفحص ضبط",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-external-protocols.js"
+    ],
+    "minutes": 5
+  },
+  {
+    "name": "probe-app-xss",
+    "title": "هل يعمل كود موقع في صفحات Noor (شريط الأدوات، المكتبة، الكوكيز، البداية) من عنوانه وكوكيزه",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-app-xss.js"
+    ],
+    "minutes": 4
+  },
+  {
+    "name": "probe-local-files",
+    "title": "هل يقرأ موقع ملفاً من الحاسوب: fetch وXHR وإطار وصورة وانتقال ورابط بنقرة لعنوان file://، والخروج من مجلد صفحات Noor",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-local-files.js"
+    ],
+    "minutes": 4
+  },
+  {
+    "name": "debug-port-dev",
+    "title": "منفذ التصحيح (الكود أثناء التطوير)",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-debug-port.js"
+    ],
+    "minutes": 6
+  }
 ]
