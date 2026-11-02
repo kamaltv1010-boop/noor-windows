@@ -23,6 +23,7 @@ const { chromeOrder } = require("./headers");
 const { diskQuota: quotaOfDisk, shownQuota } = require("./quota");
 const { FontList, keptBy } = require("./fonts");
 const { cookieTools } = require("./cookies");
+const { markDownloads } = require("./downloads");
 const iphone = require("./iphone");
 const android = require("./android");
 const gpus = require("./gpus");
@@ -393,6 +394,8 @@ const setUpSession = (ses) => {
   ses.setPermissionRequestHandler((webContents, permission, callback, details) => callback(isAllowed(permission, details) || appAsksFonts(permission, details && details.requestingUrl)));
   ses.setPermissionCheckHandler((webContents, permission, origin, details) => isAllowed(permission, details) || appAsksFonts(permission, origin));
   guardServiceWorkers(ses);
+  // What it downloads is marked as from the internet (see main/downloads.js).
+  markDownloads(ses, (each) => privateSessions.has(each));
   // A profile's session (not the app's own pages', nor the default one)
   // runs the extensions.
   if (extensions && ses !== session.defaultSession && !isChromeSession(ses)) {

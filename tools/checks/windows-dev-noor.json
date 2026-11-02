@@ -302,6 +302,16 @@
     "minutes": 4
   },
   {
+    "name": "probe-downloads",
+    "title": "علامة «من الإنترنت» (Zone.Identifier) على ما يُنزَّل من موقع: بنقرة حقيقية، وبسلوك Electron وحده للمقارنة، ومن تبويب خاص",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/probe-downloads.js"
+    ],
+    "minutes": 4
+  },
+  {
     "name": "debug-port-dev",
     "title": "منفذ التصحيح (الكود أثناء التطوير)",
     "kind": "app",
