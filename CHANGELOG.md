@@ -3,7 +3,7 @@
 Numbered builds are on GitHub Releases (`1.0.<build>`); each holds Noor,
 Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
-## Unreleased
+## 1.0.46
 
 - **أمان: المواقع لا تصل إلى صفحات Noor نفسها**: صفحات الإعدادات والكوكيز والمكتبة
   وصفحة البداية تملك أوامر التطبيق كلها (الإعدادات، البروفايلات، تصدير الكوكيز،
