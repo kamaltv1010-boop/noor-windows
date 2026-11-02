@@ -576,6 +576,75 @@ iPhone وAndroid: غير موجود)؛ `npm audit --omit=dev`: صفر؛ Electron
 وانتظار `smoke-warmup` المرن؛ اختبارات فقط)، التشغيل 41501080201: **75 من 75**؛ دُمج
 في `main` بلا نسخة جديدة (كود التطبيق نفسه).
 
+## 2026-11-02 (ليلاً) — الشبكة المحلية، علامة الإنترنت، VideoFrame، IPC، WebGL
+
+**أمان: الشبكة المحلية (`ab1557d`).** كان فحص Noor لطلبات الموقع نحو هذا الحاسوب أو
+شبكته ينظر إلى العنوان المكتوب في الرابط فقط (127.0.0.1، 192.168.…)، فاسم يُحلّ إلى
+عنوان محلي (موجود فعلاً، مثل 127.0.0.1.nip.io) يمرّ، وكذلك إعادة ربط اسم الموقع بعد
+تحميل صفحته (DNS rebinding). حماية Chromium نفسها (Local Network Access) لا تعمل في
+Electron حتى مع تفعيل خصائصها (جُرّب). الإصلاح: `leadsHome` يحلّ الاسم بـ
+`session.resolveHost` (محلّل Chromium وذاكرته) ويمنع الطلب إن أدّى إلى عنوان محلي؛
+ومكان كل صفحة (`originPlaces`) من العنوان الذي جاء منه ردّها فعلاً (`details.ip`)،
+مع احترام `treat-as-public-address`. أول تصميم أعاد حلّ اسم الصفحة نفسه، فبقي هجوم
+إعادة الربط الكلاسيكي ممكناً: استُبدل. الاختبار `tools/probe-local-network.js`: صفحة
+موقع (CSP `treat-as-public-address`) تجرّب تسع طرق، وصفحة من هذا الحاسوب ضابطة (يجب
+أن تصل 4 مرات على الأقل). **Windows:** التشغيل 41508431811 (`9a0c809`) نجح.
+
+**أمان (Windows): علامة الإنترنت (`9a0c809`).** `main/downloads.js`: بعد اكتمال
+التنزيل يُكتب `file:Zone.Identifier` (ZoneId=3 مع ReferrerUrl وHostUrl؛ في التبويب
+الخاص `HostUrl=about:internet` بلا عناوين)، إن لم يكتبه Chromium. الاختبار
+`tools/probe-downloads.js` (ثلاثة تنزيلات). **Windows:** التشغيل 41508431811 نجح؛ سطور
+`note` تُظهر العلامة في تقرير التشغيل التالي.
+
+**خصوصية: VideoFrame (`8f87b70`، المصدر في Amir `2e909d6`).** `new VideoFrame(canvas)`
+ثم `copyTo` قرأ الرسم الحقيقي متجاوزاً الحماية (من canvas وOffscreenCanvas وصورة
+نقطية). الآن يُصنع من النسخة المشوّشة (`Reflect.construct`، والواجهة كواجهة المتصفح:
+toString والاسم والطول والـ prototype والخطأ بلا new). الاختبار
+`tools/probe-canvas-reads.js` (13 طريقة في الصفحة واثنتان في الـ worker، الحماية
+مفعّلة وموقوفة). بناء Amir على macOS نجح (41510416573)؛ لم يُختبر على جهاز.
+
+**ترويسات الطلبات (`d630045`).** `tools/probe-request-headers.js`: الصفحة والصورة
+والسكربت وfetch والإطار والـ workers الثلاثة بعد `Accept-CH`. نسختا الهاتف لا تذكران
+Windows في أي طلب؛ Noor iPhone لا يرسل Client Hints؛ Android يرسل المنصة Android.
+فرق معروف عن Chrome (حدّ موثّق): طلبات الـ workers بلا Client Hints منخفضة الدقة.
+
+**أمان: IPC والدوال الأساسية (`f94eff3`).** الصفحات تعمل و`contextIsolation` موقوف
+(لتصل الحماية إلى دوال الصفحة). في Electron القديم كانت صفحة تستبدل
+`Array.prototype.push` تلتقط `ipcRenderer` حين تصل إطارها رسالة (emit في عالم الصفحة).
+في Electron 45.2.1 صار `ipcRenderer` كائناً أصلياً (`lib/renderer/api/ipc-renderer.ts`)،
+والقنوات الداخلية في المتصفح قليلة (`BROWSER_GET_PROCESS_MEMORY_INFO`،
+`BROWSER_PRELOAD_ERROR`، `GUEST_VIEW_*` و`<webview>` ممنوع)؛ لا `SANDBOX_LOAD` التي
+كانت تعيد `process.env`. تجربة: 209 دوال مغلّفة ورسائل `send` و`frame.send`: لا شيء
+التُقط. وقنوات `noor:*` كلها تتحقق من المرسل (`trusted`). الاختبار
+`tools/probe-page-globals.js`: عشرة سياقات (الصفحة، إطار بعنوان، srcdoc، فارغ، موقع
+آخر، نافذة مفتوحة، نافذة فارغة كتبت فيها الصفحة، worker مخصّص ومشترك وخدمي) وصفحة
+الدوال المستبدلة، مع فحصين ضابطين. **Windows:** نسختا الهاتف نجحتا (التشغيل
+41512893358).
+
+**WebGL (`f4cab86`).** `tools/probe-webgl-reads.js`: تدرّج من shader بـ WebGL وWebGL2،
+12 طريقة قراءة محمية (readPixels للكل ولجزء ولإطار خاص، toDataURL، toBlob، 2D، صورة
+نقطية، VideoFrame، WebGL آخر، وworker: readPixels وconvertToBlob): لا واحدة تعطي
+الرسم الحقيقي (Linux، الثلاث). **حدّ معروف، عن قصد:** `PIXEL_PACK_BUFFER` مع
+`getBufferSubData`، وإطار أعداد عشرية يُقرأ FLOAT، يعطيان الرسم الحقيقي؛ بهما تقرأ
+مواقع الحساب على بطاقة الرسوميات (TensorFlow.js…) نتائجها، والتشويش يفسدها.
+
+**أمان (تحصين، `77ecd80`): صفحات file://.** الـ fuse `GrantFileProtocolExtraPrivileges`
+كان على قيمته الافتراضية (مفعّل): صفحة file:// في تبويب قرأت ملفاً سرياً آخر بـ fetch
+وXHR وإطار (Linux). لا طريق معروف يفتحها في Noor (شريط العنوان يبحث عن file:، والتشغيل
+http(s) فقط، و`navigateOnDragDrop` موقوف افتراضياً في Electron). أُطفئ في
+`build.electronFuses`؛ `check-fuses` يتحقق منه؛ `probe-built-app` يأخذ تبويباً إلى صفحة
+file:// عبر بروتوكول التصحيح: نجح بـ Electron مقلوب الـ fuse وفشل بالعادي (Linux،
+بغلاف حول Electron). صفحات noor:// تعمل (تُقرأ في البرنامج الرئيسي بـ `net.fetch`).
+
+**فُحص ولم يُكتشف فيه خلل:** الأذونات (قائمة ثابتة، لا موافقات محفوظة)؛ جسر الإضافات
+المحلي (مسار سري 128 بت، ومفتاح جلسة، ومصدر إضافة مثبّتة)؛ إصدار Windows في Client
+Hints حقيقي كما في Chrome (`useragent.js`، اختيار مقصود).
+
+**مفتوح ويحتاج قراراً:** منفذ التصحيح (P1-8) يصل إليه أي برنامج على الحاسوب، ومنه
+حسابات Windows الأخرى على الحاسوب نفسه (المنفذ على 127.0.0.1 مشترك بين المستخدمين)؛
+الحل المؤجَّل مُشغِّل بالـ pipe. أصوات القراءة (`speechSynthesis`) في نسخة Windows هي
+أصوات الحاسوب الحقيقية، واحدة في كل البروفايلات (كما في Chrome).
+
 ## Resume point
 
 **نقطة الاستئناف:** النسخة 1.0.46 صدرت (الإطارات من الموقع نفسه، وخطوط نسختَي
