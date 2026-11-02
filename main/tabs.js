@@ -1572,6 +1572,49 @@ class Browser {
     return saved;
   }
 
+  /// The address a pin keeps of a page: the one it was opened at, less its
+  /// tracking codes (what one types to come back to it).
+  pinURL(url) {
+    return (this.shields && this.shields.clean(url)) || url;
+  }
+
+  /// Pins the shown page (a row above the favorites, as the iOS app's "Pin
+  /// This Page"), or unpins it. A pin opens as an address typed in the
+  /// address bar does (Browser.go): the site is sent the same, nothing to
+  /// tell the two apart. Whether it is pinned now.
+  togglePin() {
+    const tab = this.selected;
+    if (!tab || !isWebPage(tab.url)) {
+      return false;
+    }
+    const url = this.pinURL(tab.url);
+    const pinned = this.pins.contains(tab.url) && url !== tab.url
+      ? (this.pins.remove(tab.url), false)
+      : this.pins.toggle(tab.title || hostOf(url), url);
+    this.toast(pinned ? "Page pinned" : "Page unpinned");
+    if (this.windows) {
+      this.windows.pushState();
+    } else {
+      this.pushState();
+    }
+    return pinned;
+  }
+
+  /// Pins a link of a page (its menu's "Pin Link", as the iOS app's).
+  pinLink(link) {
+    if (!isWebPage(link)) {
+      return;
+    }
+    const url = this.pinURL(link);
+    this.pins.add(hostOf(url), url);
+    this.toast("Link pinned");
+    if (this.windows) {
+      this.windows.pushState();
+    } else {
+      this.pushState();
+    }
+  }
+
   findOnPage() {
     this.chrome.webContents.focus();
     this.chrome.webContents.send("noor:find");
@@ -1765,6 +1808,7 @@ class Browser {
       shieldsUp: site ? this.shields.areUp(url) : true,
       trackersBlocked: active ? active.trackersBlocked : 0,
       bookmarked: Boolean(url && (this.bookmarks.contains(url) || this.bookmarks.contains(active.bookmarkURL))),
+      pinned: Boolean(url && this.pins && (this.pins.contains(url) || this.pins.contains(this.pinURL(url)))),
       profile: { id: this.profile.id, name: this.profile.name, color: this.profile.isDefault ? null : iconLook(this.profile.name).colors[0] },
       profiles: this.profiles.all(),
       stats: this.stats.toJSON(),

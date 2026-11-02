@@ -52,3 +52,18 @@ test("store: no file, or a file that doesn't read, starts empty", () => {
   fs.writeFileSync(file, "[1, 2]");
   assert.deepEqual(new Store(file).data, {});
 });
+
+test("bookmarks and pinned links: kept whole on the disk, a write cut short leaves the last list", () => {
+  const { Bookmarks } = require("../main/bookmarks");
+  const file = tempFile("pins.json");
+  const pins = new Bookmarks(file);
+  pins.add("Instagram", "https://www.instagram.com/");
+  pins.add("Example", "https://example.com/");
+  assert.equal(fs.existsSync(`${file}.tmp`), false);
+  // The computer stopped while the next write was under way.
+  fs.writeFileSync(`${file}.tmp`, '[{"url": "https://www.inst');
+  assert.deepEqual(new Bookmarks(file).all().map((p) => p.title), ["Instagram", "Example"]);
+  // Or just before a whole one was put in place: that one is the newest.
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify([{ url: "https://www.instagram.com/", title: "Instagram" }]));
+  assert.deepEqual(new Bookmarks(file).all().map((p) => p.url), ["https://www.instagram.com/"]);
+});

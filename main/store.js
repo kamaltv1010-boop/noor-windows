@@ -2,32 +2,62 @@
 const fs = require("fs");
 const path = require("path");
 
-/// Reads `file` as a JSON object, or null.
-const readObject = (file) => {
+/// Writes `text` as the whole of `file`, or leaves the file as it was: it
+/// is written beside its place (`.tmp`), flushed to the disk, then put in
+/// its place. A write cut short (Windows ending the session or restarting
+/// for an update, a power cut) once left half a file, read as nothing.
+const writeWhole = (file, text) => {
+  const temp = `${file}.tmp`;
   try {
-    const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const fd = fs.openSync(temp, "w");
+    try {
+      fs.writeSync(fd, text);
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
+    fs.renameSync(temp, file);
   } catch (error) {
-    return null;
+    // (Windows may hold the file a moment, its antivirus reading it: then
+    // it is written in its place, as before.)
+    try {
+      fs.rmSync(temp, { force: true });
+      fs.writeFileSync(file, text);
+    } catch (e) {
+      // Nothing to do: what it holds stays in memory for this run.
+    }
   }
 };
 
+/// What `file` holds, as JSON, if `accept` takes it; null otherwise. A
+/// `.tmp` left whole beside it (the computer stopped just before it was put
+/// in place, see writeWhole) is the newest, and read first.
+const readWhole = (file, accept) => {
+  for (const candidate of [`${file}.tmp`, file]) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(candidate, "utf8"));
+      if (accept(parsed)) {
+        return parsed;
+      }
+    } catch (error) {
+      // Not there, or not whole: the next one.
+    }
+  }
+  return null;
+};
+
+const isObject = (value) => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
 /// Settings and other small state, as one JSON file in the app's data
 /// folder, like the iOS app's UserDefaults. Reads come from memory; every
-/// write saves the file.
-///
-/// The file holds the profiles, their tabs and every setting: a write cut
-/// short (Windows ending the session or restarting for an update, a power
-/// cut) once left half a file, read as nothing, every profile forgotten.
-/// So a write is whole or not at all: the file is written beside its place
-/// (`.tmp`), flushed to the disk, then put in its place. A `.tmp` left
-/// whole (the computer stopped just before it was put in place) is the
-/// newest, and read first.
+/// write saves the file, whole or not at all (see writeWhole): it holds the
+/// profiles, their tabs and every setting, and half a file would read as
+/// none of them, every profile forgotten.
 class Store {
   constructor(file) {
     this.file = file;
-    this.temp = `${file}.tmp`;
-    this.data = readObject(this.temp) || readObject(file) || {};
+    this.data = readWhole(file, isObject) || {};
   }
 
   get(key, fallback) {
@@ -53,28 +83,8 @@ class Store {
   }
 
   save() {
-    const text = JSON.stringify(this.data, null, 2);
-    try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      const fd = fs.openSync(this.temp, "w");
-      try {
-        fs.writeSync(fd, text);
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd);
-      }
-      fs.renameSync(this.temp, this.file);
-    } catch (error) {
-      // (Windows may hold the file a moment, its antivirus reading it: then
-      // it is written in its place, as before.)
-      try {
-        fs.rmSync(this.temp, { force: true });
-        fs.writeFileSync(this.file, text);
-      } catch (e) {
-        // Nothing to do: the settings stay in memory for this run.
-      }
-    }
+    writeWhole(this.file, JSON.stringify(this.data, null, 2));
   }
 }
 
-module.exports = { Store };
+module.exports = { Store, writeWhole, readWhole };

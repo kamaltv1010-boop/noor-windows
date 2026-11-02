@@ -145,6 +145,16 @@
   "minutes": 10
  },
  {
+  "name": "probe-navigation-source",
+  "title": "المفضلة والروابط المثبّتة: ما يصل إلى الموقع مثل كتابة العنوان تماماً",
+  "kind": "app",
+  "command": [
+   "node",
+   "tools/probe-navigation-source.js"
+  ],
+  "minutes": 5
+ },
+ {
   "name": "probe-isolation",
   "title": "عزل البيانات بين البروفايلات والتبويب الخاص",
   "kind": "app",

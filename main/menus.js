@@ -48,6 +48,13 @@ class Menus {
         submenu: this.profileItems(),
       },
       { icon: "history", label: "Bookmarks and history", shortcut: "Ctrl+H", click: () => browser.newTab({ url: LIBRARY_URL }) },
+      // Pinned links: a row above the favorites, opened as an address typed.
+      {
+        icon: "pin",
+        label: tab && isWebPage(tab.url) && browser.pins && browser.pins.contains(browser.pinURL(tab.url)) ? "Unpin this page" : "Pin this page",
+        enabled: Boolean(tab && isWebPage(tab.url)),
+        click: () => browser.togglePin(),
+      },
       { icon: "cookie", label: "Cookies", submenu: this.cookieItems() },
       { icon: "fingerprint", label: "Fingerprint", submenu: this.fingerprintItems() },
       {
@@ -319,6 +326,7 @@ class Menus {
       items.push(
         { label: "Open Link in New Tab", click: () => browser.newTab({ isPrivate: tab.isPrivate, url: params.linkURL, after: tab, select: false }) },
         { label: "Open Link in Private Tab", click: () => browser.newTab({ isPrivate: true, url: params.linkURL }) },
+        { label: "Pin Link", enabled: isWebPage(params.linkURL), click: () => browser.pinLink(params.linkURL) },
         { label: "Copy Link", click: () => clipboard.writeText(params.linkURL) },
         { type: "separator" },
       );

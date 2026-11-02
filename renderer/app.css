@@ -55,6 +55,12 @@ textarea { width: 100%; font: 13px/1.5 Consolas, monospace; resize: vertical; }
 .fav .name { font-size: 12px; max-width: 84px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .fav .remove { position: absolute; top: -6px; right: 6px; width: 20px; height: 20px; border-radius: 10px; border: 0; background: var(--fg); color: var(--bg); font-size: 11px; cursor: pointer; display: none; }
 .fav:hover .remove { display: block; }
+.pins { display: flex; flex-wrap: wrap; gap: 8px; }
+.pin { display: inline-flex; align-items: center; gap: 6px; max-width: 200px; padding: 6px 8px 6px 10px; border-radius: 16px; background: var(--card); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); font-size: 13px; cursor: pointer; }
+.pin .pinicon { width: 14px; height: 14px; flex: none; color: var(--accent); }
+.pin .name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.pin .remove { width: 18px; height: 18px; flex: none; border-radius: 9px; border: 0; background: none; color: var(--muted); font-size: 11px; cursor: pointer; visibility: hidden; }
+.pin:hover .remove, .pin:focus-within .remove { visibility: visible; }
 .list .item { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
 .list .item:first-child { border-top: 0; }
 .item .text { flex: 1; min-width: 0; cursor: pointer; }

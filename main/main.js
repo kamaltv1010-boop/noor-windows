@@ -993,6 +993,9 @@ const registerIPC = () => {
   on("bookmark:toggle", (at) => at.toggleBookmark());
   handle("bookmarks:list", () => context.bookmarks.all());
   handle("bookmarks:remove", (event, url) => { context.bookmarks.remove(url); windows.pushState(); });
+  // Pinned links (see Browser.togglePin): opened as an address typed is.
+  on("pin:toggle", (at) => at.togglePin());
+  handle("pins:remove", (event, url) => { context.pins.remove(url); windows.pushState(); });
   on("history:list", (at, event, query) => query ? at.history.search(query, 200) : at.history.all().slice(0, 500));
   on("history:remove", (at, event, url) => at.history.remove(url));
   on("history:clear", (at) => at.history.clear());
@@ -1024,6 +1027,7 @@ const registerIPC = () => {
     profile: at.profile,
     stats: context.stats.toJSON(),
     bookmarks: context.bookmarks.all(),
+    pins: context.pins.all(),
   }));
   on("settings:get", (at) => settingsSnapshot(at));
   // The time zone's address looked at again now (see main/timezone.js).
@@ -1232,12 +1236,14 @@ app.whenReady().then(async () => {
   const shields = new Shields(store, rules);
   const stats = new Stats(store);
   const bookmarks = new Bookmarks(path.join(userData, "bookmarks.json"));
+  // Links pinned above the favorites, as in the iOS app's "Pin Link".
+  const pins = new Bookmarks(path.join(userData, "pins.json"));
   const timezone = new Timezone(store, { forced: process.env.NOOR_TEST_TIMEZONE || null });
   // This computer's fonts (see main/fonts.js); tests give theirs.
   const fonts = new FontList(path.join(userData, "fonts.json"), {
     faces: process.env.NOOR_TEST && process.env.NOOR_TEST_FONTS ? JSON.parse(process.env.NOOR_TEST_FONTS) : null,
   });
-  context = { store, profiles, fingerprint, shields, stats, bookmarks, timezone, userData, fonts };
+  context = { store, profiles, fingerprint, shields, stats, bookmarks, pins, timezone, userData, fonts };
   extensions = new Extensions({ store, userData });
 
   if (store.get("clearOnQuit", false)) {

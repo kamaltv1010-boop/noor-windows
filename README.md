@@ -104,7 +104,7 @@
 | `main/gpus.js`, `scripts/parts/gpu.js` | WebGL Vendor & Renderer ديال Noor: الكارتات اللي كيختار منهم كل بروفيل، وكيفاش كيبانو فـ WebGL وWebGPU |
 | `main/shields.js` | الدروع لكل موقع، قواعد المتتبعين، HTTPS، الروابط النقية، الإحصائيات |
 | `main/useragent.js` | الـ user agent ديال Chrome والـ brands |
-| `main/profiles.js`, `main/history.js`, `main/bookmarks.js`, `main/store.js` | البروفايلات، السجل، المفضلة، الإعدادات |
+| `main/profiles.js`, `main/history.js`, `main/bookmarks.js`, `main/store.js` | البروفايلات، السجل، المفضلة والروابط المثبّتة (Pinned)، الإعدادات (ملفات كتتكتب كاملة ولا ما كتتكتبش) |
 | `main/warmup.js` | جمع الكوكيز: المواقع حسب المنطقة، المواقع ديالك والإعدادات المحفوظة، الزيارات فـ onglet مخفي، البانرات، الروابط اللي كيتبعها واللي كيتجنبها |
 | `main/cookies.js`, `renderer/cookies.html` | صفحة الكوكيز: التجميع حسب الموقع، الحذف، والحفظ بصيغة `cookies.txt` ولا JSON |
 | `main/menus.js`, `main/address.js` | القوائم والاختصارات، وشنو كيتحل ملي تكتب فشريط العنوان |

@@ -1,21 +1,14 @@
 "use strict";
-const fs = require("fs");
-const path = require("path");
+const { writeWhole, readWhole } = require("./store");
 
-/// Saved pages, shared by every profile, shown as favorites on the start
-/// page.
+/// Saved pages, shared by every profile: the bookmarks (favorites on the
+/// start page), or the pinned links (a row of their own above them), each
+/// list in a file of its own, written whole or not at all.
 class Bookmarks {
   constructor(file) {
     this.file = file;
-    this.entries = [];
-    try {
-      const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-      if (Array.isArray(parsed)) {
-        this.entries = parsed.filter((e) => e && typeof e.url === "string");
-      }
-    } catch (error) {
-      this.entries = [];
-    }
+    const parsed = readWhole(file, Array.isArray);
+    this.entries = (parsed || []).filter((e) => e && typeof e.url === "string");
   }
 
   all() {
@@ -51,12 +44,7 @@ class Bookmarks {
   }
 
   save() {
-    try {
-      fs.mkdirSync(path.dirname(this.file), { recursive: true });
-      fs.writeFileSync(this.file, JSON.stringify(this.entries, null, 2));
-    } catch (error) {
-      // Kept in memory for this run.
-    }
+    writeWhole(this.file, JSON.stringify(this.entries, null, 2));
   }
 }
 
