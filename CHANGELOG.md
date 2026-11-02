@@ -5,6 +5,8 @@ Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
 ## Unreleased
 
+## 1.0.45
+
 - **روابط مثبّتة (Pin) جديدة**: "Pin this page" في قائمة ⋯ تثبّت الصفحة المفتوحة،
   و"Pin Link" في قائمة الزر الأيمن تثبّت أي رابط. تظهر في صف "Pinned" في صفحة
   البداية فوق المفضلة، ويُلغى تثبيت أي منها بـ ✕. الرابط المثبّت يُحفظ بلا رموز
