@@ -1,6 +1,7 @@
 "use strict";
 const path = require("path");
-const { BaseWindow, WebContentsView, session } = require("electron");
+const { BaseWindow, WebContentsView, session, clipboard } = require("electron");
+const { pageCookieHeader, importCookieHeader, parseHeaderString } = require("./cookies");
 const { History } = require("./history");
 const mobile = require("./mobile");
 const { START_URL, ERROR_URL, isStartPage, isAppPage, isErrorPage, isWebPage, displayURL, hostOf } = require("./address");
@@ -1588,6 +1589,75 @@ class Browser {
         tab.webContents.focus();
       }
     }
+  }
+
+  // MARK: - The shown page's cookies as its Cookie header
+
+  /// The shown page's cookies, as its Cookie header ("name=value; …", the
+  /// HttpOnly ones too, as the browser sends them to it), copied (⋯ ›
+  /// Cookies, Ctrl+O). From its tab's own session: a private tab's are its
+  /// own. What was copied.
+  async copyCookies() {
+    const tab = this.selected;
+    if (!tab || tab.webContents.isDestroyed() || !isWebPage(tab.url)) {
+      this.toast("Open a site's page to copy its cookies");
+      return null;
+    }
+    const host = hostOf(tab.url);
+    const { count, text } = await pageCookieHeader(tab.webContents.session, tab.url);
+    if (!count) {
+      this.toast(`No cookies on ${host}`);
+      return { count, text };
+    }
+    // (Electron's clipboard answers with a promise, as the web's does.)
+    try {
+      await clipboard.writeText(text);
+    } catch (error) {
+      this.toast("The cookies couldn't be copied");
+      return null;
+    }
+    this.toast(`${count} ${count === 1 ? "cookie" : "cookies"} of ${host} copied`);
+    return { count, text };
+  }
+
+  /// Asks for cookies to paste into the shown page (⋯ › Cookies): a
+  /// Cookie header's text, filled with the clipboard's if it holds one.
+  async pasteCookies() {
+    const tab = this.selected;
+    if (!tab || !isWebPage(tab.url)) {
+      this.toast("Open a site's page to paste cookies into it");
+      return;
+    }
+    let held = "";
+    try {
+      held = String((await clipboard.readText()) || "");
+    } catch (error) {
+      held = "";
+    }
+    const fits = held.length <= 100000 && !/:\/\//.test(held) && parseHeaderString(held).cookies.length > 0;
+    this.prompt({ title: `Cookies for ${hostOf(tab.url)}`, placeholder: "name=value; name2=value2", value: fits ? held.trim() : "", action: "cookies:paste", button: "Paste" });
+  }
+
+  /// Sets the cookies of a Cookie header's `text` for the shown page's site
+  /// (see importCookieHeader), then loads the page again with them.
+  async importCookies(text) {
+    const tab = this.selected;
+    if (!tab || tab.webContents.isDestroyed() || !isWebPage(tab.url)) {
+      this.toast("Open a site's page to paste cookies into it");
+      return null;
+    }
+    const host = hostOf(tab.url);
+    const result = await importCookieHeader(tab.webContents.session, tab.url, String(text || ""));
+    if (!result.set) {
+      this.toast(result.skipped.length || result.refused.length ? "No cookie in that text could be set" : "No cookies in that text");
+      return result;
+    }
+    const left = result.skipped.length + result.refused.length;
+    this.toast(`${result.set} ${result.set === 1 ? "cookie" : "cookies"} pasted into ${host}${left ? `, ${left} left out` : ""}`);
+    if (!tab.webContents.isDestroyed()) {
+      tab.reload();
+    }
+    return result;
   }
 
   /// Bookmarks the shown page (its canonical address, see Tab.bookmarkURL),

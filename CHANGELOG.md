@@ -3,6 +3,18 @@
 Numbered builds are on GitHub Releases (`1.0.<build>`); each holds Noor,
 Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
+## Unreleased
+
+- **نسخ كوكيز الصفحة ولصقها كسطر واحد**: وأنت في صفحة موقع، **Ctrl+O** (أو ⋯ ←
+  Cookies ← «Copy cookies of this page») ينسخ إلى الحافظة الكوكيز التي يرسلها
+  المتصفح لهذه الصفحة، في سطر واحد بصيغة ترويسة `Cookie`: `name=value; name2=value2`،
+  ومنها كوكيز HttpOnly. و«Paste cookies into this page…» في القائمة نفسها يفتح سطراً في
+  الشريط، يمتلئ بما في الحافظة إن كان كوكيز. وزر **Paste** يضع الكوكيز للموقع ويعيد
+  تحميل الصفحة. يقبل السطر مع `Cookie:` أو دونها، أو ترويسات طلب كامل فيأخذ سطر `Cookie`
+  وحده. والكوكي الذي له الاسم نفسه في الموقع يُستبدل وتبقى خصائصه. والجديد يوضع للموقع
+  كله (`.example.com`، ومعه النطاقات الفرعية)، في `/`، آمناً (Secure) إن كانت الصفحة
+  https، ويبقى سنة. في التبويب الخاص يعمل بكوكيز التبويب الخاص وحدها.
+
 ## 1.0.48
 
 - **Noor iPhone وNoor Android: نافذة البروفايل تُفتح على الشاشة كلها**، كما في Noor.

@@ -143,7 +143,13 @@ class Menus {
   /// Collecting cookies, and seeing them.
   cookieItems() {
     const browser = this.browser;
+    const tab = browser.selected;
+    const onPage = Boolean(tab && isWebPage(tab.url));
     return [
+      // The shown page's cookies as its Cookie header: copied, or pasted in.
+      { icon: "copy", label: "Copy cookies of this page", shortcut: "Ctrl+O", enabled: onPage, click: () => browser.copyCookies() },
+      { icon: "paste", label: "Paste cookies into this page…", enabled: onPage, click: () => browser.pasteCookies() },
+      { type: "separator" },
       { icon: "cookie", label: "Collect cookies…", click: () => browser.newTab({ url: SETTINGS_URL + "#cookies" }) },
       { icon: "list", label: "See cookies", click: () => browser.newTab({ url: COOKIES_URL }) },
     ];
@@ -414,6 +420,7 @@ class Menus {
           { label: "Previous Tab", accelerator: "CmdOrCtrl+Shift+Tab", click: () => browser.selectNext(-1) },
           { type: "separator" },
           { label: "Add Bookmark", accelerator: "CmdOrCtrl+D", click: () => browser.toggleBookmark() },
+          { label: "Copy Cookies of This Page", accelerator: "CmdOrCtrl+O", click: () => browser.copyCookies() },
           { label: "Bookmarks & History", accelerator: "CmdOrCtrl+H", click: () => browser.newTab({ url: LIBRARY_URL }) },
           { label: "Settings", accelerator: "CmdOrCtrl+,", click: () => browser.newTab({ url: SETTINGS_URL }) },
           { label: "Noor on GitHub", click: () => shell.openExternal("https://github.com/kamaltv1010-boop/noor-windows") },

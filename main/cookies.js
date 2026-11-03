@@ -74,6 +74,136 @@ const netscape = (cookies) => {
 /// Cookies as JSON, as the page describes them.
 const asJSON = (cookies) => JSON.stringify((cookies || []).map(describe), null, 2) + "\n";
 
+// MARK: - A page's cookies as its Cookie header
+
+/// The cookies a page's address gets (`cookies`, Electron's for that
+/// address), as the browser writes them in the request's Cookie header:
+/// "name=value; name2=value2", those of a longer path first, as Chromium
+/// sends them; a cookie with no name is its value alone.
+const headerString = (cookies) => (cookies || [])
+  .map((cookie, index) => ({ cookie, index }))
+  .sort((a, b) => String(b.cookie.path || "/").length - String(a.cookie.path || "/").length || a.index - b.index)
+  .map(({ cookie }) => (cookie.name ? `${cookie.name}=${cookie.value == null ? "" : cookie.value}` : String(cookie.value || "")))
+  .join("; ");
+
+/// A cookie's name as Chromium takes it: no control character, no space,
+/// none of the separators.
+const validName = (name) => name.length > 0 && name.length <= 4096 && !/[\x00-\x20\x7f()<>@,;:\\"/[\]?={}]/.test(name);
+/// A value: no control character, no ";".
+const validValue = (value) => value.length <= 4096 && !/[\x00-\x1f\x7f;]/.test(value);
+
+/// The cookies in a Cookie header's text ("name=value; name2=value2"),
+/// as it is copied: with "Cookie:" before it or not, or among a request's
+/// other headers (its Cookie lines are taken). Each pair as { name, value },
+/// a name given twice taken the last time; `skipped`, the pairs that are no
+/// cookie.
+const parseHeaderString = (text) => {
+  let body = String(text == null ? "" : text).replace(/^\uFEFF/, "");
+  const lines = body.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const cookieLines = lines.filter((line) => /^cookie\s*:/i.test(line));
+  if (cookieLines.length) {
+    body = cookieLines.map((line) => line.replace(/^cookie\s*:/i, "")).join("; ");
+  } else if (lines.length > 1 && lines.every((line) => /^[A-Za-z0-9-]+\s*:\s/.test(line))) {
+    // A request's headers with no Cookie line: nothing.
+    body = "";
+  } else {
+    body = lines.join("; ");
+  }
+  const byName = new Map();
+  const skipped = [];
+  for (const part of body.split(";")) {
+    const pair = part.trim();
+    if (!pair) {
+      continue;
+    }
+    const at = pair.indexOf("=");
+    const name = at === -1 ? "" : pair.slice(0, at).trim();
+    const value = at === -1 ? pair : pair.slice(at + 1).trim();
+    if (!validName(name) || !validValue(value)) {
+      skipped.push(pair.length > 40 ? pair.slice(0, 40) + "…" : pair);
+      continue;
+    }
+    byName.delete(name);
+    byName.set(name, { name, value });
+  }
+  return { cookies: [...byName.values()], skipped };
+};
+
+/// A year, in seconds: how long a cookie made from a header's text is kept
+/// (the text tells no expiry; one of the same name keeps its own).
+const IMPORT_LIFETIME = 365 * 24 * 60 * 60;
+
+/// What a cookie of `pair` is set as for the page at `url`: like the
+/// page's own cookie of that name if it has one (its domain, path, flags
+/// and expiry); else for the whole site (".example.com", so its subdomains
+/// get it too; an address like 127.0.0.1 or localhost has it alone), at
+/// "/", secure on https, kept a year.
+const importDetails = (pair, url, existing = null, now = Date.now()) => {
+  const page = new URL(url);
+  const secure = page.protocol === "https:";
+  const details = { url: `${page.protocol}//${page.host}/`, name: pair.name, value: pair.value };
+  if (existing) {
+    const domain = String(existing.domain || "");
+    if (!existing.hostOnly && domain) {
+      details.domain = domain;
+    }
+    details.path = existing.path || "/";
+    details.secure = Boolean(existing.secure) && secure;
+    details.httpOnly = Boolean(existing.httpOnly);
+    if (existing.sameSite && existing.sameSite !== "unspecified") {
+      details.sameSite = existing.sameSite;
+    }
+    if (!existing.session && existing.expirationDate) {
+      details.expirationDate = existing.expirationDate;
+    }
+    return details;
+  }
+  const host = page.hostname.toLowerCase();
+  const hostOnly = !host.includes(".") || /^\d+(\.\d+){3}$/.test(host) || host.includes(":") || host.startsWith("[");
+  if (!hostOnly) {
+    details.domain = "." + siteKey(host);
+  }
+  details.path = "/";
+  details.secure = secure;
+  details.httpOnly = false;
+  details.expirationDate = Math.floor(now / 1000) + IMPORT_LIFETIME;
+  return details;
+};
+
+/// The Cookie header of the page at `url` in `session` (its tab's: a
+/// private tab's are its own): the text and how many cookies it holds.
+const pageCookieHeader = async (session, url) => {
+  const cookies = await session.cookies.get({ url });
+  return { count: cookies.length, text: headerString(cookies) };
+};
+
+/// Sets the cookies of a Cookie header's `text` for the page at `url` in
+/// `session` (see importDetails), and writes them out: how many were set,
+/// the pairs that are no cookie, and those Chromium refused.
+const importCookieHeader = async (session, url, text, now = Date.now()) => {
+  const { cookies, skipped } = parseHeaderString(text);
+  const current = await session.cookies.get({ url });
+  const refused = [];
+  let set = 0;
+  for (const pair of cookies) {
+    const existing = current.find((cookie) => cookie.name === pair.name) || null;
+    try {
+      await session.cookies.set(importDetails(pair, url, existing, now));
+      set += 1;
+    } catch (error) {
+      refused.push(pair.name);
+    }
+  }
+  if (set) {
+    try {
+      await session.cookies.flushStore();
+    } catch (error) {
+      // Written out later.
+    }
+  }
+  return { set, skipped, refused };
+};
+
 /// What the page and the IPC use: `sessionFor(profile)` gives a profile's
 /// normal session.
 const cookieTools = (sessionFor) => ({
@@ -110,4 +240,4 @@ const cookieTools = (sessionFor) => ({
   },
 });
 
-module.exports = { describe, siteOf, groupBySite, cookieURL, netscape, asJSON, cookieTools };
+module.exports = { describe, siteOf, groupBySite, cookieURL, netscape, asJSON, cookieTools, headerString, parseHeaderString, importDetails, pageCookieHeader, importCookieHeader, IMPORT_LIFETIME };

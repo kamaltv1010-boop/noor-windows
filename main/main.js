@@ -1131,6 +1131,8 @@ const registerIPC = () => {
   on("nav:reload", (at) => at.selected && at.selected.reload());
   on("nav:stop", (at) => at.selected && at.selected.stop());
   on("bookmark:toggle", (at) => at.toggleBookmark());
+  // Cookies pasted into the shown page (the toolbar's prompt, see Browser.pasteCookies).
+  on("cookies:paste", (at, event, text) => at.importCookies(String(text || "")));
   handle("bookmarks:list", () => context.bookmarks.all());
   handle("bookmarks:remove", (event, url) => { context.bookmarks.remove(url); windows.pushState(); });
   // Pinned links (see Browser.togglePin): opened as an address typed is.

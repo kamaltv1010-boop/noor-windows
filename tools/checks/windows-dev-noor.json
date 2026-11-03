@@ -40,6 +40,16 @@
     "minutes": 10
   },
   {
+    "name": "smoke-cookie-header",
+    "title": "كوكيز الصفحة كسطر ترويسة: النسخ (Ctrl+O) واللصق",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-cookie-header.js"
+    ],
+    "minutes": 6
+  },
+  {
     "name": "smoke-second-launch",
     "title": "تشغيل Noor مرة ثانية وهو يعمل (زر بروفايل مثبّت، رابط من برنامج آخر): العنوان يُفتح، حتى أثناء البدء",
     "kind": "app",
