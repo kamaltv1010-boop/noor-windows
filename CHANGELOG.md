@@ -3,7 +3,7 @@
 Numbered builds are on GitHub Releases (`1.0.<build>`); each holds Noor,
 Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
-## Unreleased
+## 1.0.48
 
 - **Noor iPhone وNoor Android: نافذة البروفايل تُفتح على الشاشة كلها**، كما في Noor.
   كانت تُفتح بحجم الهاتف أو التابلت. صفحة الجهاز تبقى بحجمها الحقيقي في وسط النافذة،
