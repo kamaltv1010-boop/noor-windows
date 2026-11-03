@@ -95,7 +95,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     const main = document.querySelector('.panel.main').getBoundingClientRect();
     return sub ? { labels: [...sub.querySelectorAll('.label')].map((e) => e.textContent), left: sub.getBoundingClientRect().right <= main.left + 4, icons: sub.querySelectorAll('svg').length } : null;
   })()`);
-  check("a submenu opens beside its item, on the left", cookies && cookies.labels.join() === "Collect cookies…,See cookies" && cookies.left && cookies.icons >= 2, cookies);
+  check("a submenu opens beside its item, on the left", cookies && cookies.labels.join() === "Copy cookies of this page,Paste cookies into this page…,Collect cookies…,See cookies" && cookies.left && cookies.icons >= 4, cookies);
   await shot("menu-cookies");
 
   // The profile's submenu: every profile with its initial on its color.
