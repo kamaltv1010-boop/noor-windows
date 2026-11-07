@@ -48,7 +48,7 @@
       </div>
     </div>
     <div class="row">
-      <div class="label">Replace a profile when closed<small>Close a profile's window and the profile is deleted, with its cookies, website data, history and tabs, and a new one takes its place with the next number: “Profile 12” when the highest is “Profile 11”, then “Profile 13”… New fingerprints, no cookies (it collects new ones if “Collect in every new profile” is on). Not the first profile, which is never deleted.</small></div>
+      <div class="label">Replace a profile when closed<small>Close a profile's window and the profile is deleted, with its cookies, website data, history and tabs, and a new one takes its place with the next number: “Profile 12” when the highest is “Profile 11”, then “Profile 13”… New fingerprints, none of the old one's cookies but those every new profile starts with (Cookies, below), and it collects new ones if “Collect in every new profile” is on. Not the first profile, which is never deleted.</small></div>
       <input type="checkbox" data-setting="freshOnClose" id="freshonclose">
     </div>
     <div class="row" id="deleteallrow" hidden>
@@ -91,6 +91,25 @@
     <div class="row">
       <div class="label"><small id="warmupsaved"></small></div>
       <button class="button secondary small" id="warmupsave">Save</button>
+    </div>
+  </div>
+  <div class="card" id="newcookiescard">
+    <div class="row">
+      <div class="label">Cookies of every new profile<small id="newcookieshint"></small></div>
+      <input type="checkbox" id="newcookieson" title="Put them in every new profile">
+    </div>
+    <div id="newcookieslist"></div>
+    <div class="row column">
+      <div class="label">Add cookies<small>A site and its cookies as Ctrl+O copies a page's (name=value; name2=value2). A cookies.txt file or JSON (as See Cookies saves them, or another browser's or extension's) tells its sites itself: the site can stay empty.</small></div>
+      <input type="text" id="newcookiessite" placeholder="Site: instagram.com" spellcheck="false" autocomplete="off">
+      <textarea id="newcookiestext" rows="4" spellcheck="false" placeholder="name=value; name2=value2"></textarea>
+    </div>
+    <div class="row">
+      <div class="label"><small id="newcookiessaid"></small></div>
+      <div class="controls">
+        <button class="button secondary small" id="newcookiesfile">File…</button>
+        <button class="button small" id="newcookiesadd">Add</button>
+      </div>
     </div>
   </div>
   <div class="card">

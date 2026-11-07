@@ -252,6 +252,80 @@ test("new profiles open in a window of their own; many at once open none, and co
   assert.deepEqual(started, [one.id, ...many.map((p) => p.id)]);
 });
 
+test("new profiles get the cookies of every new profile first, then collect theirs; made as the app closes, at the next launch", async () => {
+  const { profiles, windows, store, started } = made();
+  windows.warmup.auto = true;
+  const seeded = [];
+  let release = () => {};
+  windows.newCookies = {
+    on: true,
+    active() { return this.on; },
+    seed: (list) => {
+      seeded.push(...list.map((p) => p.id));
+      return new Promise((resolve) => { release = resolve; });
+    },
+  };
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  windows.open(profiles.find(DEFAULT_ID));
+  // One: its cookies, then its collection.
+  const one = windows.createProfile("Solo");
+  assert.deepEqual(seeded, [one.id]);
+  assert.deepEqual(started, []);
+  release();
+  await settle();
+  assert.deepEqual(started, [one.id]);
+  // Many at once: together.
+  const many = windows.createProfiles(2, "Farm");
+  assert.deepEqual(seeded, [one.id, ...many.map((p) => p.id)]);
+  assert.deepEqual(started, [one.id]);
+  release();
+  await settle();
+  assert.deepEqual(started, [one.id, ...many.map((p) => p.id)]);
+  // Off: no cookies, and it collects at once.
+  windows.newCookies.on = false;
+  const plain = windows.createProfile("Plain");
+  assert.equal(seeded.length, 3);
+  assert.equal(started[started.length - 1], plain.id);
+  // Made in a closed one's place, another window open: now.
+  windows.newCookies.on = true;
+  store.set("freshOnClose", true);
+  windows.forProfile(plain.id).close();
+  await settle();
+  const fresh = profiles.all().find((p) => p.name === "Plain 2");
+  assert.ok(fresh);
+  assert.equal(seeded[seeded.length - 1], fresh.id);
+  release();
+  await settle();
+  assert.equal(started[started.length - 1], fresh.id);
+  // As the app closes (its windows closing, "Solo"'s and "Plain 2"'s each
+  // replaced): left for the next launch, the cookies first.
+  windows.open(fresh);
+  windows.quitting = true;
+  for (const window of windows.list.slice()) {
+    window.close();
+  }
+  await settle();
+  const solo = profiles.all().find((p) => p.name === "Solo 2");
+  const newer = profiles.all().find((p) => p.name === "Plain 3");
+  assert.ok(solo && newer);
+  assert.equal(seeded.includes(solo.id) || seeded.includes(newer.id), false);
+  assert.deepEqual(store.get("seedPending"), [solo.id, newer.id]);
+  assert.deepEqual(store.get("collectPending"), [solo.id, newer.id]);
+  windows.quitting = false;
+  windows.restore();
+  const pending = windows.seedPending();
+  assert.deepEqual(seeded.slice(-2), [solo.id, newer.id]);
+  assert.deepEqual(store.get("seedPending"), []);
+  release();
+  await pending;
+  windows.collectPending();
+  assert.deepEqual(started.slice(-2), [solo.id, newer.id]);
+  // Nothing left: nothing set.
+  const count = seeded.length;
+  await windows.seedPending();
+  assert.equal(seeded.length, count);
+});
+
 test("Noor iPhone: new profiles are what the settings say, iPhones or iPads, those made in a closed one's place too", async () => {
   const { Fingerprint } = require("../main/fingerprint");
   const store = tempStore();

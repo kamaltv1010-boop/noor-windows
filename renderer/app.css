@@ -98,6 +98,8 @@ body.settingsbody { min-height: 100vh; }
 .settingspage h3 .svgicon { color: var(--accent); flex: none; }
 .settingspage .empty { text-align: center; color: var(--muted); margin: 40px 0; }
 .filtered { display: none !important; }
+/* The sites of "Cookies of every new profile": a list in its card, under its first row. */
+#newcookieslist .row:first-child:not(.firstshown) { border-top: 1px solid var(--line); }
 .row.firstshown { border-top: 0; }
 /* The page keeps its place as a search makes it shorter than the window. */
 html:has(> body.settingsbody) { scrollbar-gutter: stable; }

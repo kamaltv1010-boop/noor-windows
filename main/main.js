@@ -2,7 +2,7 @@
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
-const { app, protocol, session, screen, ipcMain, net, Menu, dialog, WebContentsView } = require("electron");
+const { app, protocol, session, screen, ipcMain, net, Menu, dialog, WebContentsView, safeStorage } = require("electron");
 const { pathToFileURL } = require("url");
 const { Store } = require("./store");
 const { Profiles } = require("./profiles");
@@ -23,6 +23,7 @@ const { chromeOrder } = require("./headers");
 const { diskQuota: quotaOfDisk, shownQuota } = require("./quota");
 const { FontList, keptBy } = require("./fonts");
 const { cookieTools } = require("./cookies");
+const { NewProfileCookies, MAX_TEXT: MAX_COOKIES_TEXT } = require("./new-cookies");
 const iphone = require("./iphone");
 const android = require("./android");
 const gpus = require("./gpus");
@@ -1105,6 +1106,29 @@ const profileFor = (id, event = null) => context.profiles.find(String(id || ""))
 /// session, the one its tabs use.
 const cookies = cookieTools((profile) => session.fromPartition(windows.partitionFor(false, profile)));
 
+/// The system's encryption (Windows' DPAPI, through Electron's
+/// safeStorage), for the cookies every new profile gets: as Chromium keeps
+/// the profiles' own.
+const systemSealer = {
+  available: () => safeStorage.isEncryptionAvailable(),
+  seal: (text) => safeStorage.encryptString(String(text)).toString("base64"),
+  open: (sealed) => safeStorage.decryptString(Buffer.from(String(sealed), "base64")),
+};
+
+/// The cookies every new profile starts with (see main/new-cookies.js),
+/// made at launch.
+let newCookies = null;
+
+/// What a profile made now starts with, for the toast saying it was made:
+/// ", with the cookies of instagram.com" or "of 3 sites", or nothing.
+const seededNote = () => {
+  if (!newCookies || !newCookies.active()) {
+    return "";
+  }
+  const sites = newCookies.state().sites.filter((site) => !site.unreadable);
+  return sites.length === 1 ? `, with the cookies of ${sites[0].site}` : `, with the cookies of ${sites.length} sites`;
+};
+
 const SETTING_KEYS = new Set(["searchEngine", "blockTrackers", "httpsUpgrade", "cleanLinks", "clearOnQuit", "freshOnClose"]);
 
 const registerIPC = () => {
@@ -1254,8 +1278,9 @@ const registerIPC = () => {
   // A new profile, in a window of its own.
   on("profiles:create", (at, event, name) => {
     const trimmed = String(name || "").trim();
+    const note = seededNote();
     const profile = windows.createProfile(trimmed || `Profile ${context.profiles.all().length + 1}`);
-    windows.toast(`“${profile.name}”: a new profile, in its own window`);
+    windows.toast(`“${profile.name}”: a new profile, in its own window${note}`);
     return settingsSnapshot(at);
   });
   // A profile opens in its own window, or its window comes to the front.
@@ -1270,10 +1295,11 @@ const registerIPC = () => {
   on("profiles:switch", openProfile);
   // Several profiles at once (the settings, or the ⋯ menu's prompt).
   on("profiles:createMany", (at, event, count, name) => {
+    const note = seededNote();
     const made = windows.createProfiles(count, name);
     if (made.length) {
       const range = made.length > 1 ? `${made[0].name} to ${made[made.length - 1].name}` : made[0].name;
-      at.toast(`${made.length} ${made.length === 1 ? "profile" : "profiles"} made: ${range}` + (windows.warmup.settings().auto ? `, collecting cookies ${made.length === 1 ? "now" : "all at once"}` : ""));
+      at.toast(`${made.length} ${made.length === 1 ? "profile" : "profiles"} made: ${range}${note}` + (windows.warmup.settings().auto ? `, collecting cookies ${made.length === 1 ? "now" : "all at once"}` : ""));
     }
     return settingsSnapshot(at);
   });
@@ -1304,6 +1330,34 @@ const registerIPC = () => {
   handle("warmup:stopAll", (event) => {
     warmup().stopAll();
     return warmup().snapshot(profileFor(null, event).id);
+  });
+  // The cookies every new profile starts with (see main/new-cookies.js):
+  // the settings show them by site and name, never their values.
+  handle("newcookies:get", () => newCookies.state());
+  handle("newcookies:add", (event, site, text) => ({
+    ...newCookies.add(String(site == null ? "" : site), String(text == null ? "" : text)),
+    state: newCookies.state(),
+  }));
+  handle("newcookies:remove", (event, id) => { newCookies.remove(String(id)); return newCookies.state(); });
+  handle("newcookies:enable", (event, isOn) => { newCookies.setEnabled(Boolean(isOn)); return newCookies.state(); });
+  // A cookies.txt or JSON file's text, for the settings to add.
+  on("newcookies:file", async (at) => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(at.win, {
+      title: "Cookies for every new profile",
+      properties: ["openFile"],
+      filters: [{ name: "Cookies (cookies.txt, JSON)", extensions: ["txt", "json"] }, { name: "All files", extensions: ["*"] }],
+    });
+    if (canceled || !filePaths[0]) {
+      return null;
+    }
+    try {
+      if (fs.statSync(filePaths[0]).size > MAX_COOKIES_TEXT) {
+        return { error: "That file is too big: 5 MB at most." };
+      }
+      return { text: fs.readFileSync(filePaths[0], "utf8"), name: path.basename(filePaths[0]) };
+    } catch (error) {
+      return { error: `That file can't be read: ${String(error.message || error)}` };
+    }
   });
   // The Cookies page: every profile's cookies, by site.
   on("cookies:open", (at) => { at.newTab({ url: COOKIES_URL }); });
@@ -1387,6 +1441,10 @@ app.whenReady().then(async () => {
   });
   context = { store, profiles, fingerprint, shields, stats, bookmarks, pins, timezone, userData, fonts };
   extensions = new Extensions({ store, userData });
+  newCookies = new NewProfileCookies(path.join(userData, "new-profile-cookies.json"), {
+    sessionFor: (profile) => session.fromPartition(windows.partitionFor(false, profile)),
+    sealer: systemSealer,
+  });
 
   if (store.get("clearOnQuit", false)) {
     // Every launch is a new session: new fingerprints, and nothing left of
@@ -1460,19 +1518,21 @@ app.whenReady().then(async () => {
   });
   extensions.windows = windows;
   windows.warmup = makeWarmup(windows);
+  windows.newCookies = newCookies;
   // The profiles open as the app last quit, or the one asked for.
   windows.restore(profileArgument(process.argv));
   Menu.setApplicationMenu(windows.current.menus.application());
   registerIPC();
-  // Profiles made new as the app closed collect their cookies now.
-  windows.collectPending();
+  // Profiles made new as the app closed get the cookies of every new
+  // profile, then collect theirs, now.
+  windows.seedPending().then(() => windows.collectPending()).catch(() => {});
   if (process.env.NOOR_TEST) {
     global.noorTest = {
       // The window in front.
       get browser() {
         return windows.current;
       },
-      windows, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, android: ANDROID, build: BUILD, warmup: windows.warmup, cookies, fingerprintFor,
+      windows, context, extensions, browserDebugger, mark: LOOKALIKE_MARK, iphone: IPHONE, android: ANDROID, build: BUILD, warmup: windows.warmup, cookies, newCookies, fingerprintFor,
       // What pages of the profile `id` are shown: its user agent and screen.
       shownOf: (id) => {
         const fingerprint = fingerprintFor(id);

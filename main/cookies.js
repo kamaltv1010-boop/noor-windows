@@ -136,8 +136,9 @@ const IMPORT_LIFETIME = 365 * 24 * 60 * 60;
 /// What a cookie of `pair` is set as for the page at `url`: like the
 /// page's own cookie of that name if it has one (its domain, path, flags
 /// and expiry); else for the whole site (".example.com", so its subdomains
-/// get it too; an address like 127.0.0.1 or localhost has it alone), at
-/// "/", secure on https, kept a year.
+/// get it too; an address like 127.0.0.1 or localhost has it alone, and a
+/// "__Host-" one its host, as Chromium wants it), at "/", secure on https,
+/// kept a year.
 const importDetails = (pair, url, existing = null, now = Date.now()) => {
   const page = new URL(url);
   const secure = page.protocol === "https:";
@@ -159,7 +160,7 @@ const importDetails = (pair, url, existing = null, now = Date.now()) => {
     return details;
   }
   const host = page.hostname.toLowerCase();
-  const hostOnly = !host.includes(".") || /^\d+(\.\d+){3}$/.test(host) || host.includes(":") || host.startsWith("[");
+  const hostOnly = !host.includes(".") || /^\d+(\.\d+){3}$/.test(host) || host.includes(":") || host.startsWith("[") || /^__host-/i.test(pair.name);
   if (!hostOnly) {
     details.domain = "." + siteKey(host);
   }
@@ -240,4 +241,4 @@ const cookieTools = (sessionFor) => ({
   },
 });
 
-module.exports = { describe, siteOf, groupBySite, cookieURL, netscape, asJSON, cookieTools, headerString, parseHeaderString, importDetails, pageCookieHeader, importCookieHeader, IMPORT_LIFETIME };
+module.exports = { describe, siteOf, groupBySite, cookieURL, netscape, asJSON, cookieTools, headerString, parseHeaderString, importDetails, pageCookieHeader, importCookieHeader, validName, validValue, IMPORT_LIFETIME };

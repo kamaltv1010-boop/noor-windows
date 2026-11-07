@@ -39,6 +39,9 @@ class Windows {
     this.quitting = false;
     /// Collecting cookies (see main/warmup.js), set once made.
     this.warmup = null;
+    /// The cookies every new profile starts with (see main/new-cookies.js),
+    /// set once made.
+    this.newCookies = null;
     /// While the windows of the last run show (see restore): the one that
     /// stays in front, whichever of them the system gives the focus to.
     this.settling = null;
@@ -420,7 +423,7 @@ class Windows {
     const profile = this.profiles.add(name);
     this.setDevices([profile]);
     this.open(profile);
-    this.collectInNew([profile]);
+    this.afterSeeding(this.seedNew([profile]), () => this.collectInNew([profile]));
     return profile;
   }
 
@@ -429,9 +432,51 @@ class Windows {
   createProfiles(count, name) {
     const made = this.profiles.addMany(count, name);
     this.setDevices(made);
-    this.collectInNew(made);
+    this.afterSeeding(this.seedNew(made), () => this.collectInNew(made));
     this.pushState();
     return made;
+  }
+
+  /// New profiles start with the cookies the settings give every new one
+  /// (see main/new-cookies.js), before they collect their own; with no
+  /// window open (the app closing), at the next launch. What is under way,
+  /// or null when there is nothing to set now.
+  seedNew(profiles) {
+    const seeds = this.newCookies;
+    if (!seeds || !profiles.length || !seeds.active()) {
+      return null;
+    }
+    if (this.quitting || !this.shown.length) {
+      const pending = this.store.get("seedPending", []);
+      const ids = (Array.isArray(pending) ? pending : []).concat(profiles.map((p) => p.id));
+      this.store.set("seedPending", [...new Set(ids)]);
+      return null;
+    }
+    return seeds.seed(profiles).catch(() => null);
+  }
+
+  /// The cookies left for this launch (see seedNew): set before the
+  /// collections left (see collectPending).
+  seedPending() {
+    const pending = this.store.get("seedPending", []);
+    if (!Array.isArray(pending) || !pending.length) {
+      return Promise.resolve(null);
+    }
+    this.store.set("seedPending", []);
+    const profiles = pending.map((id) => this.profiles.find(String(id))).filter(Boolean);
+    if (!profiles.length || !this.newCookies || !this.newCookies.active()) {
+      return Promise.resolve(null);
+    }
+    return this.newCookies.seed(profiles).catch(() => null);
+  }
+
+  /// `next` once `seeding` (see seedNew) is done, or now with none.
+  afterSeeding(seeding, next) {
+    if (seeding) {
+      seeding.then(next, next).catch(() => {});
+    } else {
+      next();
+    }
   }
 
   /// Noor iPhone and Noor Android: new profiles, those made in a closed
@@ -513,7 +558,8 @@ class Windows {
   /// Deletes the profile `id` with everything it kept, and makes a new one
   /// in its place (see freshOnClose), the next of its series ("Profile 12"
   /// when the highest is "Profile 11", see Profiles.nextInSeries): its new
-  /// fingerprints, no cookies, and its cookies collected if new profiles
+  /// fingerprints, none of the old one's cookies but those every new
+  /// profile gets (see seedNew), and its cookies collected if new profiles
   /// collect theirs. The new one.
   async replaceProfile(id) {
     const old = this.profiles.find(id);
@@ -534,7 +580,7 @@ class Windows {
       this.store.set("openWindows", open.map((x) => (x === old.id ? fresh.id : x)));
     }
     this.removeHistory(old);
-    this.collectInNew([fresh]);
+    this.afterSeeding(this.seedNew([fresh]), () => this.collectInNew([fresh]));
     this.pushState();
     await this.clearData(old);
     return fresh;

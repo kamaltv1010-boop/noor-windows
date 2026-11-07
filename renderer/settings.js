@@ -190,6 +190,57 @@
     return element;
   };
 
+  // The cookies every new profile starts with (see main/new-cookies.js):
+  // their sites, each with its cookies' names (never their values), and
+  // whether they go into new profiles.
+  const showNewCookies = (next) => {
+    if (!next || !Array.isArray(next.sites)) {
+      return;
+    }
+    const box = $("newcookieson");
+    box.checked = Boolean(next.enabled);
+    box.disabled = next.sites.length === 0;
+    const list = $("newcookieslist");
+    list.textContent = "";
+    for (const site of next.sites) {
+      const hint = site.unreadable
+        ? "Can't be read on this PC (encrypted on another one, or by another Windows user): remove it and add its cookies again."
+        : `${plural(site.count, "cookie")}: ${some(site.names, (name) => name)}.`;
+      const remove = button("Remove", "danger", () => noor.invoke("newcookies:remove", site.id).then(showNewCookies).catch(() => {}));
+      remove.title = `New profiles no longer get the cookies of ${site.site}`;
+      list.append(row(site.site, hint, remove));
+    }
+    const sites = next.sites.filter((site) => !site.unreadable);
+    let text;
+    if (!next.sites.length) {
+      text = "Every profile made from now on (one, many at once, or one made in a closed profile's place) starts with the cookies you add below, before it opens a page or collects its own: a sign-in, a site's language or cookie choice… The profiles made before keep theirs.";
+    } else if (!next.enabled) {
+      text = `Off: new profiles start with no cookies. The ${plural(next.sites.length, "site")} below stay for when it's on again.`;
+    } else {
+      text = `Every profile made from now on (one, many at once, or one made in a closed profile's place) starts with these ${plural(next.total, "cookie")} of ${plural(sites.length, "site")}, kept a year, before it opens a page or collects its own. The same ones in each: those sites see the same cookies in all of them. The profiles made before keep theirs.`;
+    }
+    if (next.sealed) {
+      text += " Their values are kept encrypted by Windows, as the profiles' own cookies are.";
+    }
+    $("newcookieshint").textContent = text;
+  };
+
+  // What the site and cookies written say, added; the fields emptied once
+  // it is, or why nothing was.
+  const addNewCookies = (site, text) => noor.invoke("newcookies:add", site, text).then((result) => {
+    showNewCookies(result && result.state);
+    const said = $("newcookiessaid");
+    if (!result || result.error) {
+      said.textContent = (result && result.error) || "Nothing was added.";
+      return;
+    }
+    const where = result.sites.length === 1 ? result.sites[0] : `${plural(result.sites.length, "site")}: ${some(result.sites, (name) => name)}`;
+    const left = result.skipped && result.skipped.length ? ` ${result.skipped.length} left out (no cookie): ${some(result.skipped, (name) => name)}.` : "";
+    said.textContent = `${plural(result.added, "cookie")} added for ${where}.${left}`;
+    $("newcookiessite").value = "";
+    $("newcookiestext").value = "";
+  }).catch(() => {});
+
   const apply = (next) => {
     settings = next;
     for (const box of document.querySelectorAll("input[data-setting]")) {
@@ -537,12 +588,38 @@
     $(id).addEventListener("change", () => { showMode(); showSaved(); });
   }
   $("cookiessee").addEventListener("click", () => noor.invoke("cookies:open"));
+  $("newcookiesadd").addEventListener("click", () => {
+    const text = $("newcookiestext").value;
+    if (!text.trim()) {
+      $("newcookiessaid").textContent = "Paste the cookies first, or pick a file.";
+      $("newcookiestext").focus();
+      return;
+    }
+    addNewCookies($("newcookiessite").value, text);
+  });
+  // A cookies.txt or JSON file: added at once (a Cookie header's text
+  // stays in its field, waiting for its site).
+  $("newcookiesfile").addEventListener("click", () => {
+    noor.invoke("newcookies:file").then((file) => {
+      if (!file) {
+        return;
+      }
+      if (file.error) {
+        $("newcookiessaid").textContent = file.error;
+        return;
+      }
+      $("newcookiestext").value = file.text;
+      addNewCookies($("newcookiessite").value, file.text);
+    }).catch(() => {});
+  });
+  $("newcookieson").addEventListener("change", () => noor.invoke("newcookies:enable", $("newcookieson").checked).then(showNewCookies).catch(() => {}));
   noor.on("warmup", showWarmup);
   $("resetstats").addEventListener("click", () => noor.invoke("stats:reset"));
 
   const refresh = () => Promise.all([
     noor.invoke("settings:get").then(apply).catch(() => {}),
     noor.invoke("warmup:get").then(showWarmup).catch(() => {}),
+    noor.invoke("newcookies:get").then(showNewCookies).catch(() => {}),
   ]);
   window.addEventListener("focus", refresh);
   refresh().then(scrollToHash);

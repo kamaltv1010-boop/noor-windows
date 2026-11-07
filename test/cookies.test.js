@@ -127,6 +127,11 @@ test("a pasted cookie: like the page's own of that name, else for the whole site
     assert.equal(details.domain, undefined, url);
     assert.equal(details.secure, false, url);
   }
+  // A "__Host-" one: its host alone, at /, as Chromium takes it (with a domain, it refused it).
+  const prefixed = importDetails({ name: "__Host-csrf", value: "1" }, "https://www.example.com/a/b", null, now);
+  assert.equal(prefixed.domain, undefined);
+  assert.equal(prefixed.path, "/");
+  assert.equal(prefixed.secure, true);
   // The page's own cookie of that name: its domain, path, flags and expiry.
   const existing = { name: "sid", value: "old", domain: ".example.com", path: "/app", secure: true, httpOnly: true, hostOnly: false, sameSite: "lax", session: false, expirationDate: 1900000000 };
   assert.deepEqual(importDetails({ name: "sid", value: "new" }, "https://www.example.com/app/", existing, now), {

@@ -50,6 +50,16 @@
     "minutes": 6
   },
   {
+    "name": "smoke-new-profile-cookies",
+    "title": "كوكيز كل بروفايل جديد (الإعدادات): الإضافة بثلاث صيغ، الزرع في البروفايلات الجديدة، التشفير، وبعد إعادة التشغيل",
+    "kind": "app",
+    "command": [
+      "node",
+      "tools/smoke-new-profile-cookies.js"
+    ],
+    "minutes": 8
+  },
+  {
     "name": "smoke-second-launch",
     "title": "تشغيل Noor مرة ثانية وهو يعمل (زر بروفايل مثبّت، رابط من برنامج آخر): العنوان يُفتح، حتى أثناء البدء",
     "kind": "app",
