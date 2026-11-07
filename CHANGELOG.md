@@ -3,7 +3,7 @@
 Numbered builds are on GitHub Releases (`1.0.<build>`); each holds Noor,
 Noor iPhone and Noor Android for Windows (installer and portable `.exe`).
 
-## Unreleased
+## 1.0.49
 
 - **نسخ كوكيز الصفحة ولصقها كسطر واحد**: وأنت في صفحة موقع، **Ctrl+O** (أو ⋯ ←
   Cookies ← «Copy cookies of this page») ينسخ إلى الحافظة الكوكيز التي يرسلها
