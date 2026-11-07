@@ -91,6 +91,9 @@ test("JSON of other browsers' and extensions' exports: Cookie-Editor's, Playwrig
     { name: "y", value: "2", domain: ".example.com", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "None" },
   ], origins: [] }));
   assert.deepEqual(playwright.cookies.map((c) => [c.name, c.domain, c.hostOnly, c.sameSite]), [["x", "example.com", true, "lax"], ["y", ".example.com", false, "unspecified"]]);
+  // A domain in another script: as Chromium keeps it (punycode); the site's field too.
+  assert.deepEqual(parseCookies('[{"domain":".موقع.ma","name":"a","value":"1"}]').cookies.map((c) => c.domain), [".xn--4gbrim.ma"]);
+  assert.equal(parseCookies("a=1", siteAddress("موقع.ma")).cookies[0].domain, ".xn--4gbrim.ma");
   // No domain: the site written's, or no cookie.
   assert.deepEqual(parseCookies('[{"name":"n","value":"v"}]', siteAddress("example.org")).cookies.map((c) => c.domain), [".example.org"]);
   assert.deepEqual(parseCookies('[{"name":"n","value":"v"}]').cookies, []);

@@ -72,7 +72,15 @@ const keptCookie = (item) => {
     httpOnly: Boolean(item.httpOnly),
     sameSite: sameSiteOf(item.sameSite),
   };
-  const host = String(item.domain == null ? "" : item.domain).trim().toLowerCase().replace(/^\./, "").replace(/\.$/, "");
+  let host = String(item.domain == null ? "" : item.domain).trim().toLowerCase().replace(/^\./, "").replace(/\.$/, "");
+  if (/[^\x00-\x7f]/.test(host)) {
+    // A name in another script ("موقع.ma"): as Chromium keeps it, "xn--4gbrim.ma".
+    try {
+      host = new URL(`http://${host}/`).hostname;
+    } catch (error) {
+      return null;
+    }
+  }
   if (!host || !/^[a-z0-9._-]+$/.test(host) || host.includes("..") || host.startsWith(".")) {
     return null;
   }

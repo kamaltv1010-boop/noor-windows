@@ -216,6 +216,8 @@
       text = "Every profile made from now on (one, many at once, or one made in a closed profile's place) starts with the cookies you add below, before it opens a page or collects its own: a sign-in, a site's language or cookie choice… The profiles made before keep theirs.";
     } else if (!next.enabled) {
       text = `Off: new profiles start with no cookies. The ${plural(next.sites.length, "site")} below stay for when it's on again.`;
+    } else if (!sites.length) {
+      text = "None of these can be read on this PC (they were encrypted on another one, or by another Windows user), so new profiles start with no cookies: remove them and add their cookies again.";
     } else {
       text = `Every profile made from now on (one, many at once, or one made in a closed profile's place) starts with these ${plural(next.total, "cookie")} of ${plural(sites.length, "site")}, kept a year, before it opens a page or collects its own. The same ones in each: those sites see the same cookies in all of them. The profiles made before keep theirs.`;
     }
